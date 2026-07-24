@@ -11,11 +11,11 @@ import numpy as np
 from causal4d.contracts import TwinBelief, load_contract
 from causal4d.phystwin_backend import load_bayesian_phystwin_particles
 
-from .dynamic_discrepancy import (
+from bayesian_phystwin.dynamic_discrepancy import (
     LOCALIZATION_GRAPH_RANK,
     load_dynamic_discrepancy_correction,
 )
-from .phystwin_comparison import official_metrics_by_frame
+from bayesian_phystwin.phystwin_comparison import official_metrics_by_frame
 from .phystwin_discrepancy_localization import (
     BASELINE,
     READOUT,
@@ -25,24 +25,31 @@ from .phystwin_discrepancy_localization import (
     _set_particle,
     _weighted_mean,
 )
-from .phystwin_graph import PhysTwinSpringGraphConfig, build_phystwin_spring_graph
-from .phystwin_residual_dynamics import _load_pickle, _sha256, _target_validity
-from .phystwin_state_injection import (
+from bayesian_phystwin.phystwin_graph import (
+    PhysTwinSpringGraphConfig,
+    build_phystwin_spring_graph,
+)
+from bayesian_phystwin.phystwin_residual_dynamics import (
+    _load_pickle,
+    _sha256,
+    _target_validity,
+)
+from bayesian_phystwin.phystwin_state_injection import (
     _initialize_simulator,
     _metric_summary,
     _released_self_collision_for_case,
 )
-from .phystwin_structural_diagnostic import (
+from bayesian_phystwin.phystwin_structural_diagnostic import (
     _attachment_support_nodes,
     _far_graph_observation_error,
     _graph_distance,
     _horizon_summary,
 )
-from .propagated_state_belief import (
+from bayesian_phystwin.propagated_state_belief import (
     PropagatedStateBeliefConfig,
     infer_propagated_state_belief,
 )
-from .propagated_state_correction import (
+from bayesian_phystwin.propagated_state_correction import (
     PropagatedStateCorrection,
     PropagatedStateSelectionConfig,
     decode_limited_state_weights,

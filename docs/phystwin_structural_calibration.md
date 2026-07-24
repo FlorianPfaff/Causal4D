@@ -124,8 +124,8 @@ bpt-aggregate-phystwin-structure runs/structural-aggregate.json \
 Install or audit the measurement-only amendment before acquisition:
 
 ```bash
-bpt-structural-protocol protocol.json DATASET_ROOT
-bpt-structural-protocol protocol.json DATASET_ROOT --audit-only
+causal4d-structural-protocol protocol.json DATASET_ROOT
+causal4d-structural-protocol protocol.json DATASET_ROOT --audit-only
 ```
 
 The amendment hashes the unchanged actions, conditions, executions, outcomes,

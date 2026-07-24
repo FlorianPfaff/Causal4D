@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from bayesian_phystwin.structural_protocol import (
+from causal4d.structural_protocol import (
     audit_structural_protocol_readiness,
     build_structural_protocol_amendment,
     locked_action_design_sha256,

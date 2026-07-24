@@ -14,7 +14,7 @@ from causal4d.contracts import TwinBelief, load_contract
 from causal4d.graph_temporal_discrepancy import graph_laplacian_basis
 from causal4d.phystwin_backend import load_bayesian_phystwin_particles
 
-from .dynamic_discrepancy import (
+from bayesian_phystwin.dynamic_discrepancy import (
     LOCALIZATION_GRAPH_RANK,
     DynamicDiscrepancyCorrection,
     fit_dimensionless_linearized_correction,
@@ -22,21 +22,28 @@ from .dynamic_discrepancy import (
     scale_coefficients_to_field_limit,
     write_dynamic_discrepancy_correction,
 )
-from .observation_model_audit import (
+from bayesian_phystwin.observation_model_audit import (
     cross_view_residual_audit,
     metric_agreement_audit,
     released_observation_capability_audit,
 )
-from .phystwin_comparison import official_metrics_by_frame
-from .phystwin_graph import PhysTwinSpringGraphConfig, build_phystwin_spring_graph
-from .phystwin_residual_dynamics import _load_pickle, _sha256, _target_validity
-from .phystwin_state_injection import (
+from bayesian_phystwin.phystwin_comparison import official_metrics_by_frame
+from bayesian_phystwin.phystwin_graph import (
+    PhysTwinSpringGraphConfig,
+    build_phystwin_spring_graph,
+)
+from bayesian_phystwin.phystwin_residual_dynamics import (
+    _load_pickle,
+    _sha256,
+    _target_validity,
+)
+from bayesian_phystwin.phystwin_state_injection import (
     _initialize_simulator,
     _metric_summary,
     _released_self_collision_for_case,
     _state_numpy,
 )
-from .phystwin_structural_diagnostic import (
+from bayesian_phystwin.phystwin_structural_diagnostic import (
     _attachment_support_nodes,
     _far_graph_observation_error,
     _graph_distance,

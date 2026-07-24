@@ -1,0 +1,120 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "causal4d"
+version = "0.3.0"
+description = "Bayesian intervention abduction and interventional prediction for deformable-object dynamics"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "Florian Pfaff" },
+]
+dependencies = [
+  "numpy>=1.24",
+  "scipy>=1.10",
+]
+
+[project.urls]
+Repository = "https://github.com/FlorianPfaff/Causal4D"
+Documentation = "https://github.com/FlorianPfaff/Causal4D/tree/main/docs"
+Issues = "https://github.com/FlorianPfaff/Causal4D/issues"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "ruff>=0.6",
+]
+phystwin = [
+  "bayesian-phystwin @ git+https://github.com/FlorianPfaff/Bayesian-PhysTwin.git@c7ad36aad7e592ce8a391c9ca2d4db7389dee3ac",
+]
+vision = [
+  "opencv-python>=4.8",
+  "pillow>=9.5",
+  "torch>=2.0",
+]
+warp = [
+  "torch>=2.0",
+  "warp-lang>=1.0",
+]
+pyrecest = [
+  "pyrecest>=2.4.1",
+]
+
+[project.scripts]
+causal4d-counterfactual-benchmark = "causal4d.cli.counterfactual_benchmark:main"
+causal4d-latent-contact-benchmark = "causal4d.cli.latent_contact_benchmark:main"
+causal4d-phystwin-rollout-bank = "causal4d.cli.phystwin_rollout_bank:main"
+causal4d-export-bpt-belief = "causal4d.cli.export_bpt_belief:main"
+causal4d-abduct-phystwin-intervention = "causal4d.cli.abduct_phystwin_intervention:main"
+causal4d-counterfactual-phystwin = "causal4d.cli.counterfactual_phystwin:main"
+causal4d-evaluate-physical-counterfactual = "causal4d.cli.evaluate_physical_counterfactual:main"
+causal4d-build-molmo-task-posterior = "causal4d.cli.molmo_task_posterior:main"
+causal4d-fit-semantic-trust = "causal4d.cli.fit_semantic_trust:main"
+causal4d-adaptive-molmo-task-posterior = "causal4d.cli.adaptive_molmo_task_posterior:main"
+causal4d-molmo-phystwin-forecast = "causal4d.cli.molmo_phystwin_forecast:main"
+causal4d-evaluate-phystwin-molmo = "causal4d.cli.evaluate_phystwin_molmo:main"
+causal4d-evaluate-molmo-acceptance = "causal4d.cli.evaluate_molmo_acceptance:main"
+causal4d-audit-real-oracle-gap = "causal4d.cli.audit_real_oracle_gap:main"
+causal4d-real-protocol = "causal4d.cli.real_protocol:main"
+causal4d-audit-parameter-support = "causal4d.cli.audit_parameter_support:main"
+causal4d-real-calibration = "causal4d.cli.real_calibration:main"
+causal4d-evaluate-graph-temporal-discrepancy = "causal4d.cli.evaluate_graph_temporal_discrepancy:main"
+causal4d-evaluate-rest-geometry = "causal4d.cli.evaluate_rest_geometry:main"
+causal4d-rest-geometry-protocol = "causal4d.cli.rest_geometry_protocol:main"
+causal4d-rest-geometry-cross-action = "causal4d.cli.rest_geometry_cross_action:main"
+causal4d-rest-geometry-candidate-evidence = "causal4d.cli.rest_geometry_candidate_evidence:main"
+causal4d-rest-geometry-source-correction = "causal4d.cli.rest_geometry_source_correction:main"
+causal4d-phystwin-rest-geometry-transfer = "causal4d.cli.phystwin_rest_geometry_transfer:main"
+causal4d-rest-geometry-protocol-result = "causal4d.cli.rest_geometry_protocol_result:main"
+causal4d-build-phystwin-canonical-graph = "causal4d.cli.phystwin_canonical_graph:main"
+causal4d-rest-geometry-register-graph = "causal4d.cli.rest_geometry_register_graph:main"
+causal4d-preacquisition-protocol = "causal4d.cli.preacquisition_protocol:main"
+causal4d-preacquisition-protocol-v3 = "causal4d.cli.preacquisition_protocol_v3:main"
+causal4d-preacquisition-protocol-v4 = "causal4d.cli.preacquisition_protocol_v4:main"
+causal4d-calibrate-actuator-realization = "causal4d.cli.actuator_realization:main"
+causal4d-contact-registration = "causal4d.cli.contact_registration:main"
+causal4d-audit-mechanism-gate-controls = "causal4d.cli.mechanism_gate_controls:main"
+causal4d-structural-protocol = "causal4d.cli.structural_protocol:main"
+causal4d-diagnose-phystwin-discrepancy-location = "causal4d.cli.phystwin_discrepancy_localization:main"
+causal4d-aggregate-phystwin-discrepancy-location = "causal4d.cli.discrepancy_localization_aggregate:main"
+causal4d-diagnose-phystwin-propagated-state = "causal4d.cli.phystwin_propagated_state:main"
+causal4d-aggregate-phystwin-propagated-state = "causal4d.cli.phystwin_propagated_state_aggregate:main"
+causal4d-pokeflex-preflight = "causal4d_public.cli.pokeflex_preflight:main"
+causal4d-pokeflex-fixture = "causal4d_public.cli.pokeflex_fixture:main"
+causal4d-pokeflex-source-qa = "causal4d_public.cli.pokeflex_source_qa:main"
+causal4d-pokeflex-warp-source = "causal4d_public.cli.pokeflex_warp_source:main"
+causal4d-deform360-preflight = "causal4d_public.cli.deform360_preflight:main"
+causal4d-deform360-contact = "causal4d_public.cli.deform360_contact:main"
+causal4d-deform360-sam2-masks = "causal4d_public.cli.deform360_sam2_masks:main"
+causal4d-deform360-sam2-views = "causal4d_public.cli.deform360_sam2_views:main"
+causal4d-deform360-sam2-prefix = "causal4d_public.cli.deform360_sam2_prefix:main"
+causal4d-deform360-sam2-suffix = "causal4d_public.cli.deform360_sam2_suffix:main"
+causal4d-deform360-splat-probe = "causal4d_public.cli.deform360_splat_probe:main"
+causal4d-deform360-rope-sequence = "causal4d_public.cli.deform360_rope_sequence:main"
+causal4d-deform360-rope-observation = "causal4d_public.cli.deform360_rope_observation:main"
+causal4d-deform360-rope-fit = "causal4d_public.cli.deform360_rope_fit:main"
+causal4d-deform360-rope-prefix = "causal4d_public.cli.deform360_rope_prefix:main"
+causal4d-deform360-rope-predict = "causal4d_public.cli.deform360_rope_predict:main"
+causal4d-deform360-rope-future = "causal4d_public.cli.deform360_rope_future:main"
+causal4d-deform360-rope-oracle = "causal4d_public.cli.deform360_rope_oracle:main"
+causal4d-deform360-rope-evaluate = "causal4d_public.cli.deform360_rope_evaluate:main"
+causal4d-deform360-replication = "causal4d_public.cli.deform360_replication:main"
+causal4d-deform360-phystwin-feasibility = "causal4d_public.cli.deform360_phystwin_feasibility:main"
+causal4d-deform360-pooling-control = "causal4d_public.cli.deform360_pooling_control:main"
+causal4d-deform360-source-qa = "causal4d_public.cli.deform360_replication_source_qa:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

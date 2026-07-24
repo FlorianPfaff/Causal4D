@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from bayesian_phystwin.discrepancy_localization_aggregate import (
+from causal4d.discrepancy_localization_aggregate import (
     aggregate_discrepancy_localization,
 )
 

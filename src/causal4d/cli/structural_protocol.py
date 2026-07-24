@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from bayesian_phystwin.structural_protocol import (
+from causal4d.structural_protocol import (
     audit_structural_protocol_readiness,
     scaffold_structural_protocol_amendment,
 )

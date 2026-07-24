@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from bayesian_phystwin.phystwin_propagated_state import (
+from causal4d.phystwin_propagated_state import (
     aggregate_guarded_propagated_state_cases,
 )
 

@@ -1,9 +1,9 @@
 import json
 
-from bayesian_phystwin.discrepancy_localization_aggregate import (
+from causal4d.discrepancy_localization_aggregate import (
     aggregate_discrepancy_localization,
 )
-from bayesian_phystwin.phystwin_discrepancy_localization import (
+from causal4d.phystwin_discrepancy_localization import (
     BASELINE,
     GENERALIZED_FORCE,
     LOCALIZATION_METHODS,
