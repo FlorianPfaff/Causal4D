@@ -22,17 +22,28 @@ class PrefixLikelihoodConfig:
     difference_correlation: float = 0.0
 
     def __post_init__(self) -> None:
-        if self.observation_scale_m <= 0.0 or self.likelihood_power <= 0.0:
-            raise ValueError("observation scale and likelihood power must be positive")
-        if self.position_likelihood_weight < 0.0:
+        positive = (
+            self.observation_scale_m,
+            self.likelihood_power,
+            self.degrees_of_freedom,
+        )
+        if any(not np.isfinite(value) or value <= 0.0 for value in positive):
+            raise ValueError(
+                "observation scale, likelihood power, and dof must be positive"
+            )
+        if not np.isfinite(self.position_likelihood_weight) or (
+            self.position_likelihood_weight < 0.0
+        ):
             raise ValueError("position_likelihood_weight must be nonnegative")
-        if self.dynamic_likelihood_weight < 0.0:
+        if not np.isfinite(self.dynamic_likelihood_weight) or (
+            self.dynamic_likelihood_weight < 0.0
+        ):
             raise ValueError("dynamic_likelihood_weight must be nonnegative")
         if self.position_likelihood_weight + self.dynamic_likelihood_weight <= 0.0:
             raise ValueError("at least one prefix likelihood block must be active")
-        if self.degrees_of_freedom <= 0.0:
-            raise ValueError("degrees_of_freedom must be positive")
-        if not -1.0 < self.difference_correlation < 1.0:
+        if not np.isfinite(self.difference_correlation) or not (
+            -1.0 < self.difference_correlation < 1.0
+        ):
             raise ValueError("difference_correlation must lie in (-1, 1)")
 
 
@@ -59,11 +70,23 @@ def _student_t_mean_log_score(
     degrees_of_freedom: float,
     reduction_axes: tuple[int, ...],
 ) -> np.ndarray:
+    """Return a normalized Student-t score, including scale normalization.
+
+    Constants independent of the rollout component are omitted. The ``-log(scale)``
+    term is retained because particle-specific discrepancy variances can make the
+    scale differ across physical particles.
+    """
+
+    values = np.asarray(residual, dtype=float)
     scale = np.asarray(scale_m, dtype=float)
     if np.any(~np.isfinite(scale)) or np.any(scale <= 0.0):
         raise ValueError("likelihood scales must be finite and positive")
-    standardized = residual / scale
-    terms = -0.5 * (degrees_of_freedom + 1.0) * np.log1p(
+    try:
+        standardized = values / scale
+        log_scale = np.broadcast_to(np.log(scale), values.shape)
+    except ValueError as error:
+        raise ValueError("likelihood scale is not broadcastable to residuals") from error
+    terms = -log_scale - 0.5 * (degrees_of_freedom + 1.0) * np.log1p(
         np.square(standardized) / degrees_of_freedom
     )
     valid_float = np.asarray(valid, dtype=float)
@@ -72,7 +95,10 @@ def _student_t_mean_log_score(
     count = np.sum(valid_float, axis=reduction_axes)
     if np.any(count <= 0.0):
         raise ValueError("likelihood update has no valid coordinates")
-    return np.sum(np.where(valid_float > 0.0, terms, 0.0), axis=reduction_axes) / count
+    return np.sum(
+        np.where(valid_float > 0.0, terms, 0.0),
+        axis=reduction_axes,
+    ) / count
 
 
 def _normalized_joint_weights(log_weights: np.ndarray) -> np.ndarray:
@@ -123,8 +149,9 @@ def prefix_component_log_likelihood(
         or not len(nodes)
         or np.any(nodes < 0)
         or np.any(nodes >= bank.node_count)
+        or len(np.unique(nodes)) != len(nodes)
     ):
-        raise ValueError("observed_nodes must identify available rollout nodes")
+        raise ValueError("observed_nodes must uniquely identify available rollout nodes")
 
     coordinate_valid = _coordinate_mask(observations, mask)
     observed_prefix = observations[:prefix_frame_count, nodes]
@@ -227,8 +254,12 @@ def update_joint_weights_from_prefix(
     )
     if weights.shape != bank.prior_joint_weights.shape:
         raise ValueError("base_weights must match the joint rollout support")
-    if np.any(weights < 0.0) or not np.isclose(np.sum(weights), 1.0):
-        raise ValueError("base_weights must be nonnegative and sum to one")
+    if (
+        not np.all(np.isfinite(weights))
+        or np.any(weights < 0.0)
+        or not np.isclose(np.sum(weights), 1.0)
+    ):
+        raise ValueError("base_weights must be finite, nonnegative, and sum to one")
     log_likelihood = prefix_component_log_likelihood(
         bank,
         observations_m,
