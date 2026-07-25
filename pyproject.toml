@@ -45,6 +45,7 @@ pyrecest = [
 [project.scripts]
 causal4d-counterfactual-benchmark = "causal4d.cli.counterfactual_benchmark:main"
 causal4d-latent-contact-benchmark = "causal4d.cli.latent_contact_benchmark:main"
+causal4d-dynamic-contact-benchmark = "causal4d.cli.dynamic_contact_benchmark:main"
 causal4d-phystwin-rollout-bank = "causal4d.cli.phystwin_rollout_bank:main"
 causal4d-export-bpt-belief = "causal4d.cli.export_bpt_belief:main"
 causal4d-abduct-phystwin-intervention = "causal4d.cli.abduct_phystwin_intervention:main"
