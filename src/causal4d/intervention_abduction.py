@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 
 from causal4d.contracts import FactualIntervention, TwinBelief, array_sha256
+from causal4d.grouped_observations import (
+    dense_prefix_observation_groups,
+    update_from_grouped_observations,
+)
 from causal4d.rollout_bank import JointRolloutBank
 
 
@@ -19,6 +23,10 @@ class FactualAbductionConfig:
     likelihood_power: float = 12.0
     dynamic_likelihood_weight: float = 0.25
     degrees_of_freedom: float = 4.0
+    observation_model: Literal["legacy", "grouped_robust"] = "legacy"
+    robust_nominal_probability: float = 0.95
+    robust_outlier_scale_multiplier: float = 25.0
+    grouped_increment_weight: float = 0.0
 
     def __post_init__(self) -> None:
         if self.observation_scale_m <= 0.0 or self.likelihood_power <= 0.0:
@@ -27,6 +35,18 @@ class FactualAbductionConfig:
             raise ValueError("dynamic_likelihood_weight must be nonnegative")
         if self.degrees_of_freedom <= 0.0:
             raise ValueError("degrees_of_freedom must be positive")
+        if self.observation_model not in {"legacy", "grouped_robust"}:
+            raise ValueError("observation_model must be legacy or grouped_robust")
+        if not 0.0 <= self.robust_nominal_probability <= 1.0:
+            raise ValueError("robust_nominal_probability must lie in [0, 1]")
+        if self.robust_outlier_scale_multiplier <= 1.0:
+            raise ValueError("robust_outlier_scale_multiplier must exceed one")
+        if self.grouped_increment_weight < 0.0:
+            raise ValueError("grouped_increment_weight must be nonnegative")
+        if self.observation_model == "grouped_robust" and self.degrees_of_freedom <= 2.0:
+            raise ValueError(
+                "grouped_robust degrees_of_freedom must exceed two for covariance semantics"
+            )
 
 
 def _belief_readout(
@@ -64,6 +84,51 @@ def physical_readout_components(
     return bank.trajectories.astype(float) + discrepancy[None, :, None]
 
 
+def _update_joint_weights(
+    bank: JointRolloutBank,
+    belief: TwinBelief,
+    observations_from_endpoint_m: np.ndarray,
+    *,
+    prefix_frame_count: int,
+    observation_mask: np.ndarray | None,
+    settings: FactualAbductionConfig,
+    base_weights: np.ndarray | None = None,
+) -> np.ndarray:
+    discrepancy, discrepancy_variance = _belief_readout(bank, belief)
+    if settings.observation_model == "legacy":
+        return bank.update_from_observations(
+            observations_from_endpoint_m,
+            prefix_frame_count=prefix_frame_count,
+            scale_m=settings.observation_scale_m,
+            likelihood_power=settings.likelihood_power,
+            dynamic_likelihood_weight=settings.dynamic_likelihood_weight,
+            degrees_of_freedom=settings.degrees_of_freedom,
+            mask=observation_mask,
+            base_weights=base_weights,
+            particle_discrepancy_m=discrepancy,
+            particle_discrepancy_variance_m2=discrepancy_variance,
+        )
+    groups = dense_prefix_observation_groups(
+        observations_from_endpoint_m,
+        prefix_frame_count=prefix_frame_count,
+        observation_scale_m=settings.observation_scale_m,
+        likelihood_power=settings.likelihood_power,
+        mask=observation_mask,
+        nominal_probability=settings.robust_nominal_probability,
+        outlier_scale_multiplier=settings.robust_outlier_scale_multiplier,
+        increment_likelihood_weight=settings.grouped_increment_weight,
+        source_id="phystwin_o_plus",
+    )
+    return update_from_grouped_observations(
+        bank,
+        groups,
+        degrees_of_freedom=settings.degrees_of_freedom,
+        base_weights=base_weights,
+        particle_discrepancy_m=discrepancy,
+        particle_discrepancy_variance_m2=discrepancy_variance,
+    )
+
+
 def abduct_factual_intervention(
     bank: JointRolloutBank,
     belief: TwinBelief,
@@ -81,17 +146,13 @@ def abduct_factual_intervention(
     expected_stop = belief.context.o_plus.frame_start + prefix_frame_count - 1
     if expected_stop > belief.context.o_plus.frame_stop:
         raise ValueError("abduction prefix extends beyond O+")
-    discrepancy, discrepancy_variance = _belief_readout(bank, belief)
-    joint_weights = bank.update_from_observations(
+    joint_weights = _update_joint_weights(
+        bank,
+        belief,
         observations_from_endpoint_m,
         prefix_frame_count=prefix_frame_count,
-        scale_m=settings.observation_scale_m,
-        likelihood_power=settings.likelihood_power,
-        dynamic_likelihood_weight=settings.dynamic_likelihood_weight,
-        degrees_of_freedom=settings.degrees_of_freedom,
-        mask=observation_mask,
-        particle_discrepancy_m=discrepancy,
-        particle_discrepancy_variance_m2=discrepancy_variance,
+        observation_mask=observation_mask,
+        settings=settings,
     )
     hand_count = len(bank.hypothesis_metadata[0]["contact"]["attachment_shifts"])
     phi_names = ("gain_multiplier", "delay_steps", "rotation_degrees")
@@ -144,6 +205,8 @@ def abduct_factual_intervention(
             "rollout_bank_trajectories_sha256": array_sha256(bank.trajectories),
             "discrepancy_scored_as_separate_readout": True,
             "discrepancy_injected_into_simulator_state": False,
+            "grouped_observation_factors": settings.observation_model
+            == "grouped_robust",
         },
     )
 
@@ -226,7 +289,6 @@ def evaluate_factual_abduction(
     """Compare BPT+z with a same-evidence BPT posterior fixed to nominal z."""
 
     settings = config or FactualAbductionConfig()
-    discrepancy, discrepancy_variance = _belief_readout(bank, belief)
     z_weights = factual_joint_weights(
         factual,
         hypothesis_count=len(bank.hypothesis_ids),
@@ -237,17 +299,14 @@ def evaluate_factual_abduction(
     action_mass = bank.hypothesis_prior_weights[nominal]
     action_mass = action_mass / np.sum(action_mass)
     nominal_base[nominal] = action_mass[:, None] * bank.parameter_weights[None]
-    nominal_weights = bank.update_from_observations(
+    nominal_weights = _update_joint_weights(
+        bank,
+        belief,
         observations_from_endpoint_m,
         prefix_frame_count=prefix_frame_count,
-        scale_m=settings.observation_scale_m,
-        likelihood_power=settings.likelihood_power,
-        dynamic_likelihood_weight=settings.dynamic_likelihood_weight,
-        degrees_of_freedom=settings.degrees_of_freedom,
-        mask=observation_mask,
+        observation_mask=observation_mask,
+        settings=settings,
         base_weights=nominal_base,
-        particle_discrepancy_m=discrepancy,
-        particle_discrepancy_variance_m2=discrepancy_variance,
     )
     components = physical_readout_components(bank, belief)
     z_prediction = np.einsum("hp,hptnc->tnc", z_weights, components)
@@ -269,6 +328,7 @@ def evaluate_factual_abduction(
     return {
         "abduction_prefix_frame_count_including_endpoint": prefix_frame_count,
         "held_out_rollout_interval": [prefix_frame_count, bank.frame_count],
+        "observation_model": settings.observation_model,
         "bpt_without_z": nominal_metrics,
         "bpt_plus_causal4d_z": z_metrics,
         "relative_track_error_improvement": float(improvement),
