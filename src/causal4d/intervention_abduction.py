@@ -8,6 +8,10 @@ from typing import Any
 import numpy as np
 
 from causal4d.contracts import FactualIntervention, TwinBelief, array_sha256
+from causal4d.prefix_likelihood import (
+    PrefixLikelihoodConfig,
+    update_joint_weights_from_prefix,
+)
 from causal4d.rollout_bank import JointRolloutBank
 
 
@@ -17,16 +21,18 @@ class FactualAbductionConfig:
 
     observation_scale_m: float = 0.01
     likelihood_power: float = 12.0
+    position_likelihood_weight: float = 1.0
     dynamic_likelihood_weight: float = 0.25
     degrees_of_freedom: float = 4.0
+    difference_correlation: float = 0.0
 
     def __post_init__(self) -> None:
-        if self.observation_scale_m <= 0.0 or self.likelihood_power <= 0.0:
-            raise ValueError("observation scale and likelihood power must be positive")
-        if self.dynamic_likelihood_weight < 0.0:
-            raise ValueError("dynamic_likelihood_weight must be nonnegative")
-        if self.degrees_of_freedom <= 0.0:
-            raise ValueError("degrees_of_freedom must be positive")
+        PrefixLikelihoodConfig(**asdict(self))
+
+    def prefix_likelihood_config(self) -> PrefixLikelihoodConfig:
+        """Return the backend-neutral prefix score configuration."""
+
+        return PrefixLikelihoodConfig(**asdict(self))
 
 
 def _belief_readout(
@@ -82,13 +88,11 @@ def abduct_factual_intervention(
     if expected_stop > belief.context.o_plus.frame_stop:
         raise ValueError("abduction prefix extends beyond O+")
     discrepancy, discrepancy_variance = _belief_readout(bank, belief)
-    joint_weights = bank.update_from_observations(
+    joint_weights = update_joint_weights_from_prefix(
+        bank,
         observations_from_endpoint_m,
         prefix_frame_count=prefix_frame_count,
-        scale_m=settings.observation_scale_m,
-        likelihood_power=settings.likelihood_power,
-        dynamic_likelihood_weight=settings.dynamic_likelihood_weight,
-        degrees_of_freedom=settings.degrees_of_freedom,
+        config=settings.prefix_likelihood_config(),
         mask=observation_mask,
         particle_discrepancy_m=discrepancy,
         particle_discrepancy_variance_m2=discrepancy_variance,
@@ -144,6 +148,9 @@ def abduct_factual_intervention(
             "rollout_bank_trajectories_sha256": array_sha256(bank.trajectories),
             "discrepancy_scored_as_separate_readout": True,
             "discrepancy_injected_into_simulator_state": False,
+            "endpoint_to_first_response_increment_scored": bool(
+                settings.dynamic_likelihood_weight > 0.0
+            ),
         },
     )
 
@@ -237,13 +244,11 @@ def evaluate_factual_abduction(
     action_mass = bank.hypothesis_prior_weights[nominal]
     action_mass = action_mass / np.sum(action_mass)
     nominal_base[nominal] = action_mass[:, None] * bank.parameter_weights[None]
-    nominal_weights = bank.update_from_observations(
+    nominal_weights = update_joint_weights_from_prefix(
+        bank,
         observations_from_endpoint_m,
         prefix_frame_count=prefix_frame_count,
-        scale_m=settings.observation_scale_m,
-        likelihood_power=settings.likelihood_power,
-        dynamic_likelihood_weight=settings.dynamic_likelihood_weight,
-        degrees_of_freedom=settings.degrees_of_freedom,
+        config=settings.prefix_likelihood_config(),
         mask=observation_mask,
         base_weights=nominal_base,
         particle_discrepancy_m=discrepancy,
