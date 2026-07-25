@@ -109,6 +109,37 @@ readout trajectories with the robust grouped likelihood and adds each
 particle's discrepancy variance to the selected coordinate covariance.
 The physical simulator trajectories remain immutable.
 
+## Command-line use
+
+The factual-abduction CLI can construct frame-grouped evidence directly from
+the permitted object tracks:
+
+```bash
+causal4d-abduct-phystwin-intervention \
+  known.bank.npz belief.npz CASE/final_data.pkl \
+  factual.npz factual_eval.json \
+  --grouped-observation-likelihood \
+  --prior-nominal-probability 0.95 \
+  --outlier-scale-multiplier 100
+```
+
+A source-frozen identifiability artifact is a non-pickled NPZ containing
+`intervention_sensitivity` and optional `nuisance_sensitivity` and `covariance`
+arrays. Guarded use is:
+
+```bash
+causal4d-abduct-phystwin-intervention \
+  known.bank.npz belief.npz CASE/final_data.pkl \
+  factual.npz factual_eval.json \
+  --grouped-observation-likelihood \
+  --identifiability-npz source_identifiability.npz \
+  --abstain-when-unidentifiable
+```
+
+The sensitivity artifact must be fitted or generated without the target
+continuation. Threshold flags are explicit CLI inputs so a protocol can freeze
+them before target outcomes are opened.
+
 ## Required protocol usage
 
 1. Build intervention sensitivities from source-only or controlled finite
