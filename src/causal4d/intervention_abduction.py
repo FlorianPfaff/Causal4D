@@ -8,6 +8,12 @@ from typing import Any
 import numpy as np
 
 from causal4d.contracts import FactualIntervention, TwinBelief, array_sha256
+from causal4d.grouped_likelihood import (
+    GroupLikelihoodDiagnostics,
+    posterior_weights_from_grouped_evidence,
+)
+from causal4d.identifiability import InterventionIdentifiabilityResult
+from causal4d.observation_evidence import GroupedObservationEvidence
 from causal4d.rollout_bank import JointRolloutBank
 
 
@@ -64,6 +70,65 @@ def physical_readout_components(
     return bank.trajectories.astype(float) + discrepancy[None, :, None]
 
 
+def _grouped_diagnostics_summary(
+    diagnostics: GroupLikelihoodDiagnostics,
+) -> dict[str, Any]:
+    responsibilities = np.asarray(diagnostics.nominal_responsibilities, dtype=float)
+    reduction_axes = tuple(range(responsibilities.ndim - 1))
+    return {
+        "group_ids": list(diagnostics.group_ids),
+        "effective_group_weights": list(diagnostics.effective_group_weights),
+        "mean_nominal_responsibility_by_group": np.mean(
+            responsibilities, axis=reduction_axes
+        ).tolist(),
+        "minimum_nominal_responsibility_by_group": np.min(
+            responsibilities, axis=reduction_axes
+        ).tolist(),
+    }
+
+
+def _update_joint_weights(
+    bank: JointRolloutBank,
+    belief: TwinBelief,
+    observations_from_endpoint_m: np.ndarray,
+    *,
+    prefix_frame_count: int,
+    observation_mask: np.ndarray | None,
+    settings: FactualAbductionConfig,
+    base_weights: np.ndarray | None = None,
+    grouped_evidence: GroupedObservationEvidence | None = None,
+) -> tuple[np.ndarray, GroupLikelihoodDiagnostics | None]:
+    discrepancy, discrepancy_variance = _belief_readout(bank, belief)
+    if grouped_evidence is None:
+        return (
+            bank.update_from_observations(
+                observations_from_endpoint_m,
+                prefix_frame_count=prefix_frame_count,
+                scale_m=settings.observation_scale_m,
+                likelihood_power=settings.likelihood_power,
+                dynamic_likelihood_weight=settings.dynamic_likelihood_weight,
+                degrees_of_freedom=settings.degrees_of_freedom,
+                mask=observation_mask,
+                base_weights=base_weights,
+                particle_discrepancy_m=discrepancy,
+                particle_discrepancy_variance_m2=discrepancy_variance,
+            ),
+            None,
+        )
+    components = physical_readout_components(bank, belief)
+    component_variance = np.broadcast_to(
+        discrepancy_variance[None, :, None], components.shape
+    )
+    prior = bank.prior_joint_weights if base_weights is None else base_weights
+    return posterior_weights_from_grouped_evidence(
+        prior,
+        components,
+        grouped_evidence,
+        prefix_frame_count=prefix_frame_count,
+        component_variance_m2=component_variance,
+    )
+
+
 def abduct_factual_intervention(
     bank: JointRolloutBank,
     belief: TwinBelief,
@@ -72,8 +137,19 @@ def abduct_factual_intervention(
     prefix_frame_count: int,
     observation_mask: np.ndarray | None = None,
     config: FactualAbductionConfig | None = None,
+    grouped_evidence: GroupedObservationEvidence | None = None,
+    identifiability: InterventionIdentifiabilityResult | None = None,
+    abstain_when_unidentifiable: bool = False,
 ) -> FactualIntervention:
-    """Infer persistent ``phi`` and factual event ``kappa_obs`` from O+ only."""
+    """Infer persistent ``phi`` and factual event ``kappa_obs`` from O+ only.
+
+    The legacy dense Student-t score remains the default. Supplying
+    ``grouped_evidence`` activates full-covariance robust groups with fixed prior
+    reliability and contributor-aware composite powers. When
+    ``abstain_when_unidentifiable`` is true, a failed supplied identifiability
+    result returns the unchanged joint prior over physical and intervention
+    support rather than a falsely concentrated posterior.
+    """
 
     settings = config or FactualAbductionConfig()
     if not 2 <= prefix_frame_count < bank.frame_count:
@@ -81,18 +157,26 @@ def abduct_factual_intervention(
     expected_stop = belief.context.o_plus.frame_start + prefix_frame_count - 1
     if expected_stop > belief.context.o_plus.frame_stop:
         raise ValueError("abduction prefix extends beyond O+")
-    discrepancy, discrepancy_variance = _belief_readout(bank, belief)
-    joint_weights = bank.update_from_observations(
-        observations_from_endpoint_m,
-        prefix_frame_count=prefix_frame_count,
-        scale_m=settings.observation_scale_m,
-        likelihood_power=settings.likelihood_power,
-        dynamic_likelihood_weight=settings.dynamic_likelihood_weight,
-        degrees_of_freedom=settings.degrees_of_freedom,
-        mask=observation_mask,
-        particle_discrepancy_m=discrepancy,
-        particle_discrepancy_variance_m2=discrepancy_variance,
+    if abstain_when_unidentifiable and identifiability is None:
+        raise ValueError("an identifiability result is required for guarded abduction")
+    abstained = bool(
+        abstain_when_unidentifiable
+        and identifiability is not None
+        and not identifiability.identifiable
     )
+    if abstained:
+        joint_weights = bank.prior_joint_weights.copy()
+        grouped_diagnostics = None
+    else:
+        joint_weights, grouped_diagnostics = _update_joint_weights(
+            bank,
+            belief,
+            observations_from_endpoint_m,
+            prefix_frame_count=prefix_frame_count,
+            observation_mask=observation_mask,
+            settings=settings,
+            grouped_evidence=grouped_evidence,
+        )
     hand_count = len(bank.hypothesis_metadata[0]["contact"]["attachment_shifts"])
     phi_names = ("gain_multiplier", "delay_steps", "rotation_degrees")
     kappa_names = tuple(
@@ -124,6 +208,29 @@ def abduct_factual_intervention(
             kappa.append(event)
             hypothesis_indices.append(hypothesis_index)
             particle_indices.append(particle_index)
+    metadata: dict[str, Any] = {
+        "abduction_likelihood": asdict(settings),
+        "observation_prefix_frame_count_including_endpoint": prefix_frame_count,
+        "o_plus_frames_used": prefix_frame_count - 1,
+        "future_frames_read_by_abduction": 0,
+        "rollout_bank_trajectories_sha256": array_sha256(bank.trajectories),
+        "discrepancy_scored_as_separate_readout": True,
+        "discrepancy_injected_into_simulator_state": False,
+    }
+    if grouped_evidence is not None:
+        metadata["grouped_observation_evidence"] = {
+            "evidence_id": grouped_evidence.evidence_id,
+            "group_count": len(grouped_evidence.groups),
+            "contributor_multiplicity": grouped_evidence.contributor_multiplicity,
+            "diagnostics": (
+                None
+                if grouped_diagnostics is None
+                else _grouped_diagnostics_summary(grouped_diagnostics)
+            ),
+        }
+    if identifiability is not None:
+        metadata["intervention_identifiability"] = identifiability.as_dict()
+        metadata["abduction_abstained_unidentifiable"] = abstained
     return FactualIntervention(
         context=belief.context,
         component_ids=tuple(component_ids),
@@ -136,15 +243,7 @@ def abduct_factual_intervention(
         weights=joint_weights.reshape(-1),
         evidence_frame_stop=expected_stop,
         source_twin_belief_id=belief.artifact_id,
-        metadata={
-            "abduction_likelihood": asdict(settings),
-            "observation_prefix_frame_count_including_endpoint": prefix_frame_count,
-            "o_plus_frames_used": prefix_frame_count - 1,
-            "future_frames_read_by_abduction": 0,
-            "rollout_bank_trajectories_sha256": array_sha256(bank.trajectories),
-            "discrepancy_scored_as_separate_readout": True,
-            "discrepancy_injected_into_simulator_state": False,
-        },
+        metadata=metadata,
     )
 
 
@@ -222,11 +321,11 @@ def evaluate_factual_abduction(
     observation_mask: np.ndarray,
     prefix_frame_count: int,
     config: FactualAbductionConfig | None = None,
+    grouped_evidence: GroupedObservationEvidence | None = None,
 ) -> dict[str, Any]:
     """Compare BPT+z with a same-evidence BPT posterior fixed to nominal z."""
 
     settings = config or FactualAbductionConfig()
-    discrepancy, discrepancy_variance = _belief_readout(bank, belief)
     z_weights = factual_joint_weights(
         factual,
         hypothesis_count=len(bank.hypothesis_ids),
@@ -237,17 +336,15 @@ def evaluate_factual_abduction(
     action_mass = bank.hypothesis_prior_weights[nominal]
     action_mass = action_mass / np.sum(action_mass)
     nominal_base[nominal] = action_mass[:, None] * bank.parameter_weights[None]
-    nominal_weights = bank.update_from_observations(
+    nominal_weights, _ = _update_joint_weights(
+        bank,
+        belief,
         observations_from_endpoint_m,
         prefix_frame_count=prefix_frame_count,
-        scale_m=settings.observation_scale_m,
-        likelihood_power=settings.likelihood_power,
-        dynamic_likelihood_weight=settings.dynamic_likelihood_weight,
-        degrees_of_freedom=settings.degrees_of_freedom,
-        mask=observation_mask,
+        observation_mask=observation_mask,
+        settings=settings,
         base_weights=nominal_base,
-        particle_discrepancy_m=discrepancy,
-        particle_discrepancy_variance_m2=discrepancy_variance,
+        grouped_evidence=grouped_evidence,
     )
     components = physical_readout_components(bank, belief)
     z_prediction = np.einsum("hp,hptnc->tnc", z_weights, components)
@@ -269,6 +366,9 @@ def evaluate_factual_abduction(
     return {
         "abduction_prefix_frame_count_including_endpoint": prefix_frame_count,
         "held_out_rollout_interval": [prefix_frame_count, bank.frame_count],
+        "evidence_model": (
+            "grouped_robust_composite" if grouped_evidence is not None else "legacy_dense"
+        ),
         "bpt_without_z": nominal_metrics,
         "bpt_plus_causal4d_z": z_metrics,
         "relative_track_error_improvement": float(improvement),

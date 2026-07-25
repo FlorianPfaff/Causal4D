@@ -223,28 +223,37 @@ profile appears three times; and each realization condition appears twice.
 
 ### D. Cross-action/contact calibration
 
-Twelve folds are fixed in advance, one for every contact/profile cell. In each
-fold:
+Twelve folds are fixed in advance, one for every contact/profile cell. The
+versioned pre-acquisition amendment is authoritative for the fold membership.
+In each fold:
 
 - the target is the three repetitions of one contact/profile cell;
-- no source session contains the held-out contact;
-- no source session contains the held-out profile, even as its paired command;
-- eight source executions fit the model and discrepancy;
-- four disjoint source executions calibrate coverage and any semantic beta;
+- no fitting session contains the held-out contact;
+- no fitting session contains the held-out profile, even as its paired command;
+- six source sessions contribute both executions, giving 12 fitting executions
+  for the model, discrepancy, and source-only hyperparameters;
+- nine disjoint source sessions contribute one preregistered execution each,
+  giving nine independent calibration units;
+- the unused sibling executions in calibration sessions are not substituted;
+- the unused sibling executions in target sessions remain outside fitting and
+  calibration;
 - the three target executions remain untouched.
 
 Across the 12 folds, each execution is an out-of-fold target exactly once.
 Likelihood temperature, discrepancy scales, coverage transforms, and semantic
-beta are refit or selected only from that fold's fit/calibration sets. Target
-results never choose a shared hyperparameter.
+beta are refit or selected only from that fold's fitting and calibration sets.
+Target results never choose a shared hyperparameter.
 
-The four calibration executions in each v1 fold support an exploratory frozen
-transform and an out-of-fold target test. They do not pass the later
-undercoverage audit's ten-independent-execution gate for a real calibration
-claim. Before physical acquisition, a calibration-headline protocol must either
-pre-register a pooled source transform that still excludes every target action
-and contact, or issue a higher-repetition v2. The 36-run v1 remains valid for
-factual, same-grasp, new-contact, and calibration-transfer diagnosis.
+Nine independent calibration sessions give a finite 90% split-conformal
+threshold at rank 9 of 9, so the maximum calibration score sets the interval.
+The report must retain the largest and second-largest scores, the
+maximum-to-median ratio, leave-one-calibration-session-out thresholds, and
+interval width by fold. This is a coarse finite marginal execution-block
+calibration result, not a pooled-coordinate or worst-group guarantee. A
+stronger calibration headline still requires a preregistered pooled source
+transform that excludes every target contact and action or a higher-repetition
+protocol version. The 36-run design remains valid for factual, same-grasp,
+new-contact, and calibration-transfer diagnosis.
 
 ## Counterfactual Language
 
