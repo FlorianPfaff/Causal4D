@@ -1,165 +1,219 @@
-"""Numerical identifiability gates for intervention and nuisance responses."""
+"""Intervention-versus-nuisance identifiability diagnostics."""
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
-from typing import Any
+from dataclasses import dataclass
+from typing import Sequence
 
 import numpy as np
 
 
 @dataclass(frozen=True)
 class IdentifiabilityConfig:
-    """Thresholds for separating intervention from nuisance response subspaces."""
+    """Frozen thresholds for conditional intervention information."""
 
-    minimum_principal_angle_degrees: float = 10.0
-    maximum_projection_fraction: float = 0.95
-    minimum_conditional_singular_value_ratio: float = 1e-3
-    relative_rank_tolerance: float = 1e-10
+    relative_rank_tolerance: float = 1e-6
+    minimum_information_eigenvalue: float = 1e-6
+    maximum_condition_number: float = 1e8
+    minimum_residualized_response_fraction: float = 0.10
+    maximum_subspace_cosine: float = 0.995
 
     def __post_init__(self) -> None:
-        if not 0.0 <= self.minimum_principal_angle_degrees <= 90.0:
-            raise ValueError("minimum principal angle must lie in [0, 90]")
-        if not 0.0 <= self.maximum_projection_fraction <= 1.0:
-            raise ValueError("maximum projection fraction must lie in [0, 1]")
-        if self.minimum_conditional_singular_value_ratio < 0.0:
-            raise ValueError("minimum singular-value ratio must be nonnegative")
-        if self.relative_rank_tolerance <= 0.0:
-            raise ValueError("relative_rank_tolerance must be positive")
+        if not 0.0 < self.relative_rank_tolerance < 1.0:
+            raise ValueError("relative_rank_tolerance must lie in (0, 1)")
+        if self.minimum_information_eigenvalue <= 0.0:
+            raise ValueError("minimum_information_eigenvalue must be positive")
+        if self.maximum_condition_number <= 1.0:
+            raise ValueError("maximum_condition_number must exceed one")
+        if not 0.0 <= self.minimum_residualized_response_fraction <= 1.0:
+            raise ValueError("minimum_residualized_response_fraction must lie in [0, 1]")
+        if not 0.0 <= self.maximum_subspace_cosine <= 1.0:
+            raise ValueError("maximum_subspace_cosine must lie in [0, 1]")
 
 
 @dataclass(frozen=True)
-class IdentifiabilityResult:
-    """Diagnostics for local linear separation of intervention and nuisance."""
+class InterventionIdentifiabilityResult:
+    """Conditional information remaining after projecting out nuisance response."""
 
-    passed: bool
-    intervention_rank: int
-    nuisance_rank: int
-    minimum_principal_angle_degrees: float
-    maximum_canonical_correlation: float
-    projection_fraction: float
-    minimum_conditional_singular_value: float
-    conditional_singular_value_ratio: float
-    failed_checks: tuple[str, ...]
-    config: IdentifiabilityConfig
+    conditional_information: np.ndarray
+    eigenvalues: np.ndarray
+    effective_rank: int
+    parameter_count: int
+    minimum_eigenvalue: float
+    condition_number: float
+    residualized_response_fraction: float
+    maximum_subspace_cosine: float
+    identifiable: bool
+    failure_reasons: tuple[str, ...]
 
-    def as_dict(self) -> dict[str, Any]:
-        payload = asdict(self)
-        payload["failed_checks"] = list(self.failed_checks)
-        return payload
+    def __post_init__(self) -> None:
+        information = np.asarray(self.conditional_information, dtype=float).copy()
+        eigenvalues = np.asarray(self.eigenvalues, dtype=float).copy()
+        if information.shape != (self.parameter_count, self.parameter_count):
+            raise ValueError("conditional_information must match parameter_count")
+        if eigenvalues.shape != (self.parameter_count,):
+            raise ValueError("eigenvalues must match parameter_count")
+        if not np.all(np.isfinite(information)) or not np.all(np.isfinite(eigenvalues)):
+            raise ValueError("identifiability arrays must be finite")
+        information.setflags(write=False)
+        eigenvalues.setflags(write=False)
+        object.__setattr__(self, "conditional_information", information)
+        object.__setattr__(self, "eigenvalues", eigenvalues)
+        object.__setattr__(self, "failure_reasons", tuple(self.failure_reasons))
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "effective_rank": self.effective_rank,
+            "parameter_count": self.parameter_count,
+            "minimum_eigenvalue": self.minimum_eigenvalue,
+            "condition_number": (
+                self.condition_number if np.isfinite(self.condition_number) else None
+            ),
+            "residualized_response_fraction": self.residualized_response_fraction,
+            "maximum_subspace_cosine": self.maximum_subspace_cosine,
+            "identifiable": self.identifiable,
+            "failure_reasons": list(self.failure_reasons),
+            "eigenvalues": self.eigenvalues.tolist(),
+        }
 
 
-def _weighted_matrix(
-    matrix: np.ndarray,
-    whitening: np.ndarray | None,
+def finite_response_sensitivity(
+    reference_response: np.ndarray,
+    perturbed_responses: np.ndarray,
+    perturbation_steps: Sequence[float],
     *,
-    name: str,
+    valid: np.ndarray | None = None,
 ) -> np.ndarray:
+    """Build a flattened secant-sensitivity matrix from finite perturbations.
+
+    ``perturbed_responses`` has shape ``(parameter, ...)`` and each remaining
+    dimension must match ``reference_response``. A boolean ``valid`` mask may
+    select response coordinates before flattening.
+    """
+
+    reference = np.asarray(reference_response, dtype=float)
+    perturbed = np.asarray(perturbed_responses, dtype=float)
+    steps = np.asarray(tuple(perturbation_steps), dtype=float)
+    if perturbed.ndim != reference.ndim + 1 or perturbed.shape[1:] != reference.shape:
+        raise ValueError("perturbed_responses must have shape (parameter, *reference.shape)")
+    if steps.shape != (len(perturbed),) or np.any(~np.isfinite(steps)) or np.any(steps == 0.0):
+        raise ValueError("perturbation_steps must be finite, nonzero, and match parameters")
+    responses = (perturbed - reference[None]) / steps.reshape((-1,) + (1,) * reference.ndim)
+    if valid is None:
+        selected = np.ones(reference.shape, dtype=bool)
+    else:
+        selected = np.asarray(valid, dtype=bool)
+        if selected.shape != reference.shape:
+            raise ValueError("valid must match reference_response")
+    if not np.any(selected):
+        raise ValueError("finite-response sensitivity has no valid coordinates")
+    matrix = responses[:, selected].T
+    if not np.all(np.isfinite(matrix)):
+        raise ValueError("finite-response sensitivities must be finite")
+    return matrix
+
+
+def _whiten(matrix: np.ndarray, covariance: np.ndarray | None) -> np.ndarray:
     values = np.asarray(matrix, dtype=float)
-    if values.ndim != 2 or not np.all(np.isfinite(values)):
-        raise ValueError(f"{name} must be a finite matrix")
-    if whitening is None:
+    if values.ndim != 2 or values.shape[0] == 0 or values.shape[1] == 0:
+        raise ValueError("sensitivity matrices must be nonempty two-dimensional arrays")
+    if not np.all(np.isfinite(values)):
+        raise ValueError("sensitivity matrices must be finite")
+    if covariance is None:
         return values
-    weights = np.asarray(whitening, dtype=float)
-    if weights.shape != (values.shape[0],):
-        raise ValueError("whitening must contain one nonnegative row weight")
-    if np.any(~np.isfinite(weights)) or np.any(weights < 0.0):
-        raise ValueError("whitening weights must be finite and nonnegative")
-    if not np.any(weights > 0.0):
-        raise ValueError("whitening must retain at least one response row")
-    return np.sqrt(weights)[:, None] * values
+    noise = np.asarray(covariance, dtype=float)
+    if noise.shape != (values.shape[0], values.shape[0]):
+        raise ValueError("covariance must match the response dimension")
+    if not np.all(np.isfinite(noise)) or not np.allclose(noise, noise.T, atol=1e-12):
+        raise ValueError("covariance must be finite and symmetric")
+    try:
+        factor = np.linalg.cholesky(noise)
+    except np.linalg.LinAlgError as error:
+        raise ValueError("covariance must be positive definite") from error
+    return np.linalg.solve(factor, values)
 
 
-def _orthonormal_basis(
-    matrix: np.ndarray,
-    *,
-    relative_tolerance: float,
-) -> tuple[np.ndarray, np.ndarray]:
+def _orthonormal_basis(matrix: np.ndarray, tolerance: float) -> np.ndarray:
     if matrix.shape[1] == 0:
-        return np.zeros((matrix.shape[0], 0), dtype=float), np.empty(0)
-    left, singular, _ = np.linalg.svd(matrix, full_matrices=False)
-    if not len(singular) or singular[0] <= 0.0:
-        return np.zeros((matrix.shape[0], 0), dtype=float), singular
-    rank = int(np.sum(singular > relative_tolerance * singular[0]))
-    return left[:, :rank], singular[:rank]
+        return np.zeros((matrix.shape[0], 0), dtype=float)
+    left, singular_values, _ = np.linalg.svd(matrix, full_matrices=False)
+    if len(singular_values) == 0 or singular_values[0] == 0.0:
+        return np.zeros((matrix.shape[0], 0), dtype=float)
+    rank = int(np.sum(singular_values > tolerance * singular_values[0]))
+    return left[:, :rank]
 
 
-def evaluate_response_identifiability(
-    intervention_response: np.ndarray,
-    nuisance_response: np.ndarray,
+def assess_intervention_identifiability(
+    intervention_sensitivity: np.ndarray,
+    nuisance_sensitivity: np.ndarray | None = None,
     *,
-    whitening: np.ndarray | None = None,
+    covariance: np.ndarray | None = None,
     config: IdentifiabilityConfig | None = None,
-) -> IdentifiabilityResult:
-    """Gate a local intervention update against confounded nuisance responses."""
+) -> InterventionIdentifiabilityResult:
+    """Assess intervention information conditional on nuisance response.
+
+    The supplied sensitivities are whitened by ``covariance``. Intervention
+    columns are then projected onto the orthogonal complement of the nuisance
+    response. The resulting Gram matrix is the local conditional information.
+    """
 
     settings = config or IdentifiabilityConfig()
-    intervention = _weighted_matrix(
-        intervention_response,
-        whitening,
-        name="intervention_response",
-    )
-    nuisance = _weighted_matrix(
-        nuisance_response,
-        whitening,
-        name="nuisance_response",
-    )
-    if intervention.shape[0] != nuisance.shape[0]:
-        raise ValueError("intervention and nuisance responses must share rows")
-    intervention_basis, intervention_singular = _orthonormal_basis(
-        intervention,
-        relative_tolerance=settings.relative_rank_tolerance,
-    )
-    nuisance_basis, _ = _orthonormal_basis(
-        nuisance,
-        relative_tolerance=settings.relative_rank_tolerance,
-    )
-    intervention_rank = intervention_basis.shape[1]
-    nuisance_rank = nuisance_basis.shape[1]
-    if intervention_rank == 0:
-        raise ValueError("intervention response has zero numerical rank")
-
-    if nuisance_rank == 0:
-        maximum_correlation = 0.0
-        minimum_angle = 90.0
-        projected = np.zeros_like(intervention)
+    intervention = _whiten(intervention_sensitivity, covariance)
+    response_count, parameter_count = intervention.shape
+    if nuisance_sensitivity is None:
+        nuisance = np.zeros((response_count, 0), dtype=float)
     else:
-        correlations = np.linalg.svd(
-            intervention_basis.T @ nuisance_basis,
-            compute_uv=False,
+        nuisance_raw = np.asarray(nuisance_sensitivity, dtype=float)
+        if nuisance_raw.ndim != 2 or nuisance_raw.shape[0] != response_count:
+            raise ValueError("nuisance_sensitivity must share the response dimension")
+        nuisance = _whiten(nuisance_raw, covariance)
+
+    nuisance_basis = _orthonormal_basis(nuisance, settings.relative_rank_tolerance)
+    intervention_basis = _orthonormal_basis(
+        intervention, settings.relative_rank_tolerance
+    )
+    residualized = intervention - nuisance_basis @ (nuisance_basis.T @ intervention)
+    information = residualized.T @ residualized
+    information = 0.5 * (information + information.T)
+    eigenvalues = np.maximum(np.linalg.eigvalsh(information), 0.0)
+    largest = float(eigenvalues[-1])
+    tolerance = settings.relative_rank_tolerance * max(largest, 1.0)
+    effective_rank = int(np.sum(eigenvalues > tolerance))
+    minimum = float(eigenvalues[0])
+    positive = eigenvalues[eigenvalues > tolerance]
+    condition_number = (
+        float(np.max(positive) / np.min(positive)) if len(positive) else float("inf")
+    )
+    original_energy = float(np.sum(np.square(intervention)))
+    residual_energy = float(np.sum(np.square(residualized)))
+    residual_fraction = residual_energy / original_energy if original_energy > 0.0 else 0.0
+    if nuisance_basis.shape[1] and intervention_basis.shape[1]:
+        maximum_cosine = float(
+            np.max(np.linalg.svd(nuisance_basis.T @ intervention_basis, compute_uv=False))
         )
-        maximum_correlation = float(np.clip(correlations[0], 0.0, 1.0))
-        minimum_angle = float(np.degrees(np.arccos(maximum_correlation)))
-        projected = nuisance_basis @ (nuisance_basis.T @ intervention)
+    else:
+        maximum_cosine = 0.0
 
-    intervention_norm = float(np.linalg.norm(intervention, ord="fro"))
-    projection_fraction = float(
-        np.linalg.norm(projected, ord="fro") / intervention_norm
-    )
-    conditional = intervention - projected
-    conditional_singular = np.linalg.svd(conditional, compute_uv=False)
-    minimum_conditional = float(
-        conditional_singular[min(intervention_rank, len(conditional_singular)) - 1]
-    )
-    reference_singular = float(intervention_singular[0])
-    conditional_ratio = minimum_conditional / reference_singular
-
-    failed = []
-    if minimum_angle < settings.minimum_principal_angle_degrees:
-        failed.append("principal_angle")
-    if projection_fraction > settings.maximum_projection_fraction:
-        failed.append("projection_fraction")
-    if conditional_ratio < settings.minimum_conditional_singular_value_ratio:
-        failed.append("conditional_singular_value")
-    return IdentifiabilityResult(
-        passed=not failed,
-        intervention_rank=intervention_rank,
-        nuisance_rank=nuisance_rank,
-        minimum_principal_angle_degrees=minimum_angle,
-        maximum_canonical_correlation=maximum_correlation,
-        projection_fraction=projection_fraction,
-        minimum_conditional_singular_value=minimum_conditional,
-        conditional_singular_value_ratio=conditional_ratio,
-        failed_checks=tuple(failed),
-        config=settings,
+    reasons = []
+    if effective_rank < parameter_count:
+        reasons.append("rank_deficient_after_nuisance_projection")
+    if minimum < settings.minimum_information_eigenvalue:
+        reasons.append("conditional_information_below_threshold")
+    if condition_number > settings.maximum_condition_number:
+        reasons.append("conditional_information_ill_conditioned")
+    if residual_fraction < settings.minimum_residualized_response_fraction:
+        reasons.append("intervention_response_absorbed_by_nuisance")
+    if maximum_cosine > settings.maximum_subspace_cosine:
+        reasons.append("intervention_and_nuisance_subspaces_nearly_collinear")
+    return InterventionIdentifiabilityResult(
+        conditional_information=information,
+        eigenvalues=eigenvalues,
+        effective_rank=effective_rank,
+        parameter_count=parameter_count,
+        minimum_eigenvalue=minimum,
+        condition_number=condition_number,
+        residualized_response_fraction=float(residual_fraction),
+        maximum_subspace_cosine=maximum_cosine,
+        identifiable=not reasons,
+        failure_reasons=tuple(reasons),
     )

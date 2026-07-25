@@ -12,11 +12,17 @@ import numpy as np
 
 from bayesian_phystwin.phystwin_residual_dynamics import _target_validity
 from causal4d.contracts import TwinBelief, load_contract, save_contract
+from causal4d.identifiability import (
+    IdentifiabilityConfig,
+    InterventionIdentifiabilityResult,
+    assess_intervention_identifiability,
+)
 from causal4d.intervention_abduction import (
     FactualAbductionConfig,
     abduct_factual_intervention,
     evaluate_factual_abduction,
 )
+from causal4d.observation_evidence import GroupedObservationEvidence
 from causal4d.phystwin_backend import load_rollout_bank
 
 
@@ -35,22 +41,77 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--o-plus-prefix-frames", type=int, default=6)
     parser.add_argument("--observation-scale-m", type=float, default=0.01)
     parser.add_argument("--likelihood-power", type=float, default=12.0)
-    parser.add_argument("--position-likelihood-weight", type=float, default=1.0)
     parser.add_argument("--dynamic-likelihood-weight", type=float, default=0.25)
-    parser.add_argument(
-        "--difference-correlation",
-        type=float,
-        default=0.0,
-        help="Adjacent observation-error correlation used for differenced scale.",
-    )
     parser.add_argument("--degrees-of-freedom", type=float, default=4.0)
+    parser.add_argument(
+        "--grouped-observation-likelihood",
+        action="store_true",
+        help=(
+            "Use one robust full-covariance observation group per permitted O+ "
+            "frame instead of the legacy dense generalized likelihood."
+        ),
+    )
+    parser.add_argument("--prior-nominal-probability", type=float, default=0.95)
+    parser.add_argument("--outlier-scale-multiplier", type=float, default=100.0)
+    parser.add_argument(
+        "--identifiability-npz",
+        help=(
+            "Optional NPZ with intervention_sensitivity and optional "
+            "nuisance_sensitivity/covariance arrays, fitted without target future."
+        ),
+    )
+    parser.add_argument("--abstain-when-unidentifiable", action="store_true")
+    parser.add_argument("--identifiability-rank-tolerance", type=float, default=1e-6)
+    parser.add_argument(
+        "--minimum-information-eigenvalue", type=float, default=1e-6
+    )
+    parser.add_argument("--maximum-condition-number", type=float, default=1e8)
+    parser.add_argument(
+        "--minimum-residualized-response-fraction", type=float, default=0.10
+    )
+    parser.add_argument("--maximum-subspace-cosine", type=float, default=0.995)
     return parser
+
+
+def _load_identifiability(
+    path: str | None,
+    *,
+    config: IdentifiabilityConfig,
+) -> InterventionIdentifiabilityResult | None:
+    if path is None:
+        return None
+    with np.load(path, allow_pickle=False) as payload:
+        if "intervention_sensitivity" not in payload:
+            raise ValueError(
+                "identifiability NPZ must contain intervention_sensitivity"
+            )
+        intervention = np.asarray(payload["intervention_sensitivity"], dtype=float)
+        nuisance = (
+            np.asarray(payload["nuisance_sensitivity"], dtype=float)
+            if "nuisance_sensitivity" in payload
+            else None
+        )
+        covariance = (
+            np.asarray(payload["covariance"], dtype=float)
+            if "covariance" in payload
+            else None
+        )
+    return assess_intervention_identifiability(
+        intervention,
+        nuisance,
+        covariance=covariance,
+        config=config,
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.o_plus_prefix_frames < 1:
         raise ValueError("--o-plus-prefix-frames must be positive")
+    if args.abstain_when_unidentifiable and args.identifiability_npz is None:
+        raise ValueError(
+            "--abstain-when-unidentifiable requires --identifiability-npz"
+        )
     bank, manifest = load_rollout_bank(args.rollout_bank_npz)
     artifact = load_contract(args.twin_belief_npz)
     if not isinstance(artifact, TwinBelief):
@@ -68,10 +129,32 @@ def main(argv: Sequence[str] | None = None) -> int:
     settings = FactualAbductionConfig(
         observation_scale_m=args.observation_scale_m,
         likelihood_power=args.likelihood_power,
-        position_likelihood_weight=args.position_likelihood_weight,
         dynamic_likelihood_weight=args.dynamic_likelihood_weight,
         degrees_of_freedom=args.degrees_of_freedom,
-        difference_correlation=args.difference_correlation,
+    )
+    grouped_evidence = None
+    if args.grouped_observation_likelihood:
+        grouped_evidence = GroupedObservationEvidence.from_dense_prefix(
+            observations_from_endpoint,
+            prefix_frame_count=prefix_frame_count,
+            scale_m=args.observation_scale_m,
+            mask=mask_from_endpoint,
+            prior_nominal_probability=args.prior_nominal_probability,
+            outlier_scale_multiplier=args.outlier_scale_multiplier,
+            degrees_of_freedom=args.degrees_of_freedom,
+            source_id=f"{artifact.context.case_id}:object_points",
+        )
+    identifiability = _load_identifiability(
+        args.identifiability_npz,
+        config=IdentifiabilityConfig(
+            relative_rank_tolerance=args.identifiability_rank_tolerance,
+            minimum_information_eigenvalue=args.minimum_information_eigenvalue,
+            maximum_condition_number=args.maximum_condition_number,
+            minimum_residualized_response_fraction=(
+                args.minimum_residualized_response_fraction
+            ),
+            maximum_subspace_cosine=args.maximum_subspace_cosine,
+        ),
     )
     factual = abduct_factual_intervention(
         bank,
@@ -80,6 +163,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         prefix_frame_count=prefix_frame_count,
         observation_mask=mask_from_endpoint,
         config=settings,
+        grouped_evidence=grouped_evidence,
+        identifiability=identifiability,
+        abstain_when_unidentifiable=args.abstain_when_unidentifiable,
     )
     evaluation = evaluate_factual_abduction(
         bank,
@@ -89,6 +175,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         observation_mask=mask_from_endpoint,
         prefix_frame_count=prefix_frame_count,
         config=settings,
+        grouped_evidence=grouped_evidence,
     )
     evaluation.update(
         {
@@ -97,6 +184,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             "factual_intervention_id": factual.artifact_id,
             "rollout_bank_manifest": manifest,
             "twin_belief_id": artifact.artifact_id,
+            "grouped_observation_evidence_id": (
+                None if grouped_evidence is None else grouped_evidence.evidence_id
+            ),
+            "intervention_identifiability": (
+                None if identifiability is None else identifiability.as_dict()
+            ),
         }
     )
     save_contract(args.output_factual_npz, factual)
@@ -118,6 +211,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "relative_track_error_improvement": evaluation[
                     "relative_track_error_improvement"
                 ],
+                "abduction_abstained_unidentifiable": factual.metadata.get(
+                    "abduction_abstained_unidentifiable", False
+                ),
             },
             indent=2,
             sort_keys=True,
