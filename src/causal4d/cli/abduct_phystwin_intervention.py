@@ -37,6 +37,30 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--likelihood-power", type=float, default=12.0)
     parser.add_argument("--dynamic-likelihood-weight", type=float, default=0.25)
     parser.add_argument("--degrees-of-freedom", type=float, default=4.0)
+    parser.add_argument(
+        "--observation-model",
+        choices=("legacy", "grouped_robust"),
+        default="legacy",
+        help=(
+            "legacy preserves frozen results; grouped_robust uses effective "
+            "multivariate Student-t mixture factors"
+        ),
+    )
+    parser.add_argument("--robust-nominal-probability", type=float, default=0.95)
+    parser.add_argument(
+        "--robust-outlier-scale-multiplier",
+        type=float,
+        default=25.0,
+    )
+    parser.add_argument(
+        "--grouped-increment-weight",
+        type=float,
+        default=0.0,
+        help=(
+            "additional composite weight for explicit frame-increment factors; "
+            "zero avoids double counting positions by default"
+        ),
+    )
     return parser
 
 
@@ -63,6 +87,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         likelihood_power=args.likelihood_power,
         dynamic_likelihood_weight=args.dynamic_likelihood_weight,
         degrees_of_freedom=args.degrees_of_freedom,
+        observation_model=args.observation_model,
+        robust_nominal_probability=args.robust_nominal_probability,
+        robust_outlier_scale_multiplier=args.robust_outlier_scale_multiplier,
+        grouped_increment_weight=args.grouped_increment_weight,
     )
     factual = abduct_factual_intervention(
         bank,
@@ -106,6 +134,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ),
                 "factual_intervention_id": factual.artifact_id,
                 "map_hypothesis_id": evaluation["map_hypothesis_id"],
+                "observation_model": evaluation["observation_model"],
                 "relative_track_error_improvement": evaluation[
                     "relative_track_error_improvement"
                 ],
