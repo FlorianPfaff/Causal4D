@@ -35,7 +35,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--o-plus-prefix-frames", type=int, default=6)
     parser.add_argument("--observation-scale-m", type=float, default=0.01)
     parser.add_argument("--likelihood-power", type=float, default=12.0)
+    parser.add_argument("--position-likelihood-weight", type=float, default=1.0)
     parser.add_argument("--dynamic-likelihood-weight", type=float, default=0.25)
+    parser.add_argument(
+        "--difference-correlation",
+        type=float,
+        default=0.0,
+        help="Adjacent observation-error correlation used for differenced scale.",
+    )
     parser.add_argument("--degrees-of-freedom", type=float, default=4.0)
     return parser
 
@@ -61,8 +68,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     settings = FactualAbductionConfig(
         observation_scale_m=args.observation_scale_m,
         likelihood_power=args.likelihood_power,
+        position_likelihood_weight=args.position_likelihood_weight,
         dynamic_likelihood_weight=args.dynamic_likelihood_weight,
         degrees_of_freedom=args.degrees_of_freedom,
+        difference_correlation=args.difference_correlation,
     )
     factual = abduct_factual_intervention(
         bank,
