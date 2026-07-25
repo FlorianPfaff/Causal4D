@@ -29,6 +29,21 @@ from causal4d.graph_mode_abduction import (
     abduct_factual_intervention_graph_mode,
     graph_mode_joint_weights,
 )
+from causal4d.grouped_likelihood import (
+    GroupLikelihoodDiagnostics,
+    grouped_component_log_likelihoods,
+    posterior_weights_from_grouped_evidence,
+)
+from causal4d.identifiability import (
+    IdentifiabilityConfig,
+    InterventionIdentifiabilityResult,
+    assess_intervention_identifiability,
+    finite_response_sensitivity,
+)
+from causal4d.observation_evidence import (
+    GroupedObservationEvidence,
+    ObservationGroup,
+)
 from causal4d.rollout_bank import JointRolloutBank, SparseTrajectoryEvidence
 from causal4d.semantic_freshness import (
     SEMANTIC_TIMING_SCHEMA_VERSION,
@@ -48,8 +63,13 @@ __all__ = [
     "FactualIntervention",
     "GraphDiscrepancyBelief",
     "GraphModeAbductionConfig",
+    "GroupLikelihoodDiagnostics",
+    "GroupedObservationEvidence",
+    "IdentifiabilityConfig",
+    "InterventionIdentifiabilityResult",
     "LatentContactConfig",
     "JointRolloutBank",
+    "ObservationGroup",
     "PhysicalPosterior",
     "SEMANTIC_TIMING_SCHEMA_VERSION",
     "SEMANTIC_TIMING_SCOPE",
@@ -62,11 +82,15 @@ __all__ = [
     "abduct_factual_intervention_graph_mode",
     "apply_counterfactual_operator",
     "apply_semantic_freshness_gate",
+    "assess_intervention_identifiability",
     "build_action_conditioned_features",
     "build_protocol",
+    "finite_response_sensitivity",
     "forecast_action_conditioned_persistence",
     "graph_mode_joint_weights",
+    "grouped_component_log_likelihoods",
     "load_graph_discrepancy_belief",
+    "posterior_weights_from_grouped_evidence",
     "run_counterfactual_benchmark",
     "run_latent_contact_benchmark",
     "write_graph_discrepancy_belief",
