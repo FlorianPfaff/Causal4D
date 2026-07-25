@@ -20,17 +20,34 @@ def _readonly(values: np.ndarray) -> np.ndarray:
     return array
 
 
-def _named_value(
+def _parameter_vector(
     names: Sequence[str],
     values: np.ndarray | Sequence[float],
+    *,
+    label: str,
+) -> tuple[tuple[str, ...], np.ndarray]:
+    declared_names = tuple(map(str, names))
+    supplied_values = np.asarray(values, dtype=float)
+    if supplied_values.shape != (len(declared_names),):
+        raise ValueError(f"{label} values must match {label}_names")
+    if not np.all(np.isfinite(supplied_values)):
+        raise ValueError(f"{label} values must be finite")
+    if len(set(declared_names)) != len(declared_names):
+        raise ValueError(f"{label}_names must be unique")
+    return declared_names, supplied_values
+
+
+def _named_value(
+    names: tuple[str, ...],
+    values: np.ndarray,
     name: str,
     default: float,
 ) -> float:
     try:
-        index = tuple(names).index(name)
+        index = names.index(name)
     except ValueError:
         return float(default)
-    return float(np.asarray(values, dtype=float)[index])
+    return float(values[index])
 
 
 def _positive_semidefinite(matrix: np.ndarray) -> np.ndarray:
@@ -48,10 +65,11 @@ class ActionConditionedDiscrepancyFeatures:
     component_ids: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
+        names = tuple(map(str, self.names))
         values = _readonly(self.values)
-        if not self.names or len(set(self.names)) != len(self.names):
+        if not names or len(set(names)) != len(names):
             raise ValueError("feature names must be nonempty and unique")
-        if values.ndim not in {2, 3} or values.shape[-1] != len(self.names):
+        if values.ndim not in {2, 3} or values.shape[-1] != len(names):
             raise ValueError("feature values must have shape (H, F) or (K, H, F)")
         if values.shape[-2] < 1 or not np.all(np.isfinite(values)):
             raise ValueError("feature values must contain a finite forecast horizon")
@@ -64,6 +82,7 @@ class ActionConditionedDiscrepancyFeatures:
                 raise ValueError("feature component_ids must be unique")
         elif self.component_ids is not None:
             raise ValueError("shared features must not declare component_ids")
+        object.__setattr__(self, "names", names)
         object.__setattr__(self, "values", values)
 
     @property
@@ -88,6 +107,8 @@ def build_action_conditioned_features(
     anchor = np.asarray(control_anchor_m, dtype=float)
     if controls.ndim != 3 or controls.shape[2] != 3:
         raise ValueError("controller_points_m must have shape (H, C, 3)")
+    if controls.shape[0] < 1:
+        raise ValueError("controller_points_m must contain a forecast horizon")
     if anchor.shape != controls.shape[1:]:
         raise ValueError("control_anchor_m must have shape (C, 3)")
     if not np.all(np.isfinite(controls)) or not np.all(np.isfinite(anchor)):
@@ -96,6 +117,17 @@ def build_action_conditioned_features(
         raise ValueError("frame_dt_s must be finite and positive")
     if contact_policy not in CONTACT_POLICIES:
         raise ValueError("contact_policy must be same_grasp or new_contact")
+
+    persistent_names, persistent_values = _parameter_vector(
+        phi_names,
+        phi,
+        label="phi",
+    )
+    event_names, event_values = _parameter_vector(
+        kappa_names,
+        kappa,
+        label="kappa",
+    )
 
     full = np.concatenate((anchor[None], controls), axis=0)
     displacement = np.diff(full, axis=0)
@@ -107,16 +139,33 @@ def build_action_conditioned_features(
     direction_norm = np.linalg.norm(mean_velocity, axis=1, keepdims=True)
     direction = mean_velocity / np.maximum(direction_norm, np.finfo(float).eps)
 
-    gain = _named_value(phi_names, phi, "gain_multiplier", 1.0)
-    delay_steps = _named_value(phi_names, phi, "delay_steps", 0.0)
-    rotation_degrees = _named_value(phi_names, phi, "rotation_degrees", 0.0)
-    slip = _named_value(kappa_names, kappa, "slip_fraction", 0.0)
+    gain = _named_value(
+        persistent_names,
+        persistent_values,
+        "gain_multiplier",
+        1.0,
+    )
+    delay_steps = _named_value(
+        persistent_names,
+        persistent_values,
+        "delay_steps",
+        0.0,
+    )
+    rotation_degrees = _named_value(
+        persistent_names,
+        persistent_values,
+        "rotation_degrees",
+        0.0,
+    )
+    slip = _named_value(event_names, event_values, "slip_fraction", 0.0)
     shifts = [
-        float(np.asarray(kappa, dtype=float)[index])
-        for index, name in enumerate(kappa_names)
-        if str(name).startswith("attachment_shift_hand_")
+        float(event_values[index])
+        for index, name in enumerate(event_names)
+        if name.startswith("attachment_shift_hand_")
     ]
-    attachment_shift_rms = float(np.sqrt(np.mean(np.square(shifts)))) if shifts else 0.0
+    attachment_shift_rms = (
+        float(np.sqrt(np.mean(np.square(shifts)))) if shifts else 0.0
+    )
     horizon = len(controls)
 
     def repeated(value: float) -> np.ndarray:
@@ -156,8 +205,8 @@ class ActionConditionedDiscrepancyModel:
     """Positive-semidefinite feature-conditioned innovation covariance.
 
     Each feature direction contributes ``(w_j^T f)^2 v_j v_j^T``. Zero feature
-    weights therefore reproduce the base covariance exactly, which provides a
-    strict compatibility mode for frozen graph persistence.
+    weights reproduce the base covariance exactly. ``maximum_increment_trace_m2``
+    caps only the action-dependent addition, never the declared base uncertainty.
     """
 
     feature_names: tuple[str, ...]
@@ -168,19 +217,20 @@ class ActionConditionedDiscrepancyModel:
     maximum_increment_trace_m2: float | None = None
 
     def __post_init__(self) -> None:
+        feature_names = tuple(map(str, self.feature_names))
         base = _readonly(self.base_innovation_covariance_m2)
         directions = _readonly(self.feature_directions)
         weights = _readonly(self.feature_weights)
-        if not self.model_id or not self.feature_names:
+        if not self.model_id or not feature_names:
             raise ValueError("model id and feature names must be nonempty")
-        if len(set(self.feature_names)) != len(self.feature_names):
+        if len(set(feature_names)) != len(feature_names):
             raise ValueError("feature names must be unique")
         if base.ndim != 2 or base.shape[0] != base.shape[1] or base.shape[0] < 1:
             raise ValueError("base covariance must have shape (rank, rank)")
         rank = base.shape[0]
         if directions.ndim != 2 or directions.shape[1] != rank:
             raise ValueError("feature directions must have shape (J, rank)")
-        if weights.shape != (directions.shape[0], len(self.feature_names)):
+        if weights.shape != (directions.shape[0], len(feature_names)):
             raise ValueError("feature weights must have shape (J, feature_count)")
         if not all(np.all(np.isfinite(value)) for value in (base, directions, weights)):
             raise ValueError("action-conditioned model arrays must be finite")
@@ -188,17 +238,18 @@ class ActionConditionedDiscrepancyModel:
             raise ValueError("base covariance must be symmetric")
         if float(np.min(np.linalg.eigvalsh(base), initial=0.0)) < -1e-10:
             raise ValueError("base covariance must be positive semidefinite")
+        base = _readonly(_positive_semidefinite(base))
         if len(directions):
             norms = np.linalg.norm(directions, axis=1)
             if np.any(norms <= 0.0):
                 raise ValueError("feature directions must be nonzero")
-            directions = directions / norms[:, None]
-            directions.setflags(write=False)
+            directions = _readonly(directions / norms[:, None])
         if self.maximum_increment_trace_m2 is not None and (
             not np.isfinite(self.maximum_increment_trace_m2)
             or self.maximum_increment_trace_m2 <= 0.0
         ):
             raise ValueError("maximum_increment_trace_m2 must be positive")
+        object.__setattr__(self, "feature_names", feature_names)
         object.__setattr__(self, "base_innovation_covariance_m2", base)
         object.__setattr__(self, "feature_directions", directions)
         object.__setattr__(self, "feature_weights", weights)
@@ -208,28 +259,30 @@ class ActionConditionedDiscrepancyModel:
         return int(self.base_innovation_covariance_m2.shape[0])
 
     def innovation_covariance_m2(self, feature_vector: np.ndarray) -> np.ndarray:
-        """Return a finite positive-semidefinite covariance increment."""
+        """Return the base covariance plus a capped PSD action increment."""
 
         features = np.asarray(feature_vector, dtype=float)
         if features.shape != (len(self.feature_names),) or not np.all(
             np.isfinite(features)
         ):
             raise ValueError("feature vector does not match the model")
-        covariance = self.base_innovation_covariance_m2.astype(float).copy()
+        increment = np.zeros_like(self.base_innovation_covariance_m2)
         if len(self.feature_directions):
             rates = np.square(self.feature_weights @ features)
-            covariance += np.einsum(
+            increment = np.einsum(
                 "j,ji,jk->ik",
                 rates,
                 self.feature_directions,
                 self.feature_directions,
             )
-        covariance = _positive_semidefinite(covariance)
+            increment = _positive_semidefinite(increment)
         if self.maximum_increment_trace_m2 is not None:
-            trace = float(np.trace(covariance))
+            trace = float(np.trace(increment))
             if trace > self.maximum_increment_trace_m2:
-                covariance *= self.maximum_increment_trace_m2 / trace
-        return covariance
+                increment *= self.maximum_increment_trace_m2 / trace
+        return _positive_semidefinite(
+            self.base_innovation_covariance_m2 + increment
+        )
 
 
 @dataclass(frozen=True)
@@ -254,6 +307,8 @@ def forecast_action_conditioned_persistence(
     graph_basis = np.asarray(basis, dtype=float)
     if graph_basis.ndim != 2 or graph_basis.shape[1] != belief.rank:
         raise ValueError("basis must have shape (node, belief.rank)")
+    if not np.all(np.isfinite(graph_basis)):
+        raise ValueError("basis must be finite")
     if array_sha256(graph_basis) != belief.basis_sha256:
         raise ValueError("basis hash differs from the graph-discrepancy belief")
     if model.rank != belief.rank or model.feature_names != features.names:
