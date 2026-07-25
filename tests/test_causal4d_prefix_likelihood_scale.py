@@ -26,6 +26,7 @@ def test_particle_specific_scale_includes_normalization_penalty() -> None:
         prefix_frame_count=4,
         config=PrefixLikelihoodConfig(
             observation_scale_m=0.1,
+            likelihood_power=4.0,
             position_likelihood_weight=1.0,
             dynamic_likelihood_weight=0.0,
         ),
@@ -33,5 +34,5 @@ def test_particle_specific_scale_includes_normalization_penalty() -> None:
     )
 
     assert posterior.shape == (1, 2)
-    assert posterior[0, 0] > 0.99
+    assert posterior[0, 0] > 0.999
     assert posterior[0, 0] > posterior[0, 1]
