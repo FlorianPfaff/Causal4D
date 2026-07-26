@@ -3,12 +3,16 @@ name: Apply BPT graph provider migration
 on:
   push:
     branches: [agent/bpt-graph-provider-boundary]
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
 
 permissions:
   contents: write
 
 jobs:
   migrate:
+    if: github.head_ref == 'agent/bpt-graph-provider-boundary' || github.ref_name == 'agent/bpt-graph-provider-boundary'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
