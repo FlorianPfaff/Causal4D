@@ -57,9 +57,9 @@ jobs:
           print("BPT_PRIVATE_IMPORT_COUNT=" + str(result["private_name_count"]))
           PY
       - name: Package source snapshot
-        run: tar --exclude=.git --exclude=causal4d-source.tgz -czf causal4d-source.tgz .
+        run: tar --exclude=.git -czf /tmp/causal4d-source.tgz .
       - uses: actions/upload-artifact@v4
         with:
           name: causal4d-source
-          path: causal4d-source.tgz
+          path: /tmp/causal4d-source.tgz
           retention-days: 1
