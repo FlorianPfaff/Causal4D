@@ -1,0 +1,36 @@
+name: Export reconciled CI workflows
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    if: github.head_ref == 'agent/trigger-ci-current-main-rebase'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out CI implementation branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/ci-dependency-boundaries
+      - name: Prepare workflow files
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=build/reconciled-workflows
+          mkdir -p "$root/.github/workflows"
+          for name in ci.yml optional-integrations.yml; do
+            sed 's/BPT_REPOSITORY_TOKEN/BPT_READ_TOKEN/g' \
+              ".github/workflows/$name" \
+              > "$root/.github/workflows/$name"
+          done
+      - name: Upload workflow files
+        uses: actions/upload-artifact@v7
+        with:
+          name: reconciled-ci-workflows
+          path: build/reconciled-workflows/
+          include-hidden-files: true
+          if-no-files-found: error
