@@ -123,55 +123,6 @@ jobs:
           project = project_path.read_text(encoding="utf-8")
           project = project.replace('version = "0.4.0"', 'version = "0.4.1"', 1)
           project_path.write_text(project, encoding="utf-8")
-
-          workflow = Path(
-              ".github/workflows/bayesian-phystwin-provider-compatibility.yml"
-          )
-          if workflow.exists():
-              contents = workflow.read_text(encoding="utf-8")
-              secret_expression = "$" + "{{ secrets.BPT_READ_TOKEN }}"
-              token_expression = "$" + "{{ env.BPT_READ_TOKEN }}"
-              contents = contents.replace(
-                  "jobs:\n  compatibility:\n",
-                  "jobs:\n  compatibility:\n"
-                  "    env:\n"
-                  f"      BPT_READ_TOKEN: {secret_expression}\n",
-                  1,
-              )
-              contents = contents.replace(
-                  "    steps:\n      - name: Check out Causal4D\n",
-                  "    steps:\n"
-                  "      - name: Report unavailable private-repository token\n"
-                  "        if: env.BPT_READ_TOKEN == ''\n"
-                  "        run: echo 'Set BPT_READ_TOKEN to run private BPT compatibility checks.'\n"
-                  "      - name: Check out Causal4D\n"
-                  "        if: env.BPT_READ_TOKEN != ''\n",
-                  1,
-              )
-              contents = contents.replace(
-                  "      - name: Check out Bayesian-PhysTwin\n",
-                  "      - name: Check out Bayesian-PhysTwin\n"
-                  "        if: env.BPT_READ_TOKEN != ''\n",
-                  1,
-              )
-              contents = contents.replace(
-                  "          path: bayesian-phystwin\n",
-                  "          path: bayesian-phystwin\n"
-                  f"          token: {token_expression}\n",
-                  1,
-              )
-              for name in (
-                  "Set up Python",
-                  "Install both repositories",
-                  "Run cross-repository compatibility tests",
-              ):
-                  contents = contents.replace(
-                      f"      - name: {name}\n",
-                      f"      - name: {name}\n"
-                      "        if: env.BPT_READ_TOKEN != ''\n",
-                      1,
-                  )
-              workflow.write_text(contents, encoding="utf-8")
           PY
           git add src/causal4d/__init__.py pyproject.toml
           git rm -r .agent
@@ -206,25 +157,36 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+          compatibility_workflow=
+            ".github/workflows/bayesian-phystwin-provider-compatibility.yml"
+          cp "$compatibility_workflow" /tmp/bpt-provider-compatibility.yml
+          rm "$compatibility_workflow"
           {
             git config user.name "github-actions[bot]"
             git config user.email \
               "41898282+github-actions[bot]@users.noreply.github.com"
-            git status --short
             git add -A
             git commit -m "Consume Bayesian-PhysTwin provider API v1"
             git push --force origin \
               HEAD:agent/applied-bpt-provider-current-main
-          } > provider-publish.log 2>&1
+          } > /tmp/provider-publish.log 2>&1
           status=$?
-          cat provider-publish.log
+          cat /tmp/provider-publish.log
           exit "$status"
+      - name: Upload compatibility workflow
+        if: steps.publish.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: bpt-provider-compatibility-workflow
+          path: /tmp/bpt-provider-compatibility.yml
+          if-no-files-found: error
+          retention-days: 2
       - name: Upload publication failure
         if: steps.publish.outcome == 'failure'
         uses: actions/upload-artifact@v7
         with:
           name: provider-current-main-publication
-          path: provider-publish.log
+          path: /tmp/provider-publish.log
           if-no-files-found: error
           retention-days: 2
       - name: Stop after publication failure
