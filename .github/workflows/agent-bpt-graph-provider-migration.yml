@@ -1,0 +1,124 @@
+name: Apply BPT graph provider migration
+
+on:
+  push:
+    branches: [agent/bpt-graph-provider-boundary]
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/bpt-graph-provider-boundary
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Migrate production imports and backend manifest
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              "bayesian_phystwin.phystwin_graph": (
+                  "bayesian_phystwin.causal4d_graph_provider_v1"
+              ),
+              "bayesian_phystwin.phystwin_controller_sensitivity": (
+                  "bayesian_phystwin.causal4d_graph_provider_v1"
+              ),
+          }
+          changed = []
+          for root in (Path("src"), Path("scripts")):
+              for path in sorted(root.rglob("*.py")):
+                  text = path.read_text(encoding="utf-8")
+                  updated = text
+                  for old, new in replacements.items():
+                      updated = updated.replace(old, new)
+                  if updated != text:
+                      path.write_text(updated, encoding="utf-8")
+                      changed.append(str(path))
+
+          backend = Path("src/causal4d/phystwin_backend.py")
+          text = backend.read_text(encoding="utf-8")
+          import_anchor = (
+              "from causal4d.parameter_support import SupportMethod, "
+              "reduce_parameter_support\n"
+          )
+          graph_import = (
+              "from causal4d.graph_provider_contract import "
+              "require_bayesian_phystwin_graph_provider\n"
+          )
+          if graph_import not in text:
+              if import_anchor not in text:
+                  raise SystemExit("could not locate graph-provider import anchor")
+              text = text.replace(import_anchor, graph_import + import_anchor, 1)
+
+          provider_anchor = (
+              "        self.provider_manifest = "
+              "require_bayesian_phystwin_provider()\n"
+          )
+          graph_provider_assignment = (
+              "        self.graph_provider_manifest = "
+              "require_bayesian_phystwin_graph_provider()\n"
+          )
+          if graph_provider_assignment not in text:
+              if provider_anchor not in text:
+                  raise SystemExit("could not locate provider initialization anchor")
+              text = text.replace(
+                  provider_anchor,
+                  provider_anchor + graph_provider_assignment,
+                  1,
+              )
+
+          manifest_anchor = (
+              '            "provider": self.provider_manifest.as_dict(),\n'
+          )
+          graph_manifest = (
+              '            "graph_provider": '
+              'self.graph_provider_manifest.as_dict(),\n'
+          )
+          if graph_manifest not in text:
+              if manifest_anchor not in text:
+                  raise SystemExit("could not locate backend manifest anchor")
+              text = text.replace(
+                  manifest_anchor,
+                  manifest_anchor + graph_manifest,
+                  1,
+              )
+          backend.write_text(text, encoding="utf-8")
+          if str(backend) not in changed:
+              changed.append(str(backend))
+
+          workflow = Path(
+              ".github/workflows/agent-bpt-graph-provider-migration.yml"
+          )
+          workflow.unlink()
+          print("migrated files:")
+          print("\n".join(changed))
+          PY
+      - name: Validate focused boundary
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m ruff check \
+            src/causal4d/graph_provider_contract.py \
+            src/causal4d/phystwin_backend.py \
+            tests/test_graph_provider_contract.py \
+            tests/test_bpt_graph_provider_import_boundary.py \
+            tests/test_bpt_graph_provider_integration.py
+          python -m pytest -q \
+            tests/test_graph_provider_contract.py \
+            tests/test_bpt_graph_provider_import_boundary.py
+          python -m compileall -q src scripts
+      - name: Commit migration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Route graph operations through provider"
+          git push origin HEAD:agent/bpt-graph-provider-boundary
