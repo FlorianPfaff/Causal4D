@@ -1,4 +1,5 @@
 import json
+import subprocess
 from copy import deepcopy
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from causal4d.real_experiment_freeze import (
     REQUIRED_LOCKED_PATHS,
     build_method_freeze_manifest,
     validate_method_freeze_manifest,
+    validate_repository_checkout,
 )
 
 
@@ -101,3 +103,35 @@ def test_freeze_rejects_checkout_or_bpt_pin_mismatch(tmp_path: Path) -> None:
     pyproject.write_text(pyproject.read_text().replace(BPT_SHA, "d" * 40))
     with pytest.raises(ValueError, match="Bayesian-PhysTwin pin"):
         validate_method_freeze_manifest(manifest, root, verify_files=False)
+
+
+def test_checkout_validation_rejects_tracked_or_untracked_drift(
+    tmp_path: Path,
+) -> None:
+    root = _repository(tmp_path)
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=root,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test"], cwd=root, check=True
+    )
+    subprocess.run(["git", "add", "."], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-qm", "freeze"], cwd=root, check=True)
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    manifest = build_method_freeze_manifest(
+        root, causal4d_commit_sha=commit, frozen_by="operator-1"
+    )
+    assert validate_repository_checkout(manifest, root)["commit_sha"] == commit
+
+    (root / "untracked-analysis.py").write_text("print('drift')\n")
+    with pytest.raises(ValueError, match="checkout is dirty"):
+        validate_repository_checkout(manifest, root)
