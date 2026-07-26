@@ -44,7 +44,28 @@ jobs:
         run: |
           set -euo pipefail
           git switch -C agent/applied-bpt-provider-current-main
-          git apply --3way --index /tmp/provider.patch
+          if ! git apply --3way --index /tmp/provider.patch; then
+            {
+              echo "git status --short"
+              git status --short
+              echo
+              echo "unmerged index entries"
+              git ls-files -u
+            } > /tmp/provider-apply-conflicts.txt
+            git reset --hard origin/main
+            git switch -C agent/provider-current-main-conflict-report
+            mkdir -p .github
+            cp /tmp/provider-apply-conflicts.txt \
+              .github/provider-current-main-conflicts.txt
+            git config user.name "github-actions[bot]"
+            git config user.email \
+              "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .github/provider-current-main-conflicts.txt
+            git commit -m "Report provider migration conflicts"
+            git push --force origin \
+              HEAD:agent/provider-current-main-conflict-report
+            exit 1
+          fi
           python - <<'PY'
           from pathlib import Path
 
