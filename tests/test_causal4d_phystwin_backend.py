@@ -17,6 +17,7 @@ from causal4d.phystwin_backend import (
     transform_controller_trajectory,
 )
 from causal4d.contracts import TwinBelief, array_sha256
+from causal4d.provider_contract import require_bayesian_phystwin_provider
 
 
 def test_profile_loader_selects_and_renormalizes_high_mass_particles(
@@ -104,6 +105,7 @@ def test_profile_loader_preserves_staged_probability_mass(tmp_path: Path) -> Non
     )
 
     backend = object.__new__(OfficialPhysTwinBackend)
+    backend.provider_manifest = require_bayesian_phystwin_provider()
     backend.case_name = "unit_case"
     backend.train_end_frame = 3
     backend.official_repo = tmp_path / "official"
