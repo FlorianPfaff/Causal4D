@@ -6,13 +6,15 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   format:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -25,15 +27,18 @@ jobs:
             src/causal4d/prob4d_observation_lineage.py \
             tests/test_prob4d_joint_contract_fixture.py \
             tests/test_prob4d_stream_contract_version.py
-      - name: Archive exact formatter output
+      - name: Commit exact formatter output
         run: |
-          mkdir -p formatted/src/causal4d formatted/tests
-          cp src/causal4d/prob4d_observation_contract.py formatted/src/causal4d/
-          cp src/causal4d/prob4d_observation_lineage.py formatted/src/causal4d/
-          cp tests/test_prob4d_joint_contract_fixture.py formatted/tests/
-          cp tests/test_prob4d_stream_contract_version.py formatted/tests/
-      - uses: actions/upload-artifact@v4
-        with:
-          name: causal4d-pr43-ruff-output
-          path: formatted
-          if-no-files-found: error
+          if git diff --quiet --exit-code; then
+            echo "Ruff made no changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/causal4d/prob4d_observation_contract.py \
+            src/causal4d/prob4d_observation_lineage.py \
+            tests/test_prob4d_joint_contract_fixture.py \
+            tests/test_prob4d_stream_contract_version.py
+          git commit -m "Apply Ruff formatting to Prob4D contract changes"
+          git push origin HEAD:${{ github.head_ref }}
