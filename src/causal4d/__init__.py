@@ -71,6 +71,9 @@ from causal4d.semantic_freshness import (
     SemanticTimingMetadata,
     apply_semantic_freshness_gate,
 )
+from causal4d.stable_action_conditioned_counterfactual import (
+    apply_stable_action_conditioned_counterfactual_operator,
+)
 from causal4d.stable_discrepancy_dynamics import (
     StableDiscrepancyTransitionModel,
     forecast_action_conditioned_dynamics,
@@ -110,6 +113,7 @@ __all__ = [
     "apply_action_conditioned_counterfactual_operator",
     "apply_counterfactual_operator",
     "apply_semantic_freshness_gate",
+    "apply_stable_action_conditioned_counterfactual_operator",
     "assess_intervention_identifiability",
     "build_action_conditioned_features",
     "build_protocol",
