@@ -29,6 +29,41 @@ def _validated_metadata(values: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("metadata must contain finite JSON values") from error
 
 
+def _validate_identity(
+    *,
+    protocol_id: str,
+    case_id: str,
+    observed_action_id: str,
+    stream_id: str,
+    clock_id: str,
+    provenance: str,
+) -> None:
+    identities = {
+        "protocol_id": protocol_id,
+        "case_id": case_id,
+        "observed_action_id": observed_action_id,
+        "stream_id": stream_id,
+        "clock_id": clock_id,
+        "provenance": provenance,
+    }
+    missing = [name for name, value in identities.items() if not value]
+    if missing:
+        raise ValueError(f"sensor evidence identities must be nonempty: {missing}")
+
+
+def _identity_payload(
+    evidence: ActuatorEvidence | ContactWrenchEvidence,
+) -> dict[str, str]:
+    return {
+        "protocol_id": evidence.protocol_id,
+        "case_id": evidence.case_id,
+        "observed_action_id": evidence.observed_action_id,
+        "stream_id": evidence.stream_id,
+        "clock_id": evidence.clock_id,
+        "provenance": evidence.provenance,
+    }
+
+
 def _broadcast_variance(
     values: np.ndarray,
     shape: tuple[int, ...],
@@ -97,6 +132,9 @@ def _artifact_id(
 class ActuatorEvidence:
     """Measured end-effector positions independent of object observations."""
 
+    protocol_id: str
+    case_id: str
+    observed_action_id: str
     stream_id: str
     clock_id: str
     provenance: str
@@ -118,10 +156,14 @@ class ActuatorEvidence:
             "variance_m2",
         )
         mask = _broadcast_mask(self.valid_mask, positions.shape, "valid_mask")
-        if not self.stream_id or not self.clock_id or not self.provenance:
-            raise ValueError(
-                "stream_id, clock_id, and provenance must be nonempty"
-            )
+        _validate_identity(
+            protocol_id=self.protocol_id,
+            case_id=self.case_id,
+            observed_action_id=self.observed_action_id,
+            stream_id=self.stream_id,
+            clock_id=self.clock_id,
+            provenance=self.provenance,
+        )
         if self.evidence_frame_stop < 1:
             raise ValueError("evidence_frame_stop must be positive")
         if not np.all(np.isfinite(positions[mask])):
@@ -137,9 +179,7 @@ class ActuatorEvidence:
         return _artifact_id(
             artifact_kind="ActuatorEvidence",
             scalar_payload={
-                "stream_id": self.stream_id,
-                "clock_id": self.clock_id,
-                "provenance": self.provenance,
+                **_identity_payload(self),
                 "evidence_frame_stop": self.evidence_frame_stop,
                 "metadata": self.metadata,
                 "independent_of_object_observations": True,
@@ -157,6 +197,9 @@ class ActuatorEvidence:
 class ContactWrenchEvidence:
     """Measured contact force or wrench evidence on a trusted clock."""
 
+    protocol_id: str
+    case_id: str
+    observed_action_id: str
     stream_id: str
     clock_id: str
     provenance: str
@@ -181,10 +224,14 @@ class ContactWrenchEvidence:
         times = _validate_times(self.sample_times_s, wrench.shape[0])
         variance = _broadcast_variance(self.variance, wrench.shape, "variance")
         mask = _broadcast_mask(self.valid_mask, wrench.shape, "valid_mask")
-        if not self.stream_id or not self.clock_id or not self.provenance:
-            raise ValueError(
-                "stream_id, clock_id, and provenance must be nonempty"
-            )
+        _validate_identity(
+            protocol_id=self.protocol_id,
+            case_id=self.case_id,
+            observed_action_id=self.observed_action_id,
+            stream_id=self.stream_id,
+            clock_id=self.clock_id,
+            provenance=self.provenance,
+        )
         if self.evidence_frame_stop < 1:
             raise ValueError("evidence_frame_stop must be positive")
         if not np.all(np.isfinite(wrench[mask])):
@@ -200,9 +247,7 @@ class ContactWrenchEvidence:
         return _artifact_id(
             artifact_kind="ContactWrenchEvidence",
             scalar_payload={
-                "stream_id": self.stream_id,
-                "clock_id": self.clock_id,
-                "provenance": self.provenance,
+                **_identity_payload(self),
                 "quantity_names": list(self.quantity_names),
                 "evidence_frame_stop": self.evidence_frame_stop,
                 "metadata": self.metadata,
@@ -227,9 +272,7 @@ def save_independent_sensor_evidence(
         descriptor = {
             "schema_version": INDEPENDENT_SENSOR_SCHEMA_VERSION,
             "artifact_kind": "ActuatorEvidence",
-            "stream_id": evidence.stream_id,
-            "clock_id": evidence.clock_id,
-            "provenance": evidence.provenance,
+            **_identity_payload(evidence),
             "evidence_frame_stop": evidence.evidence_frame_stop,
             "metadata": evidence.metadata,
             "artifact_id": evidence.artifact_id,
@@ -244,9 +287,7 @@ def save_independent_sensor_evidence(
         descriptor = {
             "schema_version": INDEPENDENT_SENSOR_SCHEMA_VERSION,
             "artifact_kind": "ContactWrenchEvidence",
-            "stream_id": evidence.stream_id,
-            "clock_id": evidence.clock_id,
-            "provenance": evidence.provenance,
+            **_identity_payload(evidence),
             "quantity_names": list(evidence.quantity_names),
             "evidence_frame_stop": evidence.evidence_frame_stop,
             "metadata": evidence.metadata,
@@ -276,6 +317,17 @@ def save_independent_sensor_evidence(
         )
 
 
+def _descriptor_identity(descriptor: Mapping[str, Any]) -> dict[str, str]:
+    return {
+        "protocol_id": str(descriptor["protocol_id"]),
+        "case_id": str(descriptor["case_id"]),
+        "observed_action_id": str(descriptor["observed_action_id"]),
+        "stream_id": str(descriptor["stream_id"]),
+        "clock_id": str(descriptor["clock_id"]),
+        "provenance": str(descriptor["provenance"]),
+    }
+
+
 def load_independent_sensor_evidence(
     path: str | Path,
 ) -> ActuatorEvidence | ContactWrenchEvidence:
@@ -292,6 +344,7 @@ def load_independent_sensor_evidence(
         if descriptor.get("schema_version") != INDEPENDENT_SENSOR_SCHEMA_VERSION:
             raise ValueError("unsupported independent-sensor schema version")
         kind = descriptor.get("artifact_kind")
+        identity = _descriptor_identity(descriptor)
         if kind == "ActuatorEvidence":
             required = {
                 "sample_times_s",
@@ -302,9 +355,7 @@ def load_independent_sensor_evidence(
             if not required.issubset(archive.files):
                 raise ValueError("actuator evidence archive is incomplete")
             evidence: ActuatorEvidence | ContactWrenchEvidence = ActuatorEvidence(
-                stream_id=str(descriptor["stream_id"]),
-                clock_id=str(descriptor["clock_id"]),
-                provenance=str(descriptor["provenance"]),
+                **identity,
                 sample_times_s=archive["sample_times_s"],
                 positions_m=archive["positions_m"],
                 variance_m2=archive["variance_m2"],
@@ -322,9 +373,7 @@ def load_independent_sensor_evidence(
             if not required.issubset(archive.files):
                 raise ValueError("contact-wrench evidence archive is incomplete")
             evidence = ContactWrenchEvidence(
-                stream_id=str(descriptor["stream_id"]),
-                clock_id=str(descriptor["clock_id"]),
-                provenance=str(descriptor["provenance"]),
+                **identity,
                 sample_times_s=archive["sample_times_s"],
                 wrench=archive["wrench"],
                 variance=archive["variance"],
