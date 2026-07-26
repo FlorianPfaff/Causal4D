@@ -129,6 +129,30 @@ def _normalize_log_weights(log_weights: np.ndarray) -> np.ndarray:
     return weights / total
 
 
+def _validate_evidence_binding(
+    factual: FactualIntervention,
+    evidence: ActuatorEvidence | ContactWrenchEvidence,
+    *,
+    name: str,
+) -> None:
+    expected = (
+        factual.context.protocol_id,
+        factual.context.case_id,
+        factual.context.u_obs.action_id,
+    )
+    supplied = (
+        evidence.protocol_id,
+        evidence.case_id,
+        evidence.observed_action_id,
+    )
+    if supplied != expected:
+        raise ValueError(
+            f"{name} evidence identifies a different protocol, case, or observed action"
+        )
+    if evidence.evidence_frame_stop > factual.evidence_frame_stop:
+        raise ValueError(f"{name} evidence extends beyond the factual prefix")
+
+
 def reweight_factual_intervention_with_independent_sensors(
     factual: FactualIntervention,
     *,
@@ -160,13 +184,18 @@ def reweight_factual_intervention_with_independent_sensors(
         raise ValueError("wrench_evidence requires wrench predictions")
     if actuator_evidence is None and wrench_evidence is None:
         return factual
+    if (
+        actuator_evidence is not None
+        and wrench_evidence is not None
+        and actuator_evidence.clock_id != wrench_evidence.clock_id
+    ):
+        raise ValueError("actuator and wrench evidence must use the same clock")
 
     total_log_factor = np.zeros(component_count, dtype=float)
     factor_summaries: list[dict[str, Any]] = []
 
     if actuator_evidence is not None:
-        if actuator_evidence.evidence_frame_stop > factual.evidence_frame_stop:
-            raise ValueError("actuator evidence extends beyond the factual prefix")
+        _validate_evidence_binding(factual, actuator_evidence, name="actuator")
         predicted = _validate_prediction_shape(
             predicted_actuator_positions_m,
             component_count,
@@ -204,8 +233,7 @@ def reweight_factual_intervention_with_independent_sensors(
         )
 
     if wrench_evidence is not None:
-        if wrench_evidence.evidence_frame_stop > factual.evidence_frame_stop:
-            raise ValueError("wrench evidence extends beyond the factual prefix")
+        _validate_evidence_binding(factual, wrench_evidence, name="wrench")
         predicted = _validate_prediction_shape(
             predicted_contact_wrench,
             component_count,
