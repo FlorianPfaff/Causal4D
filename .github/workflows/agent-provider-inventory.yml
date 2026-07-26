@@ -16,20 +16,33 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: agent/bpt-provider-api-v1
-      - name: Apply reviewed patch
+
+      - name: Decode reviewed patch
         shell: bash
         run: |
           set -euo pipefail
           cat .agent/provider.patch.gz.b64.part* \
             | base64 --decode \
             | gzip --decompress > /tmp/provider.patch
-          echo "b9340285e4a9006ac40318ae62f7f8e524102c843a824debfab0ab0c3f7f7f7d  /tmp/provider.patch" \
-            | sha256sum --check --strict
-          git apply --check /tmp/provider.patch
-          git apply /tmp/provider.patch
+          sha256sum /tmp/provider.patch
+          test "$(sha256sum /tmp/provider.patch | cut -d' ' -f1)" = \
+            "b9340285e4a9006ac40318ae62f7f8e524102c843a824debfab0ab0c3f7f7f7d"
+
+      - name: Validate reviewed patch
+        run: git apply --check /tmp/provider.patch
+
+      - name: Apply reviewed patch
+        run: git apply /tmp/provider.patch
+
+      - name: Commit reviewed migration
+        shell: bash
+        run: |
+          set -euo pipefail
           git rm -r .agent .github/workflows/agent-provider-inventory.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "refactor: consume the Bayesian-PhysTwin provider API"
-          git push origin HEAD:agent/bpt-provider-api-v1
+
+      - name: Push reviewed migration
+        run: git push origin HEAD:agent/bpt-provider-api-v1
