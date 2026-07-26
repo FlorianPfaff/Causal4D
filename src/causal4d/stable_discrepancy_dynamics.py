@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 from scipy.linalg import expm
@@ -14,6 +15,9 @@ from causal4d.action_conditioned_discrepancy import (
 )
 from causal4d.contracts import array_sha256
 from causal4d.discrepancy_belief import GraphDiscrepancyBelief
+
+
+TIME_PARAMETERIZATIONS = ("per_step", "per_second")
 
 
 def _readonly(values: np.ndarray) -> np.ndarray:
@@ -42,13 +46,36 @@ def _normalized_rows(values: np.ndarray, *, width: int, name: str) -> np.ndarray
     return supplied / norms[:, None]
 
 
+def _continuous_process_covariance(
+    generator: np.ndarray,
+    covariance_rate: np.ndarray,
+    step_duration_s: float,
+) -> np.ndarray:
+    """Discretize a continuous covariance rate using the Van Loan method."""
+
+    rank = generator.shape[0]
+    if not np.any(covariance_rate):
+        return np.zeros_like(covariance_rate)
+    if not np.any(generator):
+        return _positive_semidefinite(covariance_rate * step_duration_s)
+    block = np.zeros((2 * rank, 2 * rank), dtype=float)
+    block[:rank, :rank] = generator
+    block[:rank, rank:] = covariance_rate
+    block[rank:, rank:] = -generator.T
+    exponential = expm(block * step_duration_s)
+    transition = exponential[:rank, :rank]
+    cross = exponential[:rank, rank:]
+    return _positive_semidefinite(cross @ transition.T)
+
+
 @dataclass(frozen=True)
 class StableDiscrepancyTransitionModel:
     """Dissipative graph-mode transport with exact identity fallback.
 
     The generator is ``G(f)=S(f)-C(f)``. ``S`` is skew-symmetric and ``C`` is
-    positive semidefinite, so ``A(f)=expm(G(f))`` is non-expansive while allowing
-    graph-mode rotation. Empty arrays produce ``A=I`` and zero drift exactly.
+    positive semidefinite. Under ``per_second`` parameterization, affine mean
+    dynamics are discretized exactly for every declared step duration. Empty
+    arrays produce exact graph persistence.
     """
 
     feature_names: tuple[str, ...]
@@ -61,6 +88,7 @@ class StableDiscrepancyTransitionModel:
     drift_feature_weights: np.ndarray
     model_id: str = "stable-action-conditioned-discrepancy-v1"
     maximum_drift_norm_m: float | None = None
+    time_parameterization: Literal["per_step", "per_second"] = "per_step"
 
     def __post_init__(self) -> None:
         names = tuple(map(str, self.feature_names))
@@ -68,6 +96,10 @@ class StableDiscrepancyTransitionModel:
             raise ValueError("feature_names must be nonempty and unique")
         if self.rank < 1 or not self.model_id:
             raise ValueError("rank and model_id must be valid")
+        if self.time_parameterization not in TIME_PARAMETERIZATIONS:
+            raise ValueError(
+                f"time_parameterization must be one of {TIME_PARAMETERIZATIONS}"
+            )
         feature_count = len(names)
 
         raw_skew = np.asarray(self.skew_generators, dtype=float)
@@ -173,8 +205,8 @@ class StableDiscrepancyTransitionModel:
             raise ValueError("feature vector does not match transition model")
         return values
 
-    def transition_operator(self, feature_vector: np.ndarray) -> np.ndarray:
-        """Return the non-expansive transition matrix for one forecast step."""
+    def generator_matrix(self, feature_vector: np.ndarray) -> np.ndarray:
+        """Return the dissipative generator before time discretization."""
 
         features = self._features(feature_vector)
         generator = np.zeros((self.rank, self.rank), dtype=float)
@@ -192,29 +224,79 @@ class StableDiscrepancyTransitionModel:
                 self.contraction_directions,
                 self.contraction_directions,
             )
-        if not np.any(generator):
-            return np.eye(self.rank)
-        transition = np.asarray(expm(generator), dtype=float)
-        if not np.all(np.isfinite(transition)):
-            raise RuntimeError("discrepancy transition is non-finite")
-        return transition
+        return generator
 
-    def drift_increment_m(self, feature_vector: np.ndarray) -> np.ndarray:
-        """Return a bounded coefficient-space mean increment."""
+    def drift_rate_mps(self, feature_vector: np.ndarray) -> np.ndarray:
+        """Return the affine drift vector before time discretization."""
 
         features = self._features(feature_vector)
         if not len(self.drift_directions_m):
             return np.zeros((self.rank, 3), dtype=float)
-        drift = np.einsum(
+        return np.einsum(
             "j,jrc->rc",
             self.drift_feature_weights @ features,
             self.drift_directions_m,
         )
+
+    def transition_and_drift(
+        self,
+        feature_vector: np.ndarray,
+        *,
+        step_duration_s: float = 1.0,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Return one affine discrete transition for the declared step."""
+
+        if not np.isfinite(step_duration_s) or step_duration_s <= 0.0:
+            raise ValueError("step_duration_s must be finite and positive")
+        generator = self.generator_matrix(feature_vector)
+        drift = self.drift_rate_mps(feature_vector)
+        if not np.any(generator) and not np.any(drift):
+            return np.eye(self.rank), np.zeros((self.rank, 3), dtype=float)
+        if self.time_parameterization == "per_step":
+            transition = expm(generator) if np.any(generator) else np.eye(self.rank)
+            increment = drift.copy()
+        else:
+            augmented = np.zeros((self.rank + 3, self.rank + 3), dtype=float)
+            augmented[: self.rank, : self.rank] = generator
+            augmented[: self.rank, self.rank :] = drift
+            discrete = expm(augmented * float(step_duration_s))
+            transition = discrete[: self.rank, : self.rank]
+            increment = discrete[: self.rank, self.rank :]
         if self.maximum_drift_norm_m is not None:
-            norm = float(np.linalg.norm(drift))
+            norm = float(np.linalg.norm(increment))
             if norm > self.maximum_drift_norm_m:
-                drift *= self.maximum_drift_norm_m / norm
-        return drift
+                increment *= self.maximum_drift_norm_m / norm
+        if not np.all(np.isfinite(transition)) or not np.all(np.isfinite(increment)):
+            raise RuntimeError("discrepancy transition is non-finite")
+        return np.asarray(transition, dtype=float), np.asarray(increment, dtype=float)
+
+    def transition_operator(
+        self,
+        feature_vector: np.ndarray,
+        *,
+        step_duration_s: float = 1.0,
+    ) -> np.ndarray:
+        """Return the non-expansive transition matrix for one forecast step."""
+
+        transition, _ = self.transition_and_drift(
+            feature_vector,
+            step_duration_s=step_duration_s,
+        )
+        return transition
+
+    def drift_increment_m(
+        self,
+        feature_vector: np.ndarray,
+        *,
+        step_duration_s: float = 1.0,
+    ) -> np.ndarray:
+        """Return a bounded coefficient-space mean increment."""
+
+        _, increment = self.transition_and_drift(
+            feature_vector,
+            step_duration_s=step_duration_s,
+        )
+        return increment
 
 
 def forecast_action_conditioned_dynamics(
@@ -224,7 +306,7 @@ def forecast_action_conditioned_dynamics(
     features: ActionConditionedDiscrepancyFeatures,
     basis: np.ndarray,
 ) -> ActionConditionedDiscrepancyForecast:
-    """Propagate mean and covariance under one shared action feature sequence."""
+    """Propagate stable discrepancy dynamics in declared physical time."""
 
     graph_basis = np.asarray(basis, dtype=float)
     if graph_basis.ndim != 2 or graph_basis.shape[1] != belief.rank:
@@ -252,6 +334,7 @@ def forecast_action_conditioned_dynamics(
         if features.component_ids != belief.component_ids:
             raise ValueError("component-specific features differ from belief support")
         feature_values = features.values
+    durations = features.component_step_durations(component_count)
 
     horizon = features.horizon
     mean = np.empty((component_count, horizon + 1, belief.rank, 3), dtype=float)
@@ -264,12 +347,28 @@ def forecast_action_conditioned_dynamics(
     for component in range(component_count):
         for step in range(horizon):
             feature_vector = feature_values[component, step]
-            transition = transition_model.transition_operator(feature_vector)
-            mean[component, step + 1] = (
-                transition @ mean[component, step]
-                + transition_model.drift_increment_m(feature_vector)
+            duration = float(durations[component, step])
+            transition, drift = transition_model.transition_and_drift(
+                feature_vector,
+                step_duration_s=duration,
             )
-            innovation = innovation_model.innovation_covariance_m2(feature_vector)
+            mean[component, step + 1] = (
+                transition @ mean[component, step] + drift
+            )
+            if (
+                transition_model.time_parameterization == "per_second"
+                and innovation_model.time_parameterization == "per_second"
+            ):
+                innovation = _continuous_process_covariance(
+                    transition_model.generator_matrix(feature_vector),
+                    innovation_model.innovation_rate_m2(feature_vector),
+                    duration,
+                )
+            else:
+                innovation = innovation_model.innovation_covariance_m2(
+                    feature_vector,
+                    step_duration_s=duration,
+                )
             for coordinate in range(3):
                 previous = covariance[component, step, coordinate]
                 covariance[component, step + 1, coordinate] = (

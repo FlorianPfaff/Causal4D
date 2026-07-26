@@ -1,4 +1,4 @@
-"""Action-conditioned covariance growth for graph-persistent discrepancy."""
+"""Action-conditioned covariance growth for graph discrepancy beliefs."""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ from causal4d.discrepancy_belief import GraphDiscrepancyBelief
 
 
 CONTACT_POLICIES = ("same_grasp", "new_contact")
+FEATURE_SCHEMAS = ("magnitude_v1", "signed_v2")
+TIME_PARAMETERIZATIONS = ("per_step", "per_second")
 
 
 def _readonly(values: np.ndarray) -> np.ndarray:
@@ -56,13 +58,43 @@ def _positive_semidefinite(matrix: np.ndarray) -> np.ndarray:
     return (eigenvectors * np.maximum(eigenvalues, 0.0)) @ eigenvectors.T
 
 
+def _step_duration_array(
+    values: np.ndarray | float,
+    *,
+    component_count: int,
+    horizon: int,
+) -> np.ndarray:
+    durations = np.asarray(values, dtype=float)
+    if durations.ndim == 0:
+        result = np.full((component_count, horizon), float(durations))
+    elif durations.shape == (horizon,):
+        result = np.broadcast_to(durations[None], (component_count, horizon))
+    elif durations.shape == (component_count, horizon):
+        result = durations
+    else:
+        raise ValueError(
+            "step_duration_s must be scalar or have shape (H,) or (K, H)"
+        )
+    if not np.all(np.isfinite(result)) or np.any(result <= 0.0):
+        raise ValueError("step durations must be finite and strictly positive")
+    return np.asarray(result, dtype=float)
+
+
 @dataclass(frozen=True)
 class ActionConditionedDiscrepancyFeatures:
-    """Shared or component-specific features for each forecast transition."""
+    """Shared or component-specific features for each forecast transition.
+
+    ``step_duration_s`` binds every transition to physical time. Existing callers
+    that construct features manually retain the historical unit-step behavior.
+    Features created by :func:`build_action_conditioned_features` carry the real
+    frame duration.
+    """
 
     names: tuple[str, ...]
     values: np.ndarray
     component_ids: tuple[str, ...] | None = None
+    step_duration_s: np.ndarray | float = 1.0
+    schema_id: str = "magnitude_v1"
 
     def __post_init__(self) -> None:
         names = tuple(map(str, self.names))
@@ -82,12 +114,36 @@ class ActionConditionedDiscrepancyFeatures:
                 raise ValueError("feature component_ids must be unique")
         elif self.component_ids is not None:
             raise ValueError("shared features must not declare component_ids")
+        if not self.schema_id:
+            raise ValueError("schema_id must be nonempty")
+        component_count = values.shape[0] if values.ndim == 3 else 1
+        durations = _step_duration_array(
+            self.step_duration_s,
+            component_count=component_count,
+            horizon=values.shape[-2],
+        )
+        if values.ndim == 2 and np.all(durations == durations[0, 0]):
+            stored_duration: np.ndarray | float = float(durations[0, 0])
+        elif values.ndim == 2:
+            stored_duration = _readonly(durations[0])
+        else:
+            stored_duration = _readonly(durations)
         object.__setattr__(self, "names", names)
         object.__setattr__(self, "values", values)
+        object.__setattr__(self, "step_duration_s", stored_duration)
 
     @property
     def horizon(self) -> int:
         return int(self.values.shape[-2])
+
+    def component_step_durations(self, component_count: int) -> np.ndarray:
+        """Return transition durations with shape ``(component, horizon)``."""
+
+        return _step_duration_array(
+            self.step_duration_s,
+            component_count=component_count,
+            horizon=self.horizon,
+        )
 
 
 def build_action_conditioned_features(
@@ -100,8 +156,15 @@ def build_action_conditioned_features(
     kappa_names: Sequence[str] = (),
     kappa: np.ndarray | Sequence[float] = (),
     contact_policy: Literal["same_grasp", "new_contact"] = "same_grasp",
+    feature_schema: Literal["magnitude_v1", "signed_v2"] = "magnitude_v1",
 ) -> ActionConditionedDiscrepancyFeatures:
-    """Build interpretable transition features without reading future outcomes."""
+    """Build interpretable transition features without future object outcomes.
+
+    ``magnitude_v1`` is the frozen compatibility schema used by existing
+    covariance-only models. ``signed_v2`` retains action and realization signs,
+    encodes controller phase continuously through radial velocity and distance,
+    and is intended for discrepancy-mean dynamics.
+    """
 
     controls = np.asarray(controller_points_m, dtype=float)
     anchor = np.asarray(control_anchor_m, dtype=float)
@@ -117,6 +180,8 @@ def build_action_conditioned_features(
         raise ValueError("frame_dt_s must be finite and positive")
     if contact_policy not in CONTACT_POLICIES:
         raise ValueError("contact_policy must be same_grasp or new_contact")
+    if feature_schema not in FEATURE_SCHEMAS:
+        raise ValueError(f"feature_schema must be one of {FEATURE_SCHEMAS}")
 
     persistent_names, persistent_values = _parameter_vector(
         phi_names,
@@ -158,55 +223,112 @@ def build_action_conditioned_features(
         0.0,
     )
     slip = _named_value(event_names, event_values, "slip_fraction", 0.0)
-    shifts = [
-        float(event_values[index])
-        for index, name in enumerate(event_names)
-        if name.startswith("attachment_shift_hand_")
-    ]
+    shifts = np.asarray(
+        [
+            float(event_values[index])
+            for index, name in enumerate(event_names)
+            if name.startswith("attachment_shift_hand_")
+        ],
+        dtype=float,
+    )
+    attachment_shift_mean = float(np.mean(shifts)) if len(shifts) else 0.0
     attachment_shift_rms = (
-        float(np.sqrt(np.mean(np.square(shifts)))) if shifts else 0.0
+        float(np.sqrt(np.mean(np.square(shifts)))) if len(shifts) else 0.0
     )
     horizon = len(controls)
 
     def repeated(value: float) -> np.ndarray:
         return np.full(horizon, float(value), dtype=float)
 
-    values = np.column_stack(
-        (
-            speed,
-            acceleration_norm,
-            direction,
-            repeated(abs(gain - 1.0)),
-            repeated(abs(delay_steps) * frame_dt_s),
-            repeated(abs(np.deg2rad(rotation_degrees))),
-            repeated(max(slip, 0.0)),
-            repeated(attachment_shift_rms),
-            repeated(float(contact_policy == "new_contact")),
+    if feature_schema == "magnitude_v1":
+        values = np.column_stack(
+            (
+                speed,
+                acceleration_norm,
+                direction,
+                repeated(abs(gain - 1.0)),
+                repeated(abs(delay_steps) * frame_dt_s),
+                repeated(abs(np.deg2rad(rotation_degrees))),
+                repeated(max(slip, 0.0)),
+                repeated(attachment_shift_rms),
+                repeated(float(contact_policy == "new_contact")),
+            )
         )
+        names = (
+            "control_speed_mps",
+            "control_acceleration_mps2",
+            "direction_x",
+            "direction_y",
+            "direction_z",
+            "gain_abs_deviation",
+            "delay_s",
+            "rotation_abs_rad",
+            "slip_fraction",
+            "attachment_shift_rms",
+            "new_contact",
+        )
+    else:
+        anchor_center = np.mean(anchor, axis=0)
+        controller_center = np.mean(controls, axis=1)
+        radial = controller_center - anchor_center[None]
+        radial_norm = np.linalg.norm(radial, axis=1, keepdims=True)
+        radial_direction = radial / np.maximum(
+            radial_norm,
+            np.finfo(float).eps,
+        )
+        radial_velocity = np.einsum("tc,tc->t", mean_velocity, radial_direction)
+        radial_velocity = np.where(radial_norm[:, 0] > 0.0, radial_velocity, 0.0)
+        rotation_rad = np.deg2rad(rotation_degrees)
+        values = np.column_stack(
+            (
+                speed,
+                acceleration_norm,
+                direction,
+                radial_velocity,
+                radial_norm[:, 0],
+                repeated(gain - 1.0),
+                repeated(delay_steps * frame_dt_s),
+                repeated(np.sin(rotation_rad)),
+                repeated(np.cos(rotation_rad) - 1.0),
+                repeated(slip),
+                repeated(attachment_shift_mean),
+                repeated(attachment_shift_rms),
+                repeated(float(contact_policy == "new_contact")),
+            )
+        )
+        names = (
+            "control_speed_mps",
+            "control_acceleration_mps2",
+            "direction_x",
+            "direction_y",
+            "direction_z",
+            "radial_velocity_mps",
+            "distance_from_anchor_m",
+            "gain_signed_deviation",
+            "delay_s",
+            "rotation_sin",
+            "rotation_cos_minus_one",
+            "slip_fraction",
+            "attachment_shift_mean",
+            "attachment_shift_rms",
+            "new_contact",
+        )
+    return ActionConditionedDiscrepancyFeatures(
+        names=names,
+        values=values,
+        step_duration_s=frame_dt_s,
+        schema_id=feature_schema,
     )
-    names = (
-        "control_speed_mps",
-        "control_acceleration_mps2",
-        "direction_x",
-        "direction_y",
-        "direction_z",
-        "gain_abs_deviation",
-        "delay_s",
-        "rotation_abs_rad",
-        "slip_fraction",
-        "attachment_shift_rms",
-        "new_contact",
-    )
-    return ActionConditionedDiscrepancyFeatures(names=names, values=values)
 
 
 @dataclass(frozen=True)
 class ActionConditionedDiscrepancyModel:
     """Positive-semidefinite feature-conditioned innovation covariance.
 
-    Each feature direction contributes ``(w_j^T f)^2 v_j v_j^T``. Zero feature
-    weights reproduce the base covariance exactly. ``maximum_increment_trace_m2``
-    caps only the action-dependent addition, never the declared base uncertainty.
+    With ``time_parameterization='per_step'``, the declared covariance is added
+    once per transition, preserving historical behavior. With ``per_second``, it
+    is interpreted as a covariance rate and discretized using the supplied step
+    duration.
     """
 
     feature_names: tuple[str, ...]
@@ -215,6 +337,7 @@ class ActionConditionedDiscrepancyModel:
     feature_weights: np.ndarray
     model_id: str = "action-conditioned-graph-persistence-v1"
     maximum_increment_trace_m2: float | None = None
+    time_parameterization: Literal["per_step", "per_second"] = "per_step"
 
     def __post_init__(self) -> None:
         feature_names = tuple(map(str, self.feature_names))
@@ -225,6 +348,10 @@ class ActionConditionedDiscrepancyModel:
             raise ValueError("model id and feature names must be nonempty")
         if len(set(feature_names)) != len(feature_names):
             raise ValueError("feature names must be unique")
+        if self.time_parameterization not in TIME_PARAMETERIZATIONS:
+            raise ValueError(
+                f"time_parameterization must be one of {TIME_PARAMETERIZATIONS}"
+            )
         if base.ndim != 2 or base.shape[0] != base.shape[1] or base.shape[0] < 1:
             raise ValueError("base covariance must have shape (rank, rank)")
         rank = base.shape[0]
@@ -258,8 +385,8 @@ class ActionConditionedDiscrepancyModel:
     def rank(self) -> int:
         return int(self.base_innovation_covariance_m2.shape[0])
 
-    def innovation_covariance_m2(self, feature_vector: np.ndarray) -> np.ndarray:
-        """Return the base covariance plus a capped PSD action increment."""
+    def innovation_rate_m2(self, feature_vector: np.ndarray) -> np.ndarray:
+        """Return the uncoupled PSD innovation covariance or covariance rate."""
 
         features = np.asarray(feature_vector, dtype=float)
         if features.shape != (len(self.feature_names),) or not np.all(
@@ -284,6 +411,21 @@ class ActionConditionedDiscrepancyModel:
             self.base_innovation_covariance_m2 + increment
         )
 
+    def innovation_covariance_m2(
+        self,
+        feature_vector: np.ndarray,
+        *,
+        step_duration_s: float = 1.0,
+    ) -> np.ndarray:
+        """Return the innovation covariance for one transition."""
+
+        if not np.isfinite(step_duration_s) or step_duration_s <= 0.0:
+            raise ValueError("step_duration_s must be finite and positive")
+        covariance = self.innovation_rate_m2(feature_vector)
+        if self.time_parameterization == "per_second":
+            covariance = covariance * float(step_duration_s)
+        return _positive_semidefinite(covariance)
+
 
 @dataclass(frozen=True)
 class ActionConditionedDiscrepancyForecast:
@@ -302,7 +444,7 @@ def forecast_action_conditioned_persistence(
     features: ActionConditionedDiscrepancyFeatures,
     basis: np.ndarray,
 ) -> ActionConditionedDiscrepancyForecast:
-    """Persist the discrepancy mean while growing covariance by action regime."""
+    """Persist discrepancy mean while growing covariance by action regime."""
 
     graph_basis = np.asarray(basis, dtype=float)
     if graph_basis.ndim != 2 or graph_basis.shape[1] != belief.rank:
@@ -326,6 +468,7 @@ def forecast_action_conditioned_persistence(
         if features.component_ids != belief.component_ids:
             raise ValueError("component-specific features differ from belief support")
         feature_values = features.values
+    durations = features.component_step_durations(component_count)
     horizon = features.horizon
     mean = np.broadcast_to(
         belief.coefficient_mean_m[:, None],
@@ -339,7 +482,8 @@ def forecast_action_conditioned_persistence(
     for step in range(horizon):
         for component in range(component_count):
             increment = model.innovation_covariance_m2(
-                feature_values[component, step]
+                feature_values[component, step],
+                step_duration_s=float(durations[component, step]),
             )
             for coordinate in range(3):
                 covariance[component, step + 1, coordinate] = (
