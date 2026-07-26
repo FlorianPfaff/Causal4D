@@ -20,19 +20,31 @@ jobs:
           ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
           show-progress: false
-      - name: Materialize source changes and workflow blobs
+      - name: Prepare patch payload
         shell: bash
         run: |
           set -euo pipefail
-          patch="$RUNNER_TEMP/causal4d-ci.patch.gz"
-          cp .ci-bootstrap/changes.patch.gz "$patch"
+          cp .ci-bootstrap/changes.patch.gz "$RUNNER_TEMP/causal4d-ci.patch.gz"
           rm -rf .ci-bootstrap
+      - name: Apply source patch
+        shell: bash
+        run: |
+          set -euo pipefail
           git rm .github/workflows/ci.yml
-          gzip -dc "$patch" | git apply --index
+          gzip -dc "$RUNNER_TEMP/causal4d-ci.patch.gz" > "$RUNNER_TEMP/causal4d-ci.patch"
+          git apply --index --verbose "$RUNNER_TEMP/causal4d-ci.patch"
+      - name: Relocate workflow blobs
+        shell: bash
+        run: |
+          set -euo pipefail
           mkdir -p .ci-staging/workflows
           git mv .github/workflows/bpt-main-compatibility.yml .ci-staging/workflows/
           git mv .github/workflows/ci.yml .ci-staging/workflows/
           git mv .github/workflows/optional-integrations.yml .ci-staging/workflows/
+      - name: Restore active workflow and validate index
+        shell: bash
+        run: |
+          set -euo pipefail
           git checkout origin/main -- .github/workflows/ci.yml
           git add -A
           git diff --cached --check
