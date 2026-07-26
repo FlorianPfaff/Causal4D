@@ -23,6 +23,10 @@ from causal4d.contracts import (
 from causal4d.counterfactual import apply_counterfactual_operator
 from causal4d.discrepancy_belief import GraphDiscrepancyBelief
 from causal4d.rollout_bank import JointRolloutBank
+from causal4d.stable_discrepancy_dynamics import (
+    StableDiscrepancyTransitionModel,
+    forecast_action_conditioned_dynamics,
+)
 
 
 def _readonly(values: np.ndarray, *, dtype: type | None = float) -> np.ndarray:
@@ -44,8 +48,9 @@ class ActionConditionedPhysicalPosterior:
 
     ``physical`` preserves the existing provenance-complete Causal4D contract.
     The replacement readout mean and variance have shape ``(K, T, N, 3)`` and
-    are produced by graph-persistent discrepancy means with action-conditioned
-    positive-semidefinite covariance growth.
+    are produced either by graph persistence or by a stable action-conditioned
+    discrepancy transition, together with positive-semidefinite covariance
+    propagation.
     """
 
     physical: PhysicalPosterior
@@ -177,12 +182,16 @@ def apply_action_conditioned_counterfactual_operator(
     control_anchor_m: np.ndarray,
     *,
     frame_dt_s: float,
+    transition_model: StableDiscrepancyTransitionModel | None = None,
 ) -> ActionConditionedPhysicalPosterior:
     """Apply ``do(u_cf)`` with temporal action-conditioned readout uncertainty.
 
     The ordinary physical operator remains the source of state trajectories,
     intervention transport, contact handling, weights, and provenance. This
-    extension replaces only the discrepancy-aware readout moments. It reads no
+    extension replaces only the discrepancy-aware readout moments. By default,
+    the discrepancy mean remains graph-persistent. Supplying ``transition_model``
+    enables stable action-conditioned mean transport while retaining the same
+    covariance innovation model and exact persistence fallback. It reads no
     held-out object observation.
     """
 
@@ -209,12 +218,27 @@ def apply_action_conditioned_counterfactual_operator(
         anchor,
         frame_dt_s=frame_dt_s,
     )
-    forecast = forecast_action_conditioned_persistence(
-        aligned_belief,
-        discrepancy_model,
-        features,
-        basis,
-    )
+    if transition_model is None:
+        forecast = forecast_action_conditioned_persistence(
+            aligned_belief,
+            discrepancy_model,
+            features,
+            basis,
+        )
+        mean_transition = "graph_persistence"
+        covariance_transition = "action_conditioned_psd_growth"
+    else:
+        forecast = forecast_action_conditioned_dynamics(
+            aligned_belief,
+            discrepancy_model,
+            transition_model,
+            features,
+            basis,
+        )
+        mean_transition = transition_model.model_id
+        covariance_transition = (
+            "stable_linear_plus_action_conditioned_psd_growth"
+        )
     if forecast.readout_mean_m.shape != physical.state_trajectories_m.shape:
         raise ValueError(
             "counterfactual rollout must contain the endpoint plus query horizon"
@@ -232,8 +256,9 @@ def apply_action_conditioned_counterfactual_operator(
         discrepancy_model_id=forecast.model_id,
         metadata={
             "operator": "abduction-action-prediction",
-            "discrepancy_mean_transition": "graph_persistence",
-            "discrepancy_covariance_transition": "action_conditioned_psd_growth",
+            "discrepancy_mean_transition": mean_transition,
+            "discrepancy_covariance_transition": covariance_transition,
+            "stable_discrepancy_transition_enabled": transition_model is not None,
             "base_physical_posterior_id": physical.artifact_id,
             "aligned_graph_discrepancy_belief_id": aligned_belief.artifact_id,
             "temporal_readout_uncertainty": True,
