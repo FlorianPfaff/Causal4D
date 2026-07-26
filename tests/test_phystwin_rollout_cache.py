@@ -119,7 +119,7 @@ def test_cache_validates_source_files_and_upstream_git_state(
         del kwargs
         if command[-2:] == ["rev-parse", "HEAD"]:
             return SimpleNamespace(stdout=revision + "\n")
-        if command[-3:] == ["--porcelain=v1", "--untracked-files=all"]:
+        if command[-2:] == ["--porcelain=v1", "--untracked-files=all"]:
             return SimpleNamespace(stdout="")
         raise AssertionError(command)
 
