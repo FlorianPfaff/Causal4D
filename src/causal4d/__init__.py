@@ -64,6 +64,14 @@ from causal4d.observation_evidence import (
     GroupedObservationEvidence,
     ObservationGroup,
 )
+from causal4d.observation_factor_lineage import (
+    OBSERVATION_FACTOR_SCHEMA,
+    OBSERVATION_FACTOR_SCHEMA_VERSION,
+    ObservationFactorLineage,
+    bind_twin_belief_observation_factor_lineage,
+    load_observation_factor_lineage,
+    validate_twin_belief_observation_factor_lineage,
+)
 from causal4d.partial_identifiability import (
     preserve_prior_within_unidentified_subspace,
 )
@@ -128,8 +136,11 @@ __all__ = [
     "IdentifiabilityConfig",
     "IndependentSensorAbductionConfig",
     "InterventionIdentifiabilityResult",
-    "LatentContactConfig",
     "JointRolloutBank",
+    "LatentContactConfig",
+    "OBSERVATION_FACTOR_SCHEMA",
+    "OBSERVATION_FACTOR_SCHEMA_VERSION",
+    "ObservationFactorLineage",
     "ObservationGroup",
     "PHYSICAL_BELIEF_PROVIDER_SCHEMA_VERSION",
     "PhysicalBeliefProviderManifest",
@@ -140,10 +151,10 @@ __all__ = [
     "SEMANTIC_TIMING_SCOPE",
     "SemanticFreshnessDecision",
     "SemanticFreshnessLimits",
+    "SemanticTimingMetadata",
     "SparseTrajectoryEvidence",
     "StableDiscrepancyTransitionModel",
     "TaskPosterior",
-    "SemanticTimingMetadata",
     "TwinBelief",
     "abduct_factual_intervention_graph_mode",
     "abduct_hierarchical_interventions",
@@ -153,6 +164,7 @@ __all__ = [
     "assess_command_residual_sufficiency",
     "assess_finite_query_ambiguity",
     "assess_intervention_identifiability",
+    "bind_twin_belief_observation_factor_lineage",
     "build_action_conditioned_features",
     "build_protocol",
     "finite_response_sensitivity",
@@ -165,6 +177,7 @@ __all__ = [
     "integrate_contact_wrench",
     "load_graph_discrepancy_belief",
     "load_independent_sensor_evidence",
+    "load_observation_factor_lineage",
     "posterior_weights_from_grouped_evidence",
     "predict_affine_actuator_realizations",
     "prefix_component_log_likelihood",
@@ -176,7 +189,8 @@ __all__ = [
     "save_independent_sensor_evidence",
     "update_joint_weights_from_prefix",
     "validate_provider_compatibility",
+    "validate_twin_belief_observation_factor_lineage",
     "write_graph_discrepancy_belief",
 ]
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
