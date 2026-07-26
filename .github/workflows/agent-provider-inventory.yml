@@ -24,21 +24,17 @@ jobs:
           cat .agent/provider.patch.gz.b64.part* \
             | base64 --decode \
             | gzip --decompress > /tmp/provider.patch
-          sha256sum /tmp/provider.patch
           test "$(sha256sum /tmp/provider.patch | cut -d' ' -f1)" = \
             "b9340285e4a9006ac40318ae62f7f8e524102c843a824debfab0ab0c3f7f7f7d"
 
-      - name: Validate reviewed patch
-        run: git apply --check /tmp/provider.patch
-
-      - name: Apply reviewed patch
-        run: git apply /tmp/provider.patch
-
-      - name: Commit reviewed migration
+      - name: Apply and commit reviewed migration
         shell: bash
         run: |
           set -euo pipefail
-          git rm -r .agent .github/workflows/agent-provider-inventory.yml
+          git apply --check /tmp/provider.patch
+          git apply /tmp/provider.patch
+          rm -f .github/workflows/bayesian-phystwin-provider-compatibility.yml
+          git rm -r .agent
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
