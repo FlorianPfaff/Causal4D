@@ -1,5 +1,9 @@
 """Controlled counterfactual benchmarks for intervention-ready world models."""
 
+from causal4d.action_conditioned_counterfactual import (
+    ActionConditionedPhysicalPosterior,
+    apply_action_conditioned_counterfactual_operator,
+)
 from causal4d.action_conditioned_discrepancy import (
     ActionConditionedDiscrepancyFeatures,
     ActionConditionedDiscrepancyForecast,
@@ -76,6 +80,7 @@ __all__ = [
     "ActionConditionedDiscrepancyFeatures",
     "ActionConditionedDiscrepancyForecast",
     "ActionConditionedDiscrepancyModel",
+    "ActionConditionedPhysicalPosterior",
     "CounterfactualBenchmarkConfig",
     "CounterfactualQuery",
     "FactualIntervention",
@@ -102,6 +107,7 @@ __all__ = [
     "TwinBelief",
     "abduct_factual_intervention_graph_mode",
     "abduct_hierarchical_interventions",
+    "apply_action_conditioned_counterfactual_operator",
     "apply_counterfactual_operator",
     "apply_semantic_freshness_gate",
     "assess_intervention_identifiability",
