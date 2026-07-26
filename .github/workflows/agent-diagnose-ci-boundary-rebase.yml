@@ -1,4 +1,4 @@
-name: Diagnose CI-boundary rebase
+name: Build current-main CI-boundary branch
 
 on:
   pull_request:
@@ -6,19 +6,19 @@ on:
     types: [opened, reopened, synchronize, ready_for_review]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose:
+  consolidate:
     if: github.head_ref == 'agent/run-ci-boundary-rebase'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
         with:
           ref: main
           fetch-depth: 0
-      - name: Merge reviewed CI branch and report conflicts
+      - name: Merge reviewed CI work onto current main
         shell: bash
         run: |
           set -euo pipefail
@@ -26,30 +26,85 @@ jobs:
           git config user.email \
             "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin agent/ci-dependency-boundaries
-          git switch -c agent/rebased-ci-dependency-boundaries
+          git switch -C agent/rebased-ci-dependency-boundaries main
           set +e
-          git merge --no-commit --no-ff FETCH_HEAD \
-            > merge-output.txt 2>&1
+          git merge --no-commit --no-ff FETCH_HEAD
           status=$?
           set -e
-          {
-            echo "merge_status=$status"
-            echo
-            echo "merge_output"
-            cat merge-output.txt
-            echo
-            echo "conflicts"
-            git diff --name-only --diff-filter=U
-            echo
-            echo "status"
-            git status --short
-            echo
-            echo "unmerged_index"
-            git ls-files -u
-          } > ci-boundary-rebase-report.txt
-          cat ci-boundary-rebase-report.txt
-      - uses: actions/upload-artifact@v7
+          if (( status != 0 )); then
+            conflicts=(
+              src/causal4d/cli/abduct_phystwin_intervention.py
+              src/causal4d/cli/audit_parameter_support.py
+              src/causal4d/cli/audit_real_oracle_gap.py
+              src/causal4d/cli/evaluate_graph_temporal_discrepancy.py
+              src/causal4d/cli/evaluate_physical_counterfactual.py
+              src/causal4d/cli/fit_semantic_trust.py
+              src/causal4d/cli/real_calibration.py
+            )
+            actual=$(git diff --name-only --diff-filter=U | sort)
+            expected=$(printf '%s\n' "${conflicts[@]}" | sort)
+            if [[ "$actual" != "$expected" ]]; then
+              echo "Unexpected merge conflicts:" >&2
+              git diff --name-only --diff-filter=U >&2
+              exit 1
+            fi
+            git checkout --theirs -- "${conflicts[@]}"
+            python - <<'PY'
+          from pathlib import Path
+
+          paths = (
+              "src/causal4d/cli/abduct_phystwin_intervention.py",
+              "src/causal4d/cli/audit_parameter_support.py",
+              "src/causal4d/cli/audit_real_oracle_gap.py",
+              "src/causal4d/cli/evaluate_graph_temporal_discrepancy.py",
+              "src/causal4d/cli/evaluate_physical_counterfactual.py",
+              "src/causal4d/cli/fit_semantic_trust.py",
+              "src/causal4d/cli/real_calibration.py",
+          )
+          for value in paths:
+              path = Path(value)
+              text = path.read_text(encoding="utf-8")
+              old_import = (
+                  "from bayesian_phystwin.phystwin_residual_dynamics "
+                  "import _target_validity"
+              )
+              if old_import not in text:
+                  raise SystemExit(f"expected legacy target-validity import in {path}")
+              text = text.replace(
+                  old_import,
+                  "from bayesian_phystwin.causal4d_provider_v1 import target_validity",
+              )
+              text = text.replace("global _target_validity", "global target_validity")
+              text = text.replace("_target_validity(", "target_validity(")
+              path.write_text(text, encoding="utf-8")
+          PY
+            git add "${conflicts[@]}"
+          fi
+          if git diff --name-only --diff-filter=U | grep -q .; then
+            echo "Unresolved merge conflicts remain." >&2
+            git diff --name-only --diff-filter=U >&2
+            exit 1
+          fi
+          git commit -m "Rebase dependency-boundary CI onto current main"
+      - uses: actions/setup-python@v6
         with:
-          name: ci-boundary-rebase-report
-          path: ci-boundary-rebase-report.txt
-          retention-days: 2
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Validate consolidated branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e ".[dev]"
+          python -m ruff check .
+          python -m pytest -q
+          python scripts/ci/check_console_help.py --pyproject pyproject.toml
+          python scripts/ci/verify_frozen_manifest.py \
+            milestones/v0.3.0-causal4d-aip
+      - name: Publish clean branch
+        shell: bash
+        run: |
+          git status --short
+          test -z "$(git status --porcelain)"
+          git push --force-with-lease \
+            origin HEAD:agent/rebased-ci-dependency-boundaries
