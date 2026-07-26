@@ -35,9 +35,7 @@ def test_explicit_joint_stream_version_is_bound(monkeypatch) -> None:
     monkeypatch.setattr(
         lineage,
         "_validate_prob4d_semantics",
-        lambda descriptor, arrays: _semantic_result(
-            lineage.PROB4D_JOINT_GAUGE_MODEL
-        ),
+        lambda descriptor, arrays: _semantic_result(lineage.PROB4D_JOINT_GAUGE_MODEL),
     )
 
     result = lineage.validate_prob4d_causal_observation_metadata(
@@ -54,9 +52,7 @@ def test_joint_stream_rejects_mismatched_explicit_version(monkeypatch) -> None:
     monkeypatch.setattr(
         lineage,
         "_validate_prob4d_semantics",
-        lambda descriptor, arrays: _semantic_result(
-            lineage.PROB4D_JOINT_GAUGE_MODEL
-        ),
+        lambda descriptor, arrays: _semantic_result(lineage.PROB4D_JOINT_GAUGE_MODEL),
     )
 
     with pytest.raises(ValueError, match="disagrees with covariance semantics"):
