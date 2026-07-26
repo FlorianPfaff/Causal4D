@@ -25,3 +25,7 @@ carry the explicit version and the complete metric-anchor schema.
 Approximate fixed-lag covariance is intentionally rejected from the strict
 stream. Reconstruction controls may retain it, but they must not be admitted as
 an uncertainty-preserving causal observation product.
+
+The resolved contract version and covariance semantics are retained in the
+validated observation lineage so later intervention artifacts remain auditable
+without importing the upstream provider implementation.
