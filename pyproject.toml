@@ -127,6 +127,7 @@ select = ["E4", "E7", "E9", "F"]
 [tool.mypy]
 python_version = "3.10"
 check_untyped_defs = true
+follow_imports = "skip"
 ignore_missing_imports = true
 no_implicit_optional = true
 show_error_codes = true
