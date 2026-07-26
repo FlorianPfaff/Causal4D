@@ -21,6 +21,7 @@ def _load_runtime_dependencies() -> None:
     global OfficialPhysTwinBackend
     global OfficialPhysTwinBackendConfig
     global PhysTwinHypothesisConfig
+    global build_resumable_rollout_bank
     global hidden_action_proposals
     global known_action_proposal
     global save_rollout_bank
@@ -41,6 +42,7 @@ def _load_runtime_dependencies() -> None:
         known_action_proposal,
         save_rollout_bank,
     )
+    from causal4d.phystwin_resumable import build_resumable_rollout_bank
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -85,7 +87,45 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--num-substeps", type=int, default=667)
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--nondeterministic-spring-forces", action="store_true")
+    cache_group = parser.add_mutually_exclusive_group()
+    cache_group.add_argument(
+        "--rollout-cache-dir",
+        help=(
+            "Content-addressed per-rollout cache. Defaults to a sibling directory "
+            "named after output_physical_npz."
+        ),
+    )
+    cache_group.add_argument(
+        "--no-rollout-cache",
+        action="store_true",
+        help="Disable resumable per-rollout caching.",
+    )
     return parser
+
+
+def _cache_directory(args: argparse.Namespace, output_path: Path) -> Path | None:
+    if args.no_rollout_cache:
+        return None
+    if args.rollout_cache_dir:
+        return Path(args.rollout_cache_dir)
+    return output_path.with_name(output_path.stem + ".rollout-cache")
+
+
+def _cache_summary(manifest: dict) -> dict:
+    cache = manifest["rollout_cache"]
+    return {
+        key: cache[key]
+        for key in (
+            "enabled",
+            "root",
+            "record_count",
+            "hit_count",
+            "miss_count",
+            "repaired_count",
+            "provider_instance_count",
+        )
+        if key in cache
+    }
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -99,6 +139,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise TypeError("factual_intervention_npz must contain a FactualIntervention")
     train_end = belief_artifact.endpoint_frame + 1
     case_dir = Path(args.case_dir)
+    output_path = Path(args.output_physical_npz)
     support_method = args.parameter_support_method or str(
         belief_artifact.metadata.get("profile_support_method", "top_mass")
     )
@@ -145,12 +186,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             "future_action_observed": proposal.future_action_observed,
         },
     )
-    bank, manifest = backend.build_rollout_bank(
+    bank, manifest = build_resumable_rollout_bank(
+        backend,
         (proposal,),
         twin_belief=belief_artifact,
         hypothesis_config=PhysTwinHypothesisConfig(
             maximum_contact_states=args.maximum_contact_states
         ),
+        rollout_cache_dir=_cache_directory(args, output_path),
     )
     posterior = apply_counterfactual_operator(
         bank,
@@ -159,7 +202,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         factual_artifact,
         query,
     )
-    output_path = Path(args.output_physical_npz)
     query_path = (
         Path(args.query_output)
         if args.query_output
@@ -177,7 +219,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "contact_policy": query.contact_policy,
                 "effective_components": effective_components,
                 "factual_kappa_reused": posterior.metadata["factual_kappa_reused"],
-                "fresh_kappa_cf_sampled": posterior.metadata["fresh_kappa_cf_sampled"],
+                "fresh_kappa_cf_sampled": posterior.metadata[
+                    "fresh_kappa_cf_sampled"
+                ],
                 "physical_posterior": str(output_path.resolve()),
                 "physical_posterior_id": posterior.artifact_id,
                 "query": str(query_path.resolve()),
@@ -185,6 +229,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "represented_factual_mass": posterior.metadata[
                     "represented_factual_mass_before_renormalization"
                 ],
+                "rollout_cache": _cache_summary(manifest),
             },
             indent=2,
             sort_keys=True,

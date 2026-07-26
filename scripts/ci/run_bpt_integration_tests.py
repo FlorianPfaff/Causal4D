@@ -20,6 +20,7 @@ BPT_INTEGRATION_TESTS = (
     "tests/test_causal4d_rest_geometry_transfer.py",
     "tests/test_discrepancy_localization_aggregate.py",
     "tests/test_phystwin_propagated_state.py",
+    "tests/test_phystwin_resumable.py",
 )
 
 
