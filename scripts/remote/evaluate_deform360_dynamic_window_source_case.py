@@ -18,7 +18,10 @@ from typing import Any, Mapping
 import h5py
 import numpy as np
 
-from bayesian_phystwin.deform360_online_belief_evaluation import _sha256
+from bayesian_phystwin.causal4d_provider_v1 import (
+    measurement_target_audit,
+    sha256_file,
+)
 from bayesian_phystwin.deform360_raw_camera_observation import (
     MANIFEST_FILENAME,
     MEASUREMENT_FILENAME,
@@ -33,7 +36,6 @@ from bayesian_phystwin.deform360_selective_virtual_sensing_artifacts import (
 from bayesian_phystwin.deform360_selective_virtual_sensing_evaluation import (
     ARM_TO_ARCHIVE_KEY,
     SCORED_FRAMES,
-    _measurement_target_audit,
     score_selective_virtual_sensing_arrays,
 )
 from bayesian_phystwin.deform360_selective_virtual_sensing_protocol import (
@@ -167,7 +169,7 @@ def _validate_prefix(
     )
     provenance = manifest.get("source_window_selection", {})
     _require(
-        provenance.get("file_sha256") == _sha256(selection_seal)
+        provenance.get("file_sha256") == sha256_file(selection_seal)
         and provenance.get("result_sha256")
         == json.loads(selection_seal.read_text(encoding="utf-8"))["result_sha256"],
         "prediction prefix references another source-window seal",
@@ -191,7 +193,7 @@ def _validate_source_config(path: Path, selection: Mapping[str, Any]) -> dict[st
         "dynamic-window source config changed",
     )
     _require(
-        _sha256(path) == selection.get("source_config_sha256"),
+        sha256_file(path) == selection.get("source_config_sha256"),
         "selection seal references another source config",
     )
     return payload["config"]
@@ -332,10 +334,10 @@ def _stage_source_future(
                 camera_rows.append(
                     {
                         "camera": camera,
-                        "video_sha256": _sha256(full_video),
+                        "video_sha256": sha256_file(full_video),
                         "decoded_sealed_prefix_sha256": prefix_digest,
-                        "timestamps_sha256": _sha256(timestamps_path),
-                        "masks_sha256": _sha256(masks_path),
+                        "timestamps_sha256": sha256_file(timestamps_path),
+                        "masks_sha256": sha256_file(masks_path),
                         "sam2_diagnostics": predictor.diagnostics[-1],
                     }
                 )
@@ -349,7 +351,7 @@ def _stage_source_future(
             staged_case / "frame-zero" / "episode_0000" / "splatfacto" / "splat_0.ply"
         )
         _require(
-            _sha256(sealed_splat)
+            sha256_file(sealed_splat)
             == frame_zero_manifest["outputs_sha256"]["frame_zero_splat"],
             "sealed frame-zero splat changed",
         )
@@ -368,22 +370,22 @@ def _stage_source_future(
             "selected_cameras": selected_cameras,
             "camera_records": camera_rows,
             "inputs_sha256": {
-                "selection_seal": _sha256(selection_seal),
-                "prediction_seal": _sha256(
+                "selection_seal": sha256_file(selection_seal),
+                "prediction_seal": sha256_file(
                     prediction_archive.parent / VIRTUAL_SENSING_SEAL_FILENAME
                 ),
-                "prediction_archive": _sha256(prediction_archive),
-                "prediction_prefix_manifest": _sha256(prefix_manifest_path),
-                "source_preparation_manifest": _sha256(source_manifest_path),
-                "frame_zero_reconstruction_manifest": _sha256(frame_zero_manifest_path),
-                "generic_selector_source": _sha256(generic_selector_source),
-                "sam2_checkpoint": _sha256(sam2_checkpoint),
+                "prediction_archive": sha256_file(prediction_archive),
+                "prediction_prefix_manifest": sha256_file(prefix_manifest_path),
+                "source_preparation_manifest": sha256_file(source_manifest_path),
+                "frame_zero_reconstruction_manifest": sha256_file(frame_zero_manifest_path),
+                "generic_selector_source": sha256_file(generic_selector_source),
+                "sam2_checkpoint": sha256_file(sam2_checkpoint),
             },
             "outputs_sha256": {
-                "robot": _sha256(robot_path),
-                "frame_zero_splat": _sha256(full_splat),
-                "intrinsics": _sha256(episode / "undistorted_intrinsics.npy"),
-                "extrinsics": _sha256(episode / "extrinsics.npy"),
+                "robot": sha256_file(robot_path),
+                "frame_zero_splat": sha256_file(full_splat),
+                "intrinsics": sha256_file(episode / "undistorted_intrinsics.npy"),
+                "extrinsics": sha256_file(episode / "extrinsics.npy"),
             },
             "authorization": {
                 "source_window_selection_result_sha256": json.loads(
@@ -544,11 +546,11 @@ def main() -> int:
     )
     for name, expected in outcome.SOURCE_SHA256.items():
         path = deform360_repo / "deform360" / "processing" / f"{name}.py"
-        _require(_sha256(path) == expected, f"official {name} changed")
+        _require(sha256_file(path) == expected, f"official {name} changed")
     outcome._validate_runtime_constants()
     checkpoint = args.tracking_checkpoint.resolve()
     _require(
-        _sha256(checkpoint) == outcome.TRACKING_CHECKPOINT_SHA256,
+        sha256_file(checkpoint) == outcome.TRACKING_CHECKPOINT_SHA256,
         "CoTracker checkpoint changed",
     )
     cotracker = args.cotracker_repository.resolve()
@@ -562,7 +564,7 @@ def main() -> int:
             text=True,
         ).stdout.strip()
         == outcome.COTRACKER_TREE
-        and _sha256(cotracker / "cotracker" / "predictor.py")
+        and sha256_file(cotracker / "cotracker" / "predictor.py")
         == outcome.COTRACKER_PREDICTOR_SHA256,
         "CoTracker source checkout changed",
     )
@@ -571,7 +573,7 @@ def main() -> int:
     sam2_checkpoint = args.sam2_checkpoint.resolve()
     _require(
         _git_revision(sam2_repo) == stage.SAM2_REPOSITORY_REVISION
-        and _sha256(sam2_checkpoint) == stage.SAM2_CHECKPOINT_SHA256,
+        and sha256_file(sam2_checkpoint) == stage.SAM2_CHECKPOINT_SHA256,
         "SAM2 runtime changed",
     )
     start, stop = source_row["translation_contact_v2"][
@@ -621,7 +623,7 @@ def main() -> int:
         center_ids=center_ids,
     )
     measurement_dir = args.measurement_root.resolve() / case_name
-    audit = _measurement_target_audit(
+    audit = measurement_target_audit(
         measurement_dir, prediction_report, target, center_ids
     )
     scored = np.asarray(SCORED_FRAMES, dtype=np.int64)
@@ -673,20 +675,20 @@ def main() -> int:
             },
             "raw_measurement_target_open_audit": audit,
             "inputs_sha256": {
-                "source_config": _sha256(args.source_config.resolve()),
-                "selection_seal": _sha256(selection_path),
-                "prediction_seal": _sha256(prediction_seal_path),
-                "prediction_archive": _sha256(prediction_archive),
-                "prediction_report": _sha256(prediction_report_path),
-                "measurement_manifest": _sha256(measurement_dir / MANIFEST_FILENAME),
-                "measurement_archive": _sha256(measurement_dir / MEASUREMENT_FILENAME),
-                "source_future_manifest": _sha256(
+                "source_config": sha256_file(args.source_config.resolve()),
+                "selection_seal": sha256_file(selection_path),
+                "prediction_seal": sha256_file(prediction_seal_path),
+                "prediction_archive": sha256_file(prediction_archive),
+                "prediction_report": sha256_file(prediction_report_path),
+                "measurement_manifest": sha256_file(measurement_dir / MANIFEST_FILENAME),
+                "measurement_archive": sha256_file(measurement_dir / MEASUREMENT_FILENAME),
+                "source_future_manifest": sha256_file(
                     work_case / SOURCE_FUTURE_MANIFEST_FILENAME
                 ),
             },
             "output": {
                 "target_archive": str(output / TARGET_ARCHIVE_FILENAME),
-                "target_archive_sha256": _sha256(target_archive),
+                "target_archive_sha256": sha256_file(target_archive),
                 "target_array_sha256": _array_sha256(target),
             },
             "authorization": source_future["authorization"],

@@ -69,9 +69,15 @@ from causal4d.prefix_likelihood import (
 )
 from causal4d.provider_contract import (
     BASE_CAUSAL4D_PROVIDER_CAPABILITIES,
+    BAYESIAN_PHYSTWIN_ARTIFACT_SCHEMA_VERSIONS,
+    BAYESIAN_PHYSTWIN_COMPATIBILITY_RANGE,
+    BAYESIAN_PHYSTWIN_PROVIDER_CAPABILITIES,
     PHYSICAL_BELIEF_PROVIDER_SCHEMA_VERSION,
     PhysicalBeliefProviderManifest,
     ProviderCompatibilityResult,
+    load_bayesian_phystwin_provider_manifest,
+    require_bayesian_phystwin_provider,
+    validate_bayesian_phystwin_provider,
     validate_provider_compatibility,
 )
 from causal4d.rollout_bank import JointRolloutBank, SparseTrajectoryEvidence
@@ -94,6 +100,9 @@ __all__ = [
     "ActionConditionedDiscrepancyModel",
     "ActionConditionedPhysicalPosterior",
     "BASE_CAUSAL4D_PROVIDER_CAPABILITIES",
+    "BAYESIAN_PHYSTWIN_ARTIFACT_SCHEMA_VERSIONS",
+    "BAYESIAN_PHYSTWIN_COMPATIBILITY_RANGE",
+    "BAYESIAN_PHYSTWIN_PROVIDER_CAPABILITIES",
     "CounterfactualBenchmarkConfig",
     "CounterfactualQuery",
     "FactualIntervention",
@@ -138,6 +147,8 @@ __all__ = [
     "graph_discrepancy_group_covariances",
     "graph_mode_joint_weights",
     "grouped_component_log_likelihoods",
+    "load_bayesian_phystwin_provider_manifest",
+    "require_bayesian_phystwin_provider",
     "load_graph_discrepancy_belief",
     "posterior_weights_from_grouped_evidence",
     "prefix_component_log_likelihood",
@@ -146,6 +157,7 @@ __all__ = [
     "run_counterfactual_benchmark",
     "run_latent_contact_benchmark",
     "update_joint_weights_from_prefix",
+    "validate_bayesian_phystwin_provider",
     "validate_provider_compatibility",
     "write_graph_discrepancy_belief",
 ]

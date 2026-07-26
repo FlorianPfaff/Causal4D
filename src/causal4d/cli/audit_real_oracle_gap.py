@@ -13,7 +13,7 @@ from typing import Any
 
 import numpy as np
 
-from bayesian_phystwin.phystwin_residual_dynamics import _target_validity
+from bayesian_phystwin.causal4d_provider_v1 import target_validity
 from causal4d.contracts import PhysicalPosterior, TwinBelief, load_contract
 from causal4d.intervention_abduction import FactualAbductionConfig
 from causal4d.phystwin_backend import load_rollout_bank
@@ -136,7 +136,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     data = _load_pickle(args.final_data_pickle)
     observed = np.asarray(data["object_points"], dtype=float)
-    valid = _target_validity(
+    valid = target_validity(
         np.asarray(data["object_visibilities"], dtype=bool),
         np.asarray(data["object_motions_valid"], dtype=bool),
     )

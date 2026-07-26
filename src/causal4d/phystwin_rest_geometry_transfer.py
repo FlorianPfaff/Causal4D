@@ -15,12 +15,13 @@ from bayesian_phystwin.phystwin_graph import (
     PhysTwinSpringGraphConfig,
     build_phystwin_spring_graph,
 )
-from bayesian_phystwin.phystwin_residual_dynamics import _load_pickle, _sha256
-from bayesian_phystwin.phystwin_state_injection import (
-    _initialize_simulator,
-    _released_self_collision_for_case,
-    estimate_endpoint_velocity_delta,
+from bayesian_phystwin.causal4d_provider_v1 import (
+    initialize_simulator,
+    load_pickle,
+    released_self_collision_for_case,
+    sha256_file,
 )
+from bayesian_phystwin.phystwin_state_injection import estimate_endpoint_velocity_delta
 from causal4d.phystwin_rest_geometry import _run_configured_restart
 from causal4d.rest_geometry import (
     apply_frame_correction,
@@ -152,10 +153,10 @@ def evaluate_phystwin_rest_geometry_transfer_case(
         selected_candidate_id=source.selected_candidate_id,
     )
     contact_policy = str(plan_record["contact_policy"])
-    data = _load_pickle(final_data_path)
-    optimal = _load_pickle(optimal_params_path)
-    baseline = np.asarray(_load_pickle(baseline_trajectory_path), dtype=float)
-    gt_track = np.asarray(_load_pickle(gt_track_path), dtype=float)
+    data = load_pickle(final_data_path)
+    optimal = load_pickle(optimal_params_path)
+    baseline = np.asarray(load_pickle(baseline_trajectory_path), dtype=float)
+    gt_track = np.asarray(load_pickle(gt_track_path), dtype=float)
     observed = np.asarray(data["object_points"], dtype=float)
     visible = np.asarray(data["object_visibilities"], dtype=bool)
     controller = np.asarray(data["controller_points"], dtype=float)
@@ -179,7 +180,7 @@ def evaluate_phystwin_rest_geometry_transfer_case(
     if baseline.shape[1] != len(structure_points):
         raise ValueError("target baseline and reconstructed object disagree")
     if self_collision is None:
-        self_collision = _released_self_collision_for_case(
+        self_collision = released_self_collision_for_case(
             Path(final_data_path).resolve().parent.name
         )
     graph_config = PhysTwinSpringGraphConfig(
@@ -259,7 +260,7 @@ def evaluate_phystwin_rest_geometry_transfer_case(
             "recorded kernel set_control_points.*"
         ),
     )
-    simulator, torch, wp, _ = _initialize_simulator(
+    simulator, torch, wp, _ = initialize_simulator(
         official_repo,
         data,
         optimal,
@@ -384,7 +385,7 @@ def evaluate_phystwin_rest_geometry_transfer_case(
         metrics_by_method,
         canonical_material_graph_sha256=material_digest,
         source_correction_sha256=source.source_manifest_sha256,
-        target_rollout_bundle_sha256=_sha256(rollout_path),
+        target_rollout_bundle_sha256=sha256_file(rollout_path),
     )
     record_path = output / "target_transfer_result_record.json"
     record_path.write_text(
@@ -417,16 +418,16 @@ def evaluate_phystwin_rest_geometry_transfer_case(
             "future_observations": "none",
         },
         "inputs": {
-            "final_data_sha256": _sha256(final_data_path),
-            "baseline_trajectory_sha256": _sha256(baseline_trajectory_path),
-            "optimal_params_sha256": _sha256(optimal_params_path),
-            "checkpoint_sha256": _sha256(checkpoint_path),
-            "gt_track_sha256": _sha256(gt_track_path),
+            "final_data_sha256": sha256_file(final_data_path),
+            "baseline_trajectory_sha256": sha256_file(baseline_trajectory_path),
+            "optimal_params_sha256": sha256_file(optimal_params_path),
+            "checkpoint_sha256": sha256_file(checkpoint_path),
+            "gt_track_sha256": sha256_file(gt_track_path),
             "source_correction_manifest_sha256": source.source_manifest_sha256,
             "canonical_material_graph_file_sha256": (
                 None
                 if canonical_material_graph_path is None
-                else _sha256(canonical_material_graph_path)
+                else sha256_file(canonical_material_graph_path)
             ),
         },
         "mean_metrics_by_method": {
