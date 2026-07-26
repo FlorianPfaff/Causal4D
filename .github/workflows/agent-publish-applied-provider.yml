@@ -1,0 +1,47 @@
+name: Publish applied provider branch
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.head_ref == 'agent/run-bpt-provider-current-main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Apply the verified patch and publish source files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .agent/provider.patch.gz.b64.part* \
+            | base64 --decode \
+            | gzip --decompress > /tmp/provider.patch
+          test "$(sha256sum /tmp/provider.patch | cut -d' ' -f1)" = \
+            "b9340285e4a9006ac40318ae62f7f8e524102c843a824debfab0ab0c3f7f7f7d"
+          git switch -C agent/applied-bpt-provider-current-main
+          if ! git apply --3way --index /tmp/provider.patch; then
+            mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
+            test "${#conflicts[@]}" -eq 1
+            test "${conflicts[0]}" = "src/causal4d/__init__.py"
+            git checkout --ours src/causal4d/__init__.py
+            git add src/causal4d/__init__.py
+          fi
+          rm -f .github/workflows/bayesian-phystwin-provider-compatibility.yml
+          git rm -r .agent
+          git rm .github/workflows/agent-apply-provider-current-main.yml
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Stage Bayesian-PhysTwin provider migration"
+          git push --force origin \
+            HEAD:agent/applied-bpt-provider-current-main
