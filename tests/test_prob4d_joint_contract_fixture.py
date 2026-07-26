@@ -18,9 +18,7 @@ from causal4d.prob4d_observation_lineage import (
     PROPAGATED_EXTERNAL_PRIOR,
 )
 
-FIXTURE_PATH = (
-    Path(__file__).parent / "fixtures" / "prob4d_joint_observation_v1.json"
-)
+FIXTURE_PATH = Path(__file__).parent / "fixtures" / "prob4d_joint_observation_v1.json"
 
 
 @dataclass(frozen=True)
@@ -102,8 +100,7 @@ def test_joint_gauge_fixture_is_validated_and_bound(tmp_path: Path) -> None:
 
     assert lineage.artifact_id == expected
     assert (
-        lineage.provider_validation["covariance_semantics"]
-        == PROB4D_JOINT_GAUGE_MODEL
+        lineage.provider_validation["covariance_semantics"] == PROB4D_JOINT_GAUGE_MODEL
     )
     assert lineage.provider_validation["cross_window_covariance_preserved"] is True
     assert lineage.provider_validation["factor_group_count"] == 1
@@ -129,10 +126,7 @@ def test_explicit_v2_binds_calibration_and_anchor_covariance(
     assert validation["stream_contract_version"] == 2
     assert validation["stream_contract_version_inferred"] is False
     assert validation["calibration_artifact_sha256"] == "b" * 64
-    assert (
-        validation["metric_anchor_covariance_treatment"]
-        == PROPAGATED_EXTERNAL_PRIOR
-    )
+    assert validation["metric_anchor_covariance_treatment"] == PROPAGATED_EXTERNAL_PRIOR
 
 
 def test_explicit_v2_rejects_missing_calibration_digest(
@@ -143,9 +137,7 @@ def test_explicit_v2_rejects_missing_calibration_digest(
     def mutate(descriptor, arrays):
         del arrays
         _declare_explicit_v2(descriptor)
-        del descriptor["metadata"]["metric_gauge_anchor"][
-            "calibration_artifact_sha256"
-        ]
+        del descriptor["metadata"]["metric_gauge_anchor"]["calibration_artifact_sha256"]
 
     _write(path, mutate=mutate)
     with pytest.raises(ValueError, match="calibration_artifact_sha256"):
@@ -202,9 +194,7 @@ def test_joint_gauge_fixture_rejects_parent_order_drift(
 
     def mutate(descriptor, arrays):
         del arrays
-        descriptor["metadata"]["gauge_posterior"]["parent_window_ids"][1] = (
-            "window-2"
-        )
+        descriptor["metadata"]["gauge_posterior"]["parent_window_ids"][1] = "window-2"
 
     _write(path, mutate=mutate)
     with pytest.raises(ValueError, match="parent must precede"):

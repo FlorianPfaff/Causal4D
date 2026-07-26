@@ -16,9 +16,7 @@ PROB4D_SOURCE_REPOSITORY = "FlorianPfaff/Prob4D"
 PROB4D_CAUSAL_STREAM_ID = "prob4d:causal-overlap-window-points"
 PROB4D_CAUSAL_LINEAGE_VERSION = 1
 
-PROB4D_LEGACY_GAUGE_FACTOR_NAMES = tuple(
-    f"gauge_latent_{index}" for index in range(7)
-)
+PROB4D_LEGACY_GAUGE_FACTOR_NAMES = tuple(f"gauge_latent_{index}" for index in range(7))
 PROB4D_GAUGE_FACTOR_NAMES = PROB4D_LEGACY_GAUGE_FACTOR_NAMES
 PROB4D_JOINT_GAUGE_FACTOR_PREFIX = "joint_gauge_latent_"
 PROB4D_JOINT_GAUGE_MODEL = "sequential_joint_spanning_tree_v1"
@@ -185,8 +183,7 @@ def _validate_metric_anchor(
         )
         _require(
             calibration_digest is not None,
-            "Prob4D stream contract v2 anchor has no "
-            "calibration_artifact_sha256",
+            "Prob4D stream contract v2 anchor has no calibration_artifact_sha256",
         )
         _require(
             covariance_treatment
@@ -324,8 +321,7 @@ def _validate_factor_semantics(
         "gauge-posterior cross-window flag must be Boolean",
     )
     _require(
-        metadata.get("joint_cross_window_gauge_covariance_represented")
-        is cross_window,
+        metadata.get("joint_cross_window_gauge_covariance_represented") is cross_window,
         "Prob4D top-level and gauge-posterior covariance flags differ",
     )
     parents = posterior.get("parent_window_ids")
@@ -352,8 +348,7 @@ def _validate_factor_semantics(
     else:
         _require(
             cross_window is False,
-            "fixed-lag block-diagonal gauge model cannot claim "
-            "cross-window covariance",
+            "fixed-lag block-diagonal gauge model cannot claim cross-window covariance",
         )
         _require(
             posterior.get("fixed_lag_boundary_covariance_is_approximate") is True,
@@ -472,8 +467,7 @@ def validate_prob4d_causal_observation_metadata(
         "unsupported MotionCrafter windowing model",
     )
     _require(
-        lineage.get("source_product")
-        == "independently_decoded_overlap_windows",
+        lineage.get("source_product") == "independently_decoded_overlap_windows",
         "Prob4D causal artifact uses an inadmissible source product",
     )
     _require(
