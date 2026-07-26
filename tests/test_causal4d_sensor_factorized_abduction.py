@@ -42,16 +42,50 @@ def _factual() -> FactualIntervention:
     )
 
 
-def _actuator_evidence(*, frame_stop: int = 6) -> ActuatorEvidence:
+def _sensor_identity() -> dict[str, str]:
+    return {
+        "protocol_id": "sensor_factorized_unit",
+        "case_id": "unit_case",
+        "observed_action_id": "u_obs",
+    }
+
+
+def _actuator_evidence(
+    *,
+    frame_stop: int = 6,
+    case_id: str = "unit_case",
+    clock_id: str = "robot_monotonic",
+) -> ActuatorEvidence:
     positions = np.zeros((2, 1, 3), dtype=float)
+    identity = _sensor_identity()
+    identity["case_id"] = case_id
     return ActuatorEvidence(
+        **identity,
         stream_id="measured_end_effector",
-        clock_id="robot_monotonic",
+        clock_id=clock_id,
         provenance="robot encoder independent of RGB-D object reconstruction",
         sample_times_s=np.asarray([0.0, 1.0 / 30.0]),
         positions_m=positions,
         variance_m2=np.full_like(positions, 1.0e-4),
         evidence_frame_stop=frame_stop,
+    )
+
+
+def _wrench_evidence(
+    *,
+    clock_id: str = "robot_monotonic",
+) -> ContactWrenchEvidence:
+    observed = np.asarray([[1.0, 0.0, 0.0]])
+    return ContactWrenchEvidence(
+        **_sensor_identity(),
+        stream_id="wrist_force",
+        clock_id=clock_id,
+        provenance="wrist force sensor independent of RGB-D reconstruction",
+        sample_times_s=np.asarray([0.0]),
+        wrench=observed,
+        variance=np.full_like(observed, 1.0e-3),
+        quantity_names=("force_x_n", "force_y_n", "force_z_n"),
+        evidence_frame_stop=6,
     )
 
 
@@ -93,6 +127,9 @@ def test_all_invalid_sensor_samples_return_input_exactly() -> None:
     factual = _factual()
     base = _actuator_evidence()
     evidence = ActuatorEvidence(
+        protocol_id=base.protocol_id,
+        case_id=base.case_id,
+        observed_action_id=base.observed_action_id,
         stream_id=base.stream_id,
         clock_id=base.clock_id,
         provenance=base.provenance,
@@ -113,18 +150,8 @@ def test_all_invalid_sensor_samples_return_input_exactly() -> None:
 
 def test_wrench_factor_prefers_matching_contact() -> None:
     factual = _factual()
-    observed = np.asarray([[1.0, 0.0, 0.0]])
-    evidence = ContactWrenchEvidence(
-        stream_id="wrist_force",
-        clock_id="robot_monotonic",
-        provenance="wrist force sensor independent of RGB-D reconstruction",
-        sample_times_s=np.asarray([0.0]),
-        wrench=observed,
-        variance=np.full_like(observed, 1.0e-3),
-        quantity_names=("force_x_n", "force_y_n", "force_z_n"),
-        evidence_frame_stop=6,
-    )
-    predictions = np.stack((observed, np.zeros_like(observed)), axis=0)
+    evidence = _wrench_evidence()
+    predictions = np.stack((evidence.wrench, np.zeros_like(evidence.wrench)), axis=0)
     updated = reweight_factual_intervention_with_independent_sensors(
         factual,
         wrench_evidence=evidence,
@@ -145,6 +172,34 @@ def test_sensor_factor_rejects_evidence_beyond_factual_prefix() -> None:
         )
 
 
+def test_sensor_factor_rejects_evidence_from_another_case() -> None:
+    factual = _factual()
+    evidence = _actuator_evidence(case_id="other_case")
+    predictions = np.zeros((2,) + evidence.positions_m.shape)
+    with pytest.raises(ValueError, match="different protocol, case, or observed action"):
+        reweight_factual_intervention_with_independent_sensors(
+            factual,
+            actuator_evidence=evidence,
+            predicted_actuator_positions_m=predictions,
+        )
+
+
+def test_sensor_factor_rejects_mismatched_clocks() -> None:
+    factual = _factual()
+    actuator = _actuator_evidence(clock_id="robot_monotonic")
+    wrench = _wrench_evidence(clock_id="force_sensor_clock")
+    actuator_predictions = np.zeros((2,) + actuator.positions_m.shape)
+    wrench_predictions = np.zeros((2,) + wrench.wrench.shape)
+    with pytest.raises(ValueError, match="must use the same clock"):
+        reweight_factual_intervention_with_independent_sensors(
+            factual,
+            actuator_evidence=actuator,
+            predicted_actuator_positions_m=actuator_predictions,
+            wrench_evidence=wrench,
+            predicted_contact_wrench=wrench_predictions,
+        )
+
+
 def test_sensor_evidence_round_trip_is_checksummed(tmp_path) -> None:
     evidence = _actuator_evidence()
     path = tmp_path / "actuator_evidence.npz"
@@ -152,6 +207,8 @@ def test_sensor_evidence_round_trip_is_checksummed(tmp_path) -> None:
     restored = load_independent_sensor_evidence(path)
     assert type(restored) is ActuatorEvidence
     assert restored.artifact_id == evidence.artifact_id
+    assert restored.case_id == evidence.case_id
+    assert restored.observed_action_id == evidence.observed_action_id
 
 
 def test_affine_actuator_model_has_exact_nominal_path_and_delay() -> None:
