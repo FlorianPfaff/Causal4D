@@ -117,6 +117,29 @@ causal4d-real-protocol validate-protocol \
 The full PhysTwin abduction chain is documented in
 [docs/causal4d_abduction_intervention_prediction.md](docs/causal4d_abduction_intervention_prediction.md).
 
+## Next Scientific Milestone
+
+The controlled result has passed. The next first-paper milestone is the locked
+same-object physical experiment: 18 grasp sessions, 36 command executions, and
+independent-execution calibration. Primary-method development is frozen for
+this result; another discrepancy mechanism, semantic component, planner, or
+public-data branch cannot replace it.
+
+After scaffolding the acquisition dataset, seal the exact clean Causal4D commit,
+Bayesian-PhysTwin pin, protocol files, analysis boundary, and reporting contract:
+
+```bash
+causal4d-real-experiment-freeze seal \
+  . \
+  /data/causal4d-sloth-multi-action-v1/method_freeze.json \
+  --frozen-by "<operator-or-principal-investigator>"
+```
+
+The experiment must report either successful transfer/calibration or a
+well-powered negative result without target-informed method selection. See
+[docs/causal4d_real_experiment_milestone.md](docs/causal4d_real_experiment_milestone.md)
+for the freeze, acquisition, and reporting workflow.
+
 ## Evidence Boundary
 
 - `milestones/v0.3.0-causal4d-aip/` is the frozen controlled and first real
@@ -130,6 +153,8 @@ The full PhysTwin abduction chain is documented in
   plausibility, transfer, and calibration gates.
 - MolmoMotion or another semantic prior has zero influence unless its locked
   trust gate passes; rejection gives exact physical-posterior fallback.
+- The 36-execution same-object real protocol is now the decisive pending
+  milestone; optional branches cannot alter or rescue its primary result.
 
 See [docs/causal4d_paper_scope.md](docs/causal4d_paper_scope.md) for the narrow
 paper claim and the other documents in `docs/` for protocol-specific details.
