@@ -83,9 +83,7 @@ def main() -> None:
             (0.0, 0.5, 1.0) if args.frame_scales is None else args.frame_scales
         ),
         rest_geometry_scale_grid=(
-            (0.0, 0.25, 0.5, 1.0)
-            if args.rest_scales is None
-            else args.rest_scales
+            (0.0, 0.25, 0.5, 1.0) if args.rest_scales is None else args.rest_scales
         ),
         controller_rest_mode_grid=(
             ("preserve", "recompute")

@@ -45,8 +45,10 @@ def verify_result_bundle(manifest_path: Path, bundle_directory: Path) -> dict[st
             raise ValueError(f"artifact record for {name!r} must be an object")
         expected_hash = raw_record.get("sha256")
         expected_bytes = raw_record.get("bytes")
-        if not isinstance(expected_hash, str) or len(expected_hash) != 64 or any(
-            character not in "0123456789abcdef" for character in expected_hash
+        if (
+            not isinstance(expected_hash, str)
+            or len(expected_hash) != 64
+            or any(character not in "0123456789abcdef" for character in expected_hash)
         ):
             raise ValueError(f"artifact {name!r} has an invalid SHA-256 digest")
         if not isinstance(expected_bytes, int) or expected_bytes < 0:

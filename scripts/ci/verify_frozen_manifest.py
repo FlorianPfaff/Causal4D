@@ -79,7 +79,9 @@ def verify_frozen_manifest(milestone_root: Path) -> dict[str, Any]:
     if revisions.get("schema_version") != 1:
         raise ValueError("source-revisions schema_version must equal 1")
     if artifact_manifest.get("captured_at") != artifact_paths.get("captured_at"):
-        raise ValueError("artifact manifest and path inventory have different capture times")
+        raise ValueError(
+            "artifact manifest and path inventory have different capture times"
+        )
 
     manifest_entries = _entries(artifact_manifest, name="artifact manifest")
     path_entries = _entries(artifact_paths, name="artifact paths")
@@ -126,7 +128,9 @@ def verify_frozen_manifest(milestone_root: Path) -> dict[str, Any]:
 
     _validate_revision_digests(revisions)
     if checked_files == 0:
-        raise ValueError("no checked-in frozen artifact was available for checksum verification")
+        raise ValueError(
+            "no checked-in frozen artifact was available for checksum verification"
+        )
     return {
         "milestone": milestone,
         "entry_count": len(manifest_entries),

@@ -41,9 +41,7 @@ def main() -> None:
 
     protocol = load_protocol(args.protocol)
     execution_manifest_path = Path(args.execution_manifest)
-    execution_manifest = json.loads(
-        execution_manifest_path.read_text(encoding="utf-8")
-    )
+    execution_manifest = json.loads(execution_manifest_path.read_text(encoding="utf-8"))
     validate_execution_manifest(protocol, execution_manifest, verify_files=False)
     plan_record = json.loads(Path(args.plan_record).read_text(encoding="utf-8"))
     if plan_record["target_execution_id"] != execution_manifest["execution_id"]:

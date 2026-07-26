@@ -78,9 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--abstain-when-unidentifiable", action="store_true")
     parser.add_argument("--identifiability-rank-tolerance", type=float, default=1e-6)
-    parser.add_argument(
-        "--minimum-information-eigenvalue", type=float, default=1e-6
-    )
+    parser.add_argument("--minimum-information-eigenvalue", type=float, default=1e-6)
     parser.add_argument("--maximum-condition-number", type=float, default=1e8)
     parser.add_argument(
         "--minimum-residualized-response-fraction", type=float, default=0.10
@@ -126,9 +124,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.o_plus_prefix_frames < 1:
         raise ValueError("--o-plus-prefix-frames must be positive")
     if args.abstain_when_unidentifiable and args.identifiability_npz is None:
-        raise ValueError(
-            "--abstain-when-unidentifiable requires --identifiability-npz"
-        )
+        raise ValueError("--abstain-when-unidentifiable requires --identifiability-npz")
     bank, manifest = load_rollout_bank(args.rollout_bank_npz)
     artifact = load_contract(args.twin_belief_npz)
     if not isinstance(artifact, TwinBelief):
@@ -220,9 +216,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         json.dumps(
             {
                 "evaluation": str(result_path.resolve()),
-                "factual_intervention": str(
-                    Path(args.output_factual_npz).resolve()
-                ),
+                "factual_intervention": str(Path(args.output_factual_npz).resolve()),
                 "factual_intervention_id": factual.artifact_id,
                 "map_hypothesis_id": evaluation["map_hypothesis_id"],
                 "relative_track_error_improvement": evaluation[

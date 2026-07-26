@@ -33,7 +33,9 @@ def read_bpt_pin(pyproject: Path) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("pyproject", nargs="?", type=Path, default=Path("pyproject.toml"))
+    parser.add_argument(
+        "pyproject", nargs="?", type=Path, default=Path("pyproject.toml")
+    )
     arguments = parser.parse_args(argv)
     print(read_bpt_pin(arguments.pyproject))
     return 0

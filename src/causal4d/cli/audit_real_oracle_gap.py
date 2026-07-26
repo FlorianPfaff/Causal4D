@@ -152,7 +152,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if physical_artifact.source_twin_belief_id != belief_artifact.artifact_id:
         raise ValueError("PhysicalPosterior and TwinBelief provenance disagree")
     nesting = verify_nested_rollout_banks(current_bank, expanded_bank)
-    if physical_artifact.readout_trajectories_m.shape[1:] != current_bank.trajectories.shape[2:]:
+    if (
+        physical_artifact.readout_trajectories_m.shape[1:]
+        != current_bank.trajectories.shape[2:]
+    ):
         raise ValueError("PhysicalPosterior and current rollout bank shapes disagree")
 
     data = _load_pickle(args.final_data_pickle)
@@ -204,9 +207,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             **evaluate_prediction(bpt_prediction, truth, mask, protocol),
             "label_use_for_prediction": False,
             "o_plus_prefix_frames_used": args.o_plus_prefix_frames,
-            "effective_component_count": float(
-                1.0 / np.sum(np.square(bpt_weights))
-            ),
+            "effective_component_count": float(1.0 / np.sum(np.square(bpt_weights))),
         },
         "current_causal4d_posterior": {
             **evaluate_prediction(causal4d_prediction, truth, mask, protocol),
@@ -290,13 +291,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "twin_belief": _input_record(args.twin_belief_npz),
                 "physical_posterior": _input_record(args.physical_posterior_npz),
                 "final_data": _input_record(args.final_data_pickle),
-                "released_trajectory": _input_record(
-                    args.released_trajectory_pickle
-                ),
+                "released_trajectory": _input_record(args.released_trajectory_pickle),
             },
-            "component_metrics_csv": str(
-                Path(args.output_components_csv).resolve()
-            ),
+            "component_metrics_csv": str(Path(args.output_components_csv).resolve()),
         },
     }
     _write_component_csv(
@@ -313,9 +310,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         json.dumps(
             {
                 "output": str(output.resolve()),
-                "component_metrics": str(
-                    Path(args.output_components_csv).resolve()
-                ),
+                "component_metrics": str(Path(args.output_components_csv).resolve()),
                 "predictors": predictors,
                 "track_error_gaps": gaps["track_error_m"],
                 "variance_closure": variance["all_holdout"]["closure"],

@@ -90,7 +90,9 @@ def verify_console_help(
                 )
                 continue
             if "usage:" not in output.lower():
-                failures.append(f"{name}: successful help output did not contain 'usage:'")
+                failures.append(
+                    f"{name}: successful help output did not contain 'usage:'"
+                )
                 continue
             print(f"ok {name}")
 

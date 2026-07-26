@@ -130,9 +130,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "evaluated_beta_candidates": list(betas),
                 "molmo_acceptance_passed": bool(
                     acceptance
-                    and acceptance["decision"][
-                        "accepted_for_semantic_reweighting"
-                    ]
+                    and acceptance["decision"]["accepted_for_semantic_reweighting"]
                 ),
                 "source_case_ids": list(calibration.source_case_ids),
                 "source_mean_rmse_m": dict(

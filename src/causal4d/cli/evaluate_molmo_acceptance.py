@@ -69,9 +69,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("schema_version") != 1:
         raise ValueError("Molmo acceptance manifest schema_version must be 1")
-    thresholds = MolmoAcceptanceThresholds.from_mapping(
-        manifest.get("thresholds", {})
-    )
+    thresholds = MolmoAcceptanceThresholds.from_mapping(manifest.get("thresholds", {}))
     entries = manifest.get("cases", [])
     if not entries:
         raise ValueError("Molmo acceptance manifest must contain cases")
@@ -86,7 +84,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         with final_data_path.open("rb") as handle:
             final_data = pickle.load(handle)
         points = np.asarray(final_data["object_points"], dtype=float)
-        validity = np.asarray(final_data["object_visibilities"], dtype=bool) & np.asarray(
+        validity = np.asarray(
+            final_data["object_visibilities"], dtype=bool
+        ) & np.asarray(
             final_data["object_motions_valid"],
             dtype=bool,
         )
