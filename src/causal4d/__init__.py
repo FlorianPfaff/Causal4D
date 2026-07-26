@@ -53,6 +53,11 @@ from causal4d.prefix_likelihood import (
     prefix_component_log_likelihood,
     update_joint_weights_from_prefix,
 )
+from causal4d.regime_conditioned_discrepancy import (
+    RegimeConditionedDiscrepancyForecast,
+    RegimeConditionedDiscrepancyTransitionModel,
+    forecast_regime_conditioned_discrepancy,
+)
 from causal4d.rollout_bank import JointRolloutBank, SparseTrajectoryEvidence
 from causal4d.semantic_freshness import (
     SEMANTIC_TIMING_SCHEMA_VERSION,
@@ -82,6 +87,8 @@ __all__ = [
     "ObservationGroup",
     "PhysicalPosterior",
     "PrefixLikelihoodConfig",
+    "RegimeConditionedDiscrepancyForecast",
+    "RegimeConditionedDiscrepancyTransitionModel",
     "SEMANTIC_TIMING_SCHEMA_VERSION",
     "SEMANTIC_TIMING_SCOPE",
     "SemanticFreshnessDecision",
@@ -99,6 +106,7 @@ __all__ = [
     "build_protocol",
     "finite_response_sensitivity",
     "forecast_action_conditioned_persistence",
+    "forecast_regime_conditioned_discrepancy",
     "graph_mode_joint_weights",
     "grouped_component_log_likelihoods",
     "load_graph_discrepancy_belief",
