@@ -18,6 +18,9 @@ from causal4d.intervention_abduction import physical_readout_components
 from causal4d.rollout_bank import JointRolloutBank
 
 
+SAME_GRASP_SEMANTICS = ("fixed_kappa", "evolve_slip")
+
+
 def _phi_from_metadata(metadata: Mapping[str, Any]) -> tuple[float, ...]:
     contact = metadata["contact"]
     return (
@@ -27,9 +30,15 @@ def _phi_from_metadata(metadata: Mapping[str, Any]) -> tuple[float, ...]:
     )
 
 
+def _contact_patch_from_metadata(
+    metadata: Mapping[str, Any],
+) -> tuple[float, ...]:
+    return tuple(map(float, metadata["contact"]["attachment_shifts"]))
+
+
 def _kappa_from_metadata(metadata: Mapping[str, Any]) -> tuple[float, ...]:
     contact = metadata["contact"]
-    return tuple(map(float, contact["attachment_shifts"])) + (
+    return _contact_patch_from_metadata(metadata) + (
         float(contact["slip_fraction"]),
     )
 
@@ -45,7 +54,10 @@ def _validate_factual_context(
         raise ValueError("counterfactual query does not descend from factual abduction")
     for name in ("protocol_id", "o_minus", "o_plus", "u_obs"):
         expected = getattr(belief.context, name)
-        if getattr(factual.context, name) != expected or getattr(query.context, name) != expected:
+        if (
+            getattr(factual.context, name) != expected
+            or getattr(query.context, name) != expected
+        ):
             raise ValueError(f"counterfactual artifacts disagree on factual {name}")
 
 
@@ -137,6 +149,53 @@ def _same_grasp_weights(
     return weights / retained_mass, retained_mass
 
 
+def _same_patch_weights(
+    bank: JointRolloutBank,
+    factual: FactualIntervention,
+) -> tuple[np.ndarray, float]:
+    """Carry ``p(theta, phi, patch)`` while resampling counterfactual slip."""
+
+    hand_count = len(bank.hypothesis_metadata[0]["contact"]["attachment_shifts"])
+    patch_theta_phi: defaultdict[
+        tuple[int, tuple[float, ...], tuple[float, ...]], float
+    ] = defaultdict(float)
+    for index, weight in enumerate(factual.weights):
+        patch = tuple(map(float, factual.kappa_obs[index, :hand_count]))
+        key = (
+            int(factual.twin_particle_indices[index]),
+            tuple(map(float, factual.phi[index])),
+            patch,
+        )
+        patch_theta_phi[key] += float(weight)
+
+    query_keys: list[tuple[tuple[float, ...], tuple[float, ...]]] = []
+    denominator: defaultdict[
+        tuple[tuple[float, ...], tuple[float, ...]], float
+    ] = defaultdict(float)
+    for hypothesis_index, metadata in enumerate(bank.hypothesis_metadata):
+        key = (
+            _phi_from_metadata(metadata),
+            _contact_patch_from_metadata(metadata),
+        )
+        query_keys.append(key)
+        denominator[key] += float(bank.hypothesis_prior_weights[hypothesis_index])
+
+    weights = np.zeros_like(bank.prior_joint_weights)
+    for hypothesis_index, (phi, patch) in enumerate(query_keys):
+        conditional_mass = (
+            float(bank.hypothesis_prior_weights[hypothesis_index])
+            / denominator[(phi, patch)]
+        )
+        for particle_index in range(len(bank.parameter_weights)):
+            weights[hypothesis_index, particle_index] = (
+                patch_theta_phi[(particle_index, phi, patch)] * conditional_mass
+            )
+    retained_mass = float(np.sum(weights))
+    if retained_mass <= 0.0:
+        raise ValueError("query contact beam cannot represent the factual patch")
+    return weights / retained_mass, retained_mass
+
+
 def apply_counterfactual_operator(
     bank: JointRolloutBank,
     manifest: Mapping[str, Any],
@@ -159,15 +218,34 @@ def apply_counterfactual_operator(
     expected_kappa_names = tuple(
         f"attachment_shift_hand_{index}" for index in range(hand_count)
     ) + ("slip_fraction",)
-    if factual.phi_names != expected_phi_names or factual.kappa_names != expected_kappa_names:
+    if (
+        factual.phi_names != expected_phi_names
+        or factual.kappa_names != expected_kappa_names
+    ):
         raise ValueError("factual intervention variable schema differs from query bank")
 
+    same_grasp_semantics = str(
+        query.metadata.get("same_grasp_semantics", "fixed_kappa")
+    )
+    if same_grasp_semantics not in SAME_GRASP_SEMANTICS:
+        raise ValueError(
+            "same_grasp_semantics must be fixed_kappa or evolve_slip"
+        )
     if query.contact_policy == "new_contact":
         joint_weights, retained_mass = _new_contact_weights(bank, factual)
         reused_factual_kappa = False
+        reused_factual_patch = False
+        reused_factual_slip = False
+    elif same_grasp_semantics == "evolve_slip":
+        joint_weights, retained_mass = _same_patch_weights(bank, factual)
+        reused_factual_kappa = False
+        reused_factual_patch = True
+        reused_factual_slip = False
     else:
         joint_weights, retained_mass = _same_grasp_weights(bank, factual)
         reused_factual_kappa = True
+        reused_factual_patch = True
+        reused_factual_slip = True
 
     state = bank.trajectories.reshape(
         -1,
@@ -229,9 +307,16 @@ def apply_counterfactual_operator(
             "operator": "abduction-action-prediction",
             "intervention": f"do({query.context.u_cf.action_id})",
             "contact_policy": query.contact_policy,
+            "same_grasp_semantics": same_grasp_semantics,
             "persistent_phi_transferred": True,
             "factual_kappa_reused": reused_factual_kappa,
+            "factual_contact_patch_reused": reused_factual_patch,
+            "factual_slip_reused": reused_factual_slip,
             "fresh_kappa_cf_sampled": not reused_factual_kappa,
+            "counterfactual_slip_resampled": (
+                query.contact_policy == "same_grasp"
+                and same_grasp_semantics == "evolve_slip"
+            ),
             "represented_factual_mass_before_renormalization": retained_mass,
             "rollout_includes_pre_intervention_endpoint": True,
             "discrepancy_injected_into_simulator_state": False,
