@@ -11,6 +11,7 @@ from causal4d.real_experiment_freeze import (
     load_method_freeze_manifest,
     repository_git_state,
     validate_method_freeze_manifest,
+    validate_repository_checkout,
     write_method_freeze_manifest,
 )
 
@@ -62,12 +63,24 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "output": str(output.resolve()),
             }
         else:
-            result = validate_method_freeze_manifest(
-                load_method_freeze_manifest(args.manifest_json),
-                args.repository_root,
-                expected_causal4d_commit_sha=args.expected_causal4d_commit,
-                verify_files=not args.skip_file_hashes,
-            )
+            manifest = load_method_freeze_manifest(args.manifest_json)
+            checkout = validate_repository_checkout(manifest, args.repository_root)
+            if (
+                args.expected_causal4d_commit is not None
+                and args.expected_causal4d_commit != checkout["commit_sha"]
+            ):
+                raise ValueError(
+                    "--expected-causal4d-commit does not match the checkout"
+                )
+            result = {
+                **validate_method_freeze_manifest(
+                    manifest,
+                    args.repository_root,
+                    expected_causal4d_commit_sha=checkout["commit_sha"],
+                    verify_files=not args.skip_file_hashes,
+                ),
+                "checkout_clean": True,
+            }
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(json.dumps({"passed": False, "error": str(error)}, indent=2))
         return 2
