@@ -15,6 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Inventory private Bayesian-PhysTwin imports
         run: |
+          mkdir -p .agent
           python - <<'PY'
           import ast
           import json
@@ -45,11 +46,18 @@ jobs:
                                   "names": private,
                               }
                           )
-          print("BPT_PRIVATE_IMPORTS=" + json.dumps(records, sort_keys=True))
-          print("BPT_PRIVATE_IMPORT_COUNT=" + str(sum(len(item["names"]) for item in records)))
+          result = {
+              "imports": records,
+              "private_name_count": sum(len(item["names"]) for item in records),
+          }
+          Path(".agent/bpt_private_imports.json").write_text(
+              json.dumps(result, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print("BPT_PRIVATE_IMPORT_COUNT=" + str(result["private_name_count"]))
           PY
       - name: Package source snapshot
-        run: tar --exclude=.git -czf causal4d-source.tgz .
+        run: tar --exclude=.git --exclude=causal4d-source.tgz -czf causal4d-source.tgz .
       - uses: actions/upload-artifact@v4
         with:
           name: causal4d-source
