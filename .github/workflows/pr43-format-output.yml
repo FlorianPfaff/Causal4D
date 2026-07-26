@@ -1,9 +1,9 @@
 name: PR 43 exact Ruff format output
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/report-prob4d-stream-contract-version
+      - main
 
 permissions:
   contents: read
