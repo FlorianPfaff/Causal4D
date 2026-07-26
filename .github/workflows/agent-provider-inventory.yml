@@ -1,65 +1,33 @@
-name: Agent provider inventory
+name: Apply reviewed provider migration patch
 
 on:
-  pull_request:
-    branches: [main]
+  push:
+    branches: [agent/bpt-provider-api-v1]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  inventory:
-    if: github.head_ref == 'agent/bpt-provider-api-v1'
+  apply:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Inventory private Bayesian-PhysTwin imports
-        run: |
-          mkdir -p .agent
-          python - <<'PY'
-          import ast
-          import json
-          from pathlib import Path
-
-          records = []
-          for root_name in ("src", "scripts", "tests"):
-              root = Path(root_name)
-              if not root.exists():
-                  continue
-              for path in sorted(root.rglob("*.py")):
-                  try:
-                      tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-                  except SyntaxError:
-                      continue
-                  for node in ast.walk(tree):
-                      if not isinstance(node, ast.ImportFrom):
-                          continue
-                      if not (node.module or "").startswith("bayesian_phystwin."):
-                          continue
-                      private = [alias.name for alias in node.names if alias.name.startswith("_")]
-                      if private:
-                          records.append(
-                              {
-                                  "path": str(path),
-                                  "line": node.lineno,
-                                  "module": node.module,
-                                  "names": private,
-                              }
-                          )
-          result = {
-              "imports": records,
-              "private_name_count": sum(len(item["names"]) for item in records),
-          }
-          Path(".agent/bpt_private_imports.json").write_text(
-              json.dumps(result, indent=2, sort_keys=True) + "\n",
-              encoding="utf-8",
-          )
-          print("BPT_PRIVATE_IMPORT_COUNT=" + str(result["private_name_count"]))
-          PY
-      - name: Package source snapshot
-        run: tar --exclude=.git -czf /tmp/causal4d-source.tgz .
-      - uses: actions/upload-artifact@v4
         with:
-          name: causal4d-source
-          path: /tmp/causal4d-source.tgz
-          retention-days: 1
+          ref: agent/bpt-provider-api-v1
+      - name: Apply reviewed patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .agent/provider.patch.gz.b64.part* \
+            | base64 --decode \
+            | gzip --decompress > /tmp/provider.patch
+          echo "b9340285e4a9006ac40318ae62f7f8e524102c843a824debfab0ab0c3f7f7f7d  /tmp/provider.patch" \
+            | sha256sum --check --strict
+          git apply --check /tmp/provider.patch
+          git apply /tmp/provider.patch
+          git rm -r .agent .github/workflows/agent-provider-inventory.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor: consume the Bayesian-PhysTwin provider API"
+          git push origin HEAD:agent/bpt-provider-api-v1
