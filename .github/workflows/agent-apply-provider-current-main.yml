@@ -200,13 +200,33 @@ jobs:
           python -m ruff check .
           git diff --check
       - name: Commit and publish clean branch
+        id: publish
         if: steps.apply_patch.outcome == 'success'
+        continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Consume Bayesian-PhysTwin provider API v1"
-          git push --force origin \
-            HEAD:agent/applied-bpt-provider-current-main
+          set -o pipefail
+          {
+            git config user.name "github-actions[bot]"
+            git config user.email \
+              "41898282+github-actions[bot]@users.noreply.github.com"
+            git status --short
+            git add -A
+            git commit -m "Consume Bayesian-PhysTwin provider API v1"
+            git push --force origin \
+              HEAD:agent/applied-bpt-provider-current-main
+          } > provider-publish.log 2>&1
+          status=$?
+          cat provider-publish.log
+          exit "$status"
+      - name: Upload publication failure
+        if: steps.publish.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: provider-current-main-publication
+          path: provider-publish.log
+          if-no-files-found: error
+          retention-days: 2
+      - name: Stop after publication failure
+        if: steps.publish.outcome == 'failure'
+        run: exit 1
