@@ -3,6 +3,8 @@ name: Format CI changes
 on:
   push:
     branches: [agent/ci-dependency-boundaries]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
