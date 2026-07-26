@@ -43,17 +43,13 @@ def _resolved_stream_contract(
     elif covariance_semantics == PROB4D_FIXED_LAG_GAUGE_MODEL:
         expected = None
     else:
-        raise ValueError(
-            "Prob4D validation returned unknown covariance semantics"
-        )
+        raise ValueError("Prob4D validation returned unknown covariance semantics")
 
     declared = metadata.get("prob4d_causal_stream_contract_version")
     if declared is None:
         return expected, expected is not None
     if isinstance(declared, bool) or not isinstance(declared, int):
-        raise ValueError(
-            "Prob4D causal stream contract version must be an integer"
-        )
+        raise ValueError("Prob4D causal stream contract version must be an integer")
     if expected is None:
         raise ValueError(
             "approximate fixed-lag covariance cannot declare a strict Prob4D "
