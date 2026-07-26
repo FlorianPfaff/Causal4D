@@ -10,9 +10,22 @@ import numpy as np
 PROB4D_SOURCE_REPOSITORY = "FlorianPfaff/Prob4D"
 PROB4D_CAUSAL_STREAM_ID = "prob4d:causal-overlap-window-points"
 PROB4D_CAUSAL_LINEAGE_VERSION = 1
+PROB4D_OBSERVATION_CONTRACT_VERSION = 2
+PROB4D_JOINT_COVARIANCE_LAYOUT = "joint_sim3_tree_root_v1"
+PROB4D_APPROXIMATE_FIXED_LAG_LAYOUT = (
+    "approximate_fixed_lag_block_diagonal_sim3_root_v1"
+)
+PROB4D_JOINT_FACTOR_GROUP_SEMANTICS = (
+    "single_shared_standard_normal_latent"
+)
+PROB4D_LEGACY_COVARIANCE_LAYOUT = "independent_window_sim3_v1"
 PROB4D_GAUGE_FACTOR_NAMES = tuple(
     f"gauge_latent_{index}" for index in range(7)
 )
+PROB4D_METRIC_ANCHOR_SCHEMA = "prob4d.metric-gauge-anchor"
+PROB4D_METRIC_ANCHOR_VERSION = 2
+FIXED_EXTERNAL_CALIBRATION = "fixed_external_calibration"
+PROPAGATED_JOINT_GAUGE_COVARIANCE = "propagated_joint_gauge_covariance"
 
 
 def _require(condition: bool, message: str) -> None:
@@ -24,10 +37,7 @@ def _require_sha256(value: Any, *, name: str) -> str:
     result = str(value)
     _require(
         len(result) == 64
-        and all(
-            character in "0123456789abcdef"
-            for character in result
-        ),
+        and all(character in "0123456789abcdef" for character in result),
         f"{name} must be a lowercase SHA-256 digest",
     )
     return result
@@ -40,11 +50,130 @@ def _require_mapping(value: Any, *, name: str) -> Mapping[str, Any]:
 
 def _require_integer(value: Any, *, name: str) -> int:
     _require(
-        isinstance(value, (int, np.integer))
-        and not isinstance(value, bool),
+        isinstance(value, (int, np.integer)) and not isinstance(value, bool),
         f"{name} must be an integer",
     )
     return int(value)
+
+
+def _validate_factor_layout(
+    descriptor: Mapping[str, Any],
+    arrays: Mapping[str, np.ndarray],
+    metadata: Mapping[str, Any],
+) -> tuple[str, tuple[str, ...], tuple[str, ...]]:
+    window_names = tuple(map(str, descriptor.get("window_names", ())))
+    factor_names = tuple(map(str, descriptor.get("factor_names", ())))
+    factor_group_ids = np.asarray(arrays["factor_group_ids"], dtype=np.int64)
+    window_indices = np.asarray(arrays["window_indices"], dtype=np.int64)
+    contract_version = metadata.get("prob4d_observation_contract_version")
+    covariance_layout = metadata.get("covariance_layout")
+    declares_joint = contract_version is not None or covariance_layout is not None
+    if not declares_joint:
+        _require(
+            factor_names == PROB4D_GAUGE_FACTOR_NAMES,
+            "Prob4D causal artifact has changed legacy gauge factor names",
+        )
+        _require(
+            np.array_equal(factor_group_ids, window_indices),
+            "legacy Prob4D gauge factor groups must equal window indices",
+        )
+        return PROB4D_LEGACY_COVARIANCE_LAYOUT, window_names, factor_names
+
+    _require(
+        _require_integer(
+            contract_version,
+            name="Prob4D observation contract version",
+        )
+        == PROB4D_OBSERVATION_CONTRACT_VERSION,
+        "unsupported Prob4D observation contract version",
+    )
+    _require(
+        covariance_layout
+        in {
+            PROB4D_JOINT_COVARIANCE_LAYOUT,
+            PROB4D_APPROXIMATE_FIXED_LAG_LAYOUT,
+        },
+        "unsupported Prob4D covariance layout",
+    )
+    _require(
+        metadata.get("factor_group_semantics")
+        == PROB4D_JOINT_FACTOR_GROUP_SEMANTICS,
+        "Prob4D joint factor-group semantics changed",
+    )
+    expected_factor_names = tuple(
+        f"joint_gauge_latent_{index:04d}"
+        for index in range(len(factor_names))
+    )
+    _require(
+        factor_names == expected_factor_names,
+        "Prob4D joint gauge factor names changed",
+    )
+    _require(
+        np.all(factor_group_ids == 0),
+        "Prob4D joint gauge factors must use one shared factor group",
+    )
+    gauge_posterior = _require_mapping(
+        metadata.get("gauge_posterior"),
+        name="gauge_posterior",
+    )
+    _require(
+        _require_integer(
+            gauge_posterior.get("window_count"),
+            name="gauge posterior window_count",
+        )
+        == len(window_names),
+        "joint gauge posterior window count differs from the descriptor",
+    )
+    _require(
+        _require_integer(
+            gauge_posterior.get("exported_factor_rank"),
+            name="gauge posterior exported_factor_rank",
+        )
+        == len(factor_names),
+        "joint gauge posterior factor rank differs from the descriptor",
+    )
+    cross_window_covariance_preserved = (
+        gauge_posterior.get("cross_window_covariance_preserved") is True
+    )
+    if covariance_layout == PROB4D_JOINT_COVARIANCE_LAYOUT:
+        _require(
+            cross_window_covariance_preserved,
+            "joint Prob4D layout must preserve cross-window covariance",
+        )
+        _require(
+            metadata.get("joint_cross_window_gauge_covariance_represented")
+            is True,
+            "Prob4D artifact does not confirm represented cross-window covariance",
+        )
+    else:
+        _require(
+            not cross_window_covariance_preserved,
+            "approximate fixed-lag layout cannot claim cross-window covariance",
+        )
+        _require(
+            gauge_posterior.get("model")
+            == "fixed_lag_block_diagonal_approximation_v1",
+            "approximate fixed-lag layout has changed posterior model",
+        )
+        _require(
+            gauge_posterior.get(
+                "fixed_lag_boundary_covariance_is_approximate"
+            )
+            is True
+            or metadata.get("gauge_mode") == "fixed_lag",
+            "approximate fixed-lag layout lacks its approximation declaration",
+        )
+        _require(
+            metadata.get("joint_cross_window_gauge_covariance_represented")
+            is False,
+            "approximate fixed-lag layout cannot represent joint covariance",
+        )
+    _require(
+        metadata.get("metric_anchor_covariance_included_in_joint_factor")
+        is True,
+        "Prob4D joint factor does not include metric-anchor covariance",
+    )
+    return str(covariance_layout), window_names, factor_names
 
 
 def is_prob4d_causal_observation_descriptor(
@@ -53,8 +182,7 @@ def is_prob4d_causal_observation_descriptor(
     """Return whether the descriptor declares the strict Prob4D stream."""
 
     return (
-        descriptor.get("source_repository")
-        == PROB4D_SOURCE_REPOSITORY
+        descriptor.get("source_repository") == PROB4D_SOURCE_REPOSITORY
         and descriptor.get("stream_id") == PROB4D_CAUSAL_STREAM_ID
     )
 
@@ -78,37 +206,17 @@ def validate_prob4d_causal_observation_metadata(
         descriptor.get("source_artifact_sha256", ""),
         name="source_artifact_sha256",
     )
-    window_names = tuple(
-        map(str, descriptor.get("window_names", ()))
-    )
-    factor_names = tuple(
-        map(str, descriptor.get("factor_names", ()))
-    )
-    _require(
-        bool(window_names),
-        "Prob4D causal artifact has no source windows",
-    )
-    _require(
-        factor_names == PROB4D_GAUGE_FACTOR_NAMES,
-        "Prob4D causal artifact has changed gauge factor names",
-    )
-    window_indices = np.asarray(
-        arrays["window_indices"],
-        dtype=np.int64,
-    )
-    factor_group_ids = np.asarray(
-        arrays["factor_group_ids"],
-        dtype=np.int64,
-    )
-    _require(
-        np.array_equal(factor_group_ids, window_indices),
-        "Prob4D causal gauge factor groups must equal window indices",
-    )
-
     metadata = _require_mapping(
         descriptor.get("metadata"),
         name="observation metadata",
     )
+    covariance_layout, window_names, factor_names = _validate_factor_layout(
+        descriptor,
+        arrays,
+        metadata,
+    )
+    _require(bool(window_names), "Prob4D causal artifact has no source windows")
+
     _require(
         metadata.get("metric_coordinates") is True,
         "Prob4D causal artifact must declare metric coordinates",
@@ -147,11 +255,47 @@ def validate_prob4d_causal_observation_metadata(
         anchor.get("world_frame_id") == coordinate_frame,
         "metric gauge-anchor frame differs from observation frame",
     )
-    _require(
-        anchor.get("covariance_treatment")
-        == "fixed_external_calibration",
-        "portable Prob4D causal artifact requires a fixed metric anchor",
-    )
+    if anchor.get("case_id") is not None:
+        _require(
+            anchor.get("case_id") == descriptor.get("case_id"),
+            "metric gauge-anchor case differs from observation case",
+        )
+    covariance_treatment = str(anchor.get("covariance_treatment", ""))
+    if covariance_layout in {
+        PROB4D_JOINT_COVARIANCE_LAYOUT,
+        PROB4D_APPROXIMATE_FIXED_LAG_LAYOUT,
+    }:
+        _require(
+            anchor.get("schema_name") == PROB4D_METRIC_ANCHOR_SCHEMA,
+            "Prob4D joint artifact has an unsupported metric-anchor schema",
+        )
+        _require(
+            _require_integer(
+                anchor.get("schema_version"),
+                name="metric gauge-anchor schema_version",
+            )
+            == PROB4D_METRIC_ANCHOR_VERSION,
+            "Prob4D joint artifact has an unsupported metric-anchor version",
+        )
+        if covariance_layout == PROB4D_JOINT_COVARIANCE_LAYOUT:
+            _require(
+                covariance_treatment
+                in {
+                    FIXED_EXTERNAL_CALIBRATION,
+                    PROPAGATED_JOINT_GAUGE_COVARIANCE,
+                },
+                "Prob4D joint artifact has an unsupported anchor covariance treatment",
+            )
+        else:
+            _require(
+                covariance_treatment == FIXED_EXTERNAL_CALIBRATION,
+                "approximate fixed-lag artifact requires a fixed metric anchor",
+            )
+    else:
+        _require(
+            covariance_treatment == FIXED_EXTERNAL_CALIBRATION,
+            "legacy Prob4D artifact requires a fixed metric anchor",
+        )
 
     causal_stop = _require_integer(
         descriptor.get("causal_frame_stop"),
@@ -219,10 +363,10 @@ def validate_prob4d_causal_observation_metadata(
 
     selected = lineage.get("selected_windows")
     _require(
-        isinstance(selected, list)
-        and len(selected) == len(window_names),
+        isinstance(selected, list) and len(selected) == len(window_names),
         "causal lineage must identify every observation window",
     )
+    window_indices = np.asarray(arrays["window_indices"], dtype=np.int64)
     frame_ids = np.asarray(arrays["frame_ids"], dtype=np.int64)
     for window_index, expected_window_id in enumerate(window_names):
         record = _require_mapping(
@@ -266,28 +410,44 @@ def validate_prob4d_causal_observation_metadata(
         if np.any(rows):
             row_frames = frame_ids[rows]
             _require(
-                np.all(
-                    (row_frames >= start)
-                    & (row_frames <= maximum)
-                ),
+                np.all((row_frames >= start) & (row_frames <= maximum)),
                 "observation rows exceed their declared source window",
             )
 
     return {
         "validated": True,
         "schema_version": PROB4D_CAUSAL_LINEAGE_VERSION,
+        "prob4d_observation_contract_version": (
+            PROB4D_OBSERVATION_CONTRACT_VERSION
+            if covariance_layout
+            in {
+                PROB4D_JOINT_COVARIANCE_LAYOUT,
+                PROB4D_APPROXIMATE_FIXED_LAG_LAYOUT,
+            }
+            else 1
+        ),
+        "covariance_layout": covariance_layout,
+        "factor_rank": len(factor_names),
         "causal_frame_stop": causal_stop,
         "window_count": len(window_names),
         "metric_anchor_id": anchor_id,
+        "metric_anchor_covariance_treatment": covariance_treatment,
         "source_artifact_sha256": source_artifact_sha256,
     }
 
 
 __all__ = [
+    "FIXED_EXTERNAL_CALIBRATION",
+    "PROB4D_APPROXIMATE_FIXED_LAG_LAYOUT",
     "PROB4D_CAUSAL_LINEAGE_VERSION",
     "PROB4D_CAUSAL_STREAM_ID",
     "PROB4D_GAUGE_FACTOR_NAMES",
+    "PROB4D_JOINT_COVARIANCE_LAYOUT",
+    "PROB4D_JOINT_FACTOR_GROUP_SEMANTICS",
+    "PROB4D_LEGACY_COVARIANCE_LAYOUT",
+    "PROB4D_OBSERVATION_CONTRACT_VERSION",
     "PROB4D_SOURCE_REPOSITORY",
+    "PROPAGATED_JOINT_GAUGE_COVARIANCE",
     "is_prob4d_causal_observation_descriptor",
     "validate_prob4d_causal_observation_metadata",
 ]
