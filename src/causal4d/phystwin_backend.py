@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import gc
 import json
 import pickle
 from dataclasses import asdict, dataclass
@@ -12,6 +11,11 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from bayesian_phystwin.causal4d_provider_v1 import (
+    PhysTwinReplayProvider,
+    create_official_replay_provider,
+    released_self_collision_for_case,
+)
 from bayesian_phystwin.phystwin_controller_sensitivity import (
     controller_hand_count,
     infer_controller_groups,
@@ -30,6 +34,7 @@ from causal4d.contracts import (
     array_sha256,
 )
 from causal4d.parameter_support import SupportMethod, reduce_parameter_support
+from causal4d.provider_contract import require_bayesian_phystwin_provider
 from causal4d.rollout_bank import JointRolloutBank
 
 
@@ -810,7 +815,7 @@ class OfficialPhysTwinBackendConfig:
 
 
 class OfficialPhysTwinBackend:
-    """Run Causal4D hypotheses through the pinned official Warp simulator."""
+    """Run Causal4D hypotheses through a compatible official Warp provider."""
 
     def __init__(
         self,
@@ -826,6 +831,7 @@ class OfficialPhysTwinBackend:
         parameter_support_method: SupportMethod = "top_mass",
         config: OfficialPhysTwinBackendConfig | None = None,
     ) -> None:
+        self.provider_manifest = require_bayesian_phystwin_provider()
         self.official_repo = Path(official_repo)
         self.final_data_path = Path(final_data_path)
         self.optimal_params_path = Path(optimal_params_path)
@@ -902,6 +908,7 @@ class OfficialPhysTwinBackend:
     def default_manifest(self) -> dict[str, Any]:
         return {
             "backend": "official_phystwin_warp",
+            "provider": self.provider_manifest.as_dict(),
             "case": self.case_name,
             "train_end_frame": self.train_end_frame,
             "source_paths": {
@@ -1065,14 +1072,8 @@ class OfficialPhysTwinBackend:
         )
         trajectories = np.empty(trajectory_shape, dtype=np.float32)
         endpoint_index = self.train_end_frame - 1
-        from bayesian_phystwin.phystwin_state_injection import (
-            _initialize_simulator,
-            _released_self_collision_for_case,
-            _rollout_restart,
-        )
-
         self_collision = (
-            _released_self_collision_for_case(self.case_name)
+            released_self_collision_for_case(self.case_name)
             if self.config.self_collision is None
             else self.config.self_collision
         )
@@ -1094,7 +1095,7 @@ class OfficialPhysTwinBackend:
                 "controller_spring_count": len(variant.graph.springs)
                 - variant.graph.num_object_springs,
             }
-            simulator, torch, wp, _ = _initialize_simulator(
+            replay_provider: PhysTwinReplayProvider = create_official_replay_provider(
                 self.official_repo,
                 self.data,
                 self.optimal,
@@ -1109,61 +1110,49 @@ class OfficialPhysTwinBackend:
                 spring_parameterization="grouped",
                 device=self.config.device,
             )
-            selected_hypotheses = [
-                (index, hypothesis)
-                for index, hypothesis in enumerate(hypotheses)
-                if hypothesis.contact.attachment_shifts == shifts
-            ]
-            for hypothesis_index, hypothesis in selected_hypotheses:
-                proposal = proposal_by_id[hypothesis.action_proposal_id]
-                controls = transform_controller_trajectory(
-                    proposal.controller_points_m,
-                    self.controller_groups,
-                    hypothesis.contact,
-                    start_frame=self.train_end_frame,
-                )
-                simulator.controller_points = torch.as_tensor(
-                    controls,
-                    dtype=torch.float32,
-                    device=self.config.device,
-                ).contiguous()
-                for particle_index, particle in enumerate(self.particles.log_scales):
-                    group_scales = np.asarray(
-                        [
-                            particle[0],
-                            particle[1] + np.log(hypothesis.contact.gain_multiplier),
-                        ],
-                        dtype=np.float32,
-                    )
-                    with torch.no_grad():
-                        simulator.group_log_scale_tensor.copy_(
-                            torch.as_tensor(
-                                group_scales,
-                                dtype=torch.float32,
-                                device=self.config.device,
-                            )
-                        )
-                    future = _rollout_restart(
-                        simulator,
-                        torch,
-                        wp,
-                        twin_belief.endpoint_position_m[particle_index].copy(),
-                        twin_belief.endpoint_velocity_mps[particle_index].copy(),
+            try:
+                selected_hypotheses = [
+                    (index, hypothesis)
+                    for index, hypothesis in enumerate(hypotheses)
+                    if hypothesis.contact.attachment_shifts == shifts
+                ]
+                for hypothesis_index, hypothesis in selected_hypotheses:
+                    proposal = proposal_by_id[hypothesis.action_proposal_id]
+                    controls = transform_controller_trajectory(
+                        proposal.controller_points_m,
+                        self.controller_groups,
+                        hypothesis.contact,
                         start_frame=self.train_end_frame,
-                        stop_frame=self.frame_count,
-                        device=self.config.device,
                     )
-                    trajectories[hypothesis_index, particle_index, 0] = (
-                        twin_belief.endpoint_position_m[
-                            particle_index, : self.original_count
+                    replay_provider.set_controller_points(controls)
+                    for particle_index, particle in enumerate(
+                        self.particles.log_scales
+                    ):
+                        group_scales = np.asarray(
+                            [
+                                particle[0],
+                                particle[1]
+                                + np.log(hypothesis.contact.gain_multiplier),
+                            ],
+                            dtype=np.float32,
+                        )
+                        replay_provider.set_group_log_scales(group_scales)
+                        future = replay_provider.replay_restart(
+                            twin_belief.endpoint_position_m[particle_index].copy(),
+                            twin_belief.endpoint_velocity_mps[particle_index].copy(),
+                            start_frame=self.train_end_frame,
+                            stop_frame=self.frame_count,
+                        )
+                        trajectories[hypothesis_index, particle_index, 0] = (
+                            twin_belief.endpoint_position_m[
+                                particle_index, : self.original_count
+                            ]
+                        )
+                        trajectories[hypothesis_index, particle_index, 1:] = future[
+                            :, : self.original_count
                         ]
-                    )
-                    trajectories[hypothesis_index, particle_index, 1:] = future[
-                        :, : self.original_count
-                    ]
-            del simulator
-            gc.collect()
-            torch.cuda.empty_cache()
+            finally:
+                replay_provider.close()
 
         metadata = tuple(
             hypothesis.metadata(proposal_by_id[hypothesis.action_proposal_id])

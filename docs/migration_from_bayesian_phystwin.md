@@ -10,9 +10,10 @@ and PokeFlex milestone tags. No experiment artifact was regenerated during the
 migration.
 
 The corresponding Bayesian-PhysTwin cleanup is commit
-`c7ad36aad7e592ce8a391c9ca2d4db7389dee3ac`. The `phystwin` installation extra
-pins that exact provider revision, making the post-migration package boundary
-reproducible.
+`c7ad36aad7e592ce8a391c9ca2d4db7389dee3ac`. The historical two-repository
+stack remains reproducible through
+`requirements/frozen/causal4d-0.3.0.txt`, which locks both repositories to
+exact commits.
 
 ## Ownership after migration
 
@@ -54,4 +55,7 @@ The Python packages remain `causal4d` and `causal4d_public`. Existing
 | `bpt-aggregate-phystwin-propagated-state` | `causal4d-aggregate-phystwin-propagated-state` |
 
 Frozen tags continue to reproduce their historical tree. New development uses
-the standalone package and the pinned Bayesian-PhysTwin integration extra.
+`bayesian_phystwin.causal4d_provider_v1`, the `PhysTwinReplayProvider`
+execution protocol, and the BPT compatibility range `>=0.4,<0.5`. See
+[bayesian_phystwin_provider.md](bayesian_phystwin_provider.md) for the
+development and frozen-install policies.

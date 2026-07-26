@@ -11,7 +11,7 @@ import sys
 from types import ModuleType
 from typing import Any
 
-from bayesian_phystwin.deform360_online_belief_evaluation import _sha256
+from bayesian_phystwin.causal4d_provider_v1 import sha256_file
 from bayesian_phystwin.deform360_selective_virtual_sensing_staging import (
     dynamic_window_source_case,
 )
@@ -83,7 +83,7 @@ def main() -> int:
         "source config checksum changed",
     )
     _require(
-        _sha256(source_config_path) == selection_seal.get("source_config_sha256")
+        sha256_file(source_config_path) == selection_seal.get("source_config_sha256")
         and source_config["config"]["source_cohort"]["protocol_config_sha256"]
         == protocol["config_sha256"],
         "source-window seal belongs to another cohort",
@@ -96,19 +96,19 @@ def main() -> int:
             payload["source_window_selection"] = {
                 "protocol_id": selection_seal["protocol_id"],
                 "result_sha256": selection_seal["result_sha256"],
-                "file_sha256": _sha256(selection_path),
+                "file_sha256": sha256_file(selection_path),
                 "claim_boundary": (
                     "exploratory source-window diagnostic; not the frozen v1 "
                     "prospective selection"
                 ),
             }
-            payload["inputs_sha256"]["source_window_selection"] = _sha256(
+            payload["inputs_sha256"]["source_window_selection"] = sha256_file(
                 selection_path
             )
-            payload["inputs_sha256"]["dynamic_window_source_config"] = _sha256(
+            payload["inputs_sha256"]["dynamic_window_source_config"] = sha256_file(
                 source_config_path
             )
-            payload["inputs_sha256"]["dynamic_window_staging_wrapper"] = _sha256(
+            payload["inputs_sha256"]["dynamic_window_staging_wrapper"] = sha256_file(
                 wrapper_path
             )
             payload["information_boundary"].update(

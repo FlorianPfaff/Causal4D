@@ -46,10 +46,14 @@ prospective mechanism gates.
 the uncertain deformable-object twin: state and parameter particles, graph
 geometry, PhysTwin/Warp replay, and perception/discrepancy artifacts. Causal4D
 consumes those artifacts and owns the intervention and counterfactual
-inference. The dependency points from Causal4D to Bayesian-PhysTwin.
+inference. The dependency points from Causal4D to Bayesian-PhysTwin through
+`bayesian_phystwin.causal4d_provider_v1`; execution uses the
+`PhysTwinReplayProvider` protocol rather than BPT internals.
 
 Install the `phystwin` extra for these adapters. Core controlled benchmarks do
-not require Warp or the PhysTwin checkout.
+not require Warp or the PhysTwin checkout. See
+[docs/bayesian_phystwin_provider.md](docs/bayesian_phystwin_provider.md) for
+the compatibility and frozen-lock policies.
 
 ### Public-data studies
 
@@ -87,9 +91,11 @@ Bayesian-PhysTwin adapters:
 python -m pip install -e ".[phystwin]"
 ```
 
-The `phystwin` extra pins the compatible Bayesian-PhysTwin provider revision.
-Visual, Warp-runtime, and actuator-calibration dependencies remain separate so
-the controlled benchmark stays lightweight.
+The `phystwin` extra accepts Bayesian-PhysTwin `>=0.4,<0.5` and validates the
+provider manifest at runtime. Frozen experiments instead lock both repositories
+with `requirements/frozen/causal4d-0.3.0.txt`. Visual, Warp-runtime, and
+actuator-calibration dependencies remain separate so the controlled benchmark
+stays lightweight.
 
 ## Quick Start
 

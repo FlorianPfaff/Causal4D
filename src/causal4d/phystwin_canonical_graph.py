@@ -12,7 +12,10 @@ from bayesian_phystwin.phystwin_graph import (
     PhysTwinSpringGraphConfig,
     build_phystwin_spring_graph,
 )
-from bayesian_phystwin.phystwin_residual_dynamics import _load_pickle, _sha256
+from bayesian_phystwin.causal4d_provider_v1 import (
+    load_pickle,
+    sha256_file,
+)
 from causal4d.rest_geometry_transfer import write_canonical_material_graph
 
 
@@ -23,8 +26,8 @@ def build_canonical_material_graph_from_case(
 ) -> dict[str, Any]:
     """Freeze one fitted twin's object vertices/topology before collection."""
 
-    data = _load_pickle(final_data_path)
-    optimal = _load_pickle(optimal_params_path)
+    data = load_pickle(final_data_path)
+    optimal = load_pickle(optimal_params_path)
     observed = np.asarray(data["object_points"], dtype=float)
     surface = np.asarray(data["surface_points"], dtype=float)
     interior = np.asarray(data["interior_points"], dtype=float)
@@ -52,8 +55,8 @@ def build_canonical_material_graph_from_case(
         "artifact_kind": "canonical_phystwin_material_graph",
         **artifact,
         "inputs": {
-            "final_data_sha256": _sha256(final_data_path),
-            "optimal_params_sha256": _sha256(optimal_params_path),
+            "final_data_sha256": sha256_file(final_data_path),
+            "optimal_params_sha256": sha256_file(optimal_params_path),
         },
         "graph_config": {
             "object_radius": config.object_radius,

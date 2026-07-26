@@ -203,7 +203,7 @@ class OfficialWarpSparseGraphRunner:
             import warp as wp
         except ImportError as error:  # pragma: no cover - GPU integration
             raise RuntimeError("official-Warp replication requires torch and warp") from error
-        from bayesian_phystwin._phystwin_warp_backend import (
+        from bayesian_phystwin.causal4d_provider_v1 import (
             load_official_spring_mass_module,
             make_reliability_simulator_class,
         )
