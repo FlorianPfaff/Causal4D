@@ -108,6 +108,21 @@ def repository_git_state(repository_root: str | Path) -> dict[str, Any]:
     return {"commit_sha": commit, "dirty_worktree": bool(dirty_lines)}
 
 
+def validate_repository_checkout(
+    manifest: Mapping[str, Any], repository_root: str | Path
+) -> dict[str, Any]:
+    """Require the deployed checkout to be clean and at the frozen commit."""
+
+    state = repository_git_state(repository_root)
+    _require(not state["dirty_worktree"], "acquisition checkout is dirty")
+    frozen_commit = manifest.get("causal4d", {}).get("commit_sha")
+    _require(
+        state["commit_sha"] == frozen_commit,
+        "checkout does not match frozen Causal4D commit",
+    )
+    return state
+
+
 def build_method_freeze_manifest(
     repository_root: str | Path,
     *,
