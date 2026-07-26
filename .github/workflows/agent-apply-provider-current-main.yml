@@ -47,38 +47,98 @@ jobs:
           set -euo pipefail
           git switch -C agent/applied-bpt-provider-current-main
           if ! git apply --3way --index /tmp/provider.patch; then
-            {
-              echo "git status --short"
-              git status --short
-              echo
-              echo "unmerged index entries"
-              git ls-files -u
-            } > provider-apply-conflicts.txt
-            exit 1
+            mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
+            if [[ "${#conflicts[@]}" -ne 1 || \
+                  "${conflicts[0]}" != "src/causal4d/__init__.py" ]]; then
+              {
+                echo "git status --short"
+                git status --short
+                echo
+                echo "unmerged index entries"
+                git ls-files -u
+              } > provider-apply-conflicts.txt
+              exit 1
+            fi
+            git checkout --ours src/causal4d/__init__.py
+            git add src/causal4d/__init__.py
           fi
           python - <<'PY'
           from pathlib import Path
 
-          path = Path("pyproject.toml")
-          text = path.read_text(encoding="utf-8")
-          text = text.replace('version = "0.4.0"', 'version = "0.4.1"', 1)
-          path.write_text(text, encoding="utf-8")
+          init_path = Path("src/causal4d/__init__.py")
+          text = init_path.read_text(encoding="utf-8")
+          old_import = '''from causal4d.provider_contract import (
+              BASE_CAUSAL4D_PROVIDER_CAPABILITIES,
+              PHYSICAL_BELIEF_PROVIDER_SCHEMA_VERSION,
+              PhysicalBeliefProviderManifest,
+              ProviderCompatibilityResult,
+              validate_provider_compatibility,
+          )'''
+          new_import = '''from causal4d.provider_contract import (
+              BASE_CAUSAL4D_PROVIDER_CAPABILITIES,
+              BAYESIAN_PHYSTWIN_ARTIFACT_SCHEMA_VERSIONS,
+              BAYESIAN_PHYSTWIN_COMPATIBILITY_RANGE,
+              BAYESIAN_PHYSTWIN_PROVIDER_CAPABILITIES,
+              PHYSICAL_BELIEF_PROVIDER_SCHEMA_VERSION,
+              PhysicalBeliefProviderManifest,
+              ProviderCompatibilityResult,
+              load_bayesian_phystwin_provider_manifest,
+              require_bayesian_phystwin_provider,
+              validate_bayesian_phystwin_provider,
+              validate_provider_compatibility,
+          )'''
+          if old_import not in text and new_import not in text:
+              raise RuntimeError("provider-contract import block changed unexpectedly")
+          text = text.replace(old_import, new_import, 1)
+
+          additions = {
+              '    "BASE_CAUSAL4D_PROVIDER_CAPABILITIES",\n': (
+                  '    "BASE_CAUSAL4D_PROVIDER_CAPABILITIES",\n'
+                  '    "BAYESIAN_PHYSTWIN_ARTIFACT_SCHEMA_VERSIONS",\n'
+                  '    "BAYESIAN_PHYSTWIN_COMPATIBILITY_RANGE",\n'
+                  '    "BAYESIAN_PHYSTWIN_PROVIDER_CAPABILITIES",\n'
+              ),
+              '    "load_graph_discrepancy_belief",\n': (
+                  '    "load_bayesian_phystwin_provider_manifest",\n'
+                  '    "load_graph_discrepancy_belief",\n'
+              ),
+              '    "run_counterfactual_benchmark",\n': (
+                  '    "require_bayesian_phystwin_provider",\n'
+                  '    "run_counterfactual_benchmark",\n'
+              ),
+              '    "validate_provider_compatibility",\n': (
+                  '    "validate_bayesian_phystwin_provider",\n'
+                  '    "validate_provider_compatibility",\n'
+              ),
+          }
+          for anchor, replacement in additions.items():
+              if replacement not in text:
+                  if anchor not in text:
+                      raise RuntimeError(f"initializer anchor missing: {anchor!r}")
+                  text = text.replace(anchor, replacement, 1)
+          text = text.replace('__version__ = "0.3.0"', '__version__ = "0.4.1"')
+          init_path.write_text(text, encoding="utf-8")
+
+          project_path = Path("pyproject.toml")
+          project = project_path.read_text(encoding="utf-8")
+          project = project.replace('version = "0.4.0"', 'version = "0.4.1"', 1)
+          project_path.write_text(project, encoding="utf-8")
 
           workflow = Path(
               ".github/workflows/bayesian-phystwin-provider-compatibility.yml"
           )
           if workflow.exists():
-              text = workflow.read_text(encoding="utf-8")
+              contents = workflow.read_text(encoding="utf-8")
               secret_expression = "$" + "{{ secrets.BPT_READ_TOKEN }}"
               token_expression = "$" + "{{ env.BPT_READ_TOKEN }}"
-              text = text.replace(
+              contents = contents.replace(
                   "jobs:\n  compatibility:\n",
                   "jobs:\n  compatibility:\n"
                   "    env:\n"
                   f"      BPT_READ_TOKEN: {secret_expression}\n",
                   1,
               )
-              text = text.replace(
+              contents = contents.replace(
                   "    steps:\n      - name: Check out Causal4D\n",
                   "    steps:\n"
                   "      - name: Report unavailable private-repository token\n"
@@ -88,13 +148,13 @@ jobs:
                   "        if: env.BPT_READ_TOKEN != ''\n",
                   1,
               )
-              text = text.replace(
+              contents = contents.replace(
                   "      - name: Check out Bayesian-PhysTwin\n",
                   "      - name: Check out Bayesian-PhysTwin\n"
                   "        if: env.BPT_READ_TOKEN != ''\n",
                   1,
               )
-              text = text.replace(
+              contents = contents.replace(
                   "          path: bayesian-phystwin\n",
                   "          path: bayesian-phystwin\n"
                   f"          token: {token_expression}\n",
@@ -105,18 +165,19 @@ jobs:
                   "Install both repositories",
                   "Run cross-repository compatibility tests",
               ):
-                  text = text.replace(
+                  contents = contents.replace(
                       f"      - name: {name}\n",
                       f"      - name: {name}\n"
                       "        if: env.BPT_READ_TOKEN != ''\n",
                       1,
                   )
-              workflow.write_text(text, encoding="utf-8")
+              workflow.write_text(contents, encoding="utf-8")
           PY
+          git add src/causal4d/__init__.py pyproject.toml
           git rm -r .agent
           git rm .github/workflows/agent-apply-provider-current-main.yml
           rm -f .github/provider-current-main-trigger
-      - name: Upload conflict report
+      - name: Upload unexpected conflict report
         if: steps.apply_patch.outcome == 'failure'
         uses: actions/upload-artifact@v7
         with:
@@ -124,7 +185,7 @@ jobs:
           path: provider-apply-conflicts.txt
           if-no-files-found: error
           retention-days: 2
-      - name: Stop after conflict report
+      - name: Stop after unexpected conflict report
         if: steps.apply_patch.outcome == 'failure'
         run: exit 1
       - name: Validate current Causal4D suite
