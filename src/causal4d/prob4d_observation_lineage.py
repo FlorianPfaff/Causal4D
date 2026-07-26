@@ -59,8 +59,7 @@ def _resolved_stream_contract(
         )
     if declared != expected:
         raise ValueError(
-            "Prob4D causal stream contract version disagrees with covariance "
-            "semantics"
+            "Prob4D causal stream contract version disagrees with covariance semantics"
         )
     return expected, False
 
