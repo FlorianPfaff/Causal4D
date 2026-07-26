@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "causal4d"
-version = "0.4.0"
+version = "0.4.1"
 description = "Bayesian intervention abduction and interventional prediction for deformable-object dynamics"
 readme = "README.md"
 requires-python = ">=3.10"
