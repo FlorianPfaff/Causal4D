@@ -104,13 +104,6 @@ jobs:
             bayesian-phystwin/pyproject.toml
             prob4d/pyproject.toml
 
-      - name: Check golden-path script quality
-        if: steps.access.outputs.enabled == 'true'
-        run: |
-          python -m pip install "ruff>=0.15.22,<0.17"
-          python -m ruff check causal4d/ci/three_repository_*.py
-          python -m ruff format --check --diff causal4d/ci/three_repository_*.py
-
       - name: Record exact clean repository revisions
         if: steps.access.outputs.enabled == 'true'
         id: revisions
@@ -121,6 +114,13 @@ jobs:
           echo "prob4d=$(git -C prob4d rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "bpt=$(git -C bayesian-phystwin rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "causal4d=$(git -C causal4d rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Check golden-path script quality
+        if: steps.access.outputs.enabled == 'true'
+        run: |
+          python -m pip install "ruff>=0.15.22,<0.17"
+          python -m ruff check causal4d/ci/three_repository_*.py
+          python -m ruff format --check --diff causal4d/ci/three_repository_*.py
 
       - name: Build all three wheels
         if: steps.access.outputs.enabled == 'true'
