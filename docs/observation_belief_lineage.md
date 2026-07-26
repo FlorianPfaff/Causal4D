@@ -1,11 +1,20 @@
-# Observation-belief lineage
+# Observation lineage
 
-Causal4D can validate the versioned `phys4d.observation_belief` artifact emitted
-by Prob4D and consumed by Bayesian-PhysTwin without importing either provider.
-This preserves the repository boundary: Causal4D consumes a content-addressed
-belief and does not reinterpret the feeder's raw files.
+Causal4D validates portable observation artifacts without importing Prob4D or
+Bayesian-PhysTwin. Two related interfaces are supported:
 
-## Validation
+1. `phys4d.observation_belief` is a marginalized, content-addressed observation
+   belief suitable for grouped likelihoods and simple consumers.
+2. `prob4d.observation-factor-bundle` schema v3 preserves the exact unfused
+   points, conditional covariance, explicit `Sim(3)` gauge variables, separate
+   reliability fields, and the exclusive causal cutoff consumed by the
+   gauge-aware Bayesian-PhysTwin update.
+
+The second interface is the stronger estimator-provenance binding. A compatible
+marginalized belief does not prove that the estimator consumed the exact
+factor-bundle manifest and payload pair.
+
+## Observation-belief validation
 
 ```bash
 causal4d-observation-lineage validate \
@@ -13,7 +22,7 @@ causal4d-observation-lineage validate \
   twin_belief.npz
 ```
 
-Validation fails closed unless all of the following hold:
+Validation fails closed unless:
 
 - the schema name, version, exact array set, and content digest are valid;
 - every observation frame lies within the artifact's declared causal prefix;
@@ -23,15 +32,45 @@ Validation fails closed unless all of the following hold:
 - the observation interval is contained in the `TwinBelief` O-minus interval;
 - an already bound `TwinBelief` names the same observation artifact.
 
-Use `--require-bound` when the downstream command requires proof that the
-`TwinBelief` was produced from the validated observation rather than merely
-being compatible with it.
+Use `--require-bound` when a downstream command requires proof that the
+`TwinBelief` was produced from the artifact rather than merely being compatible
+with it.
+
+## Exact factor-bundle validation
+
+```bash
+causal4d-observation-lineage validate-factor-bundle \
+  observation_factors.json \
+  twin_belief.npz
+```
+
+Causal4D independently checks the schema-v3 manifest and its checksum-bound NPZ
+payload. Validation includes:
+
+- exact manifest and payload SHA-256 values and an artifact ID derived from both;
+- a relative payload path that cannot escape the manifest directory;
+- explicit case, stream, sequence, repository, and producer revision identities;
+- one exclusive `causal_frame_stop` shared by every factor;
+- unique factor and gauge identities and valid gauge references;
+- finite `Sim(3)` means and positive-semidefinite gauge covariance;
+- the exact payload array set, types, dimensions, and per-factor row identities;
+- separate association probability and residual-independent prior reliability;
+- fixed nominal-component probability and composite weight within every
+  correlation group;
+- finite active points, covariance, and optional rays;
+- case equality and containment in the `TwinBelief` O-minus interval.
+
+Schema-v2 factor bundles are deliberately not accepted here. Prob4D must first
+load and rewrite them as schema v3 so that the exclusive cutoff and newly
+separated reliability fields are explicit in the exact artifact being bound.
 
 ## Binding
 
-The estimator that actually consumes an observation artifact should bind its
-content address into the resulting `TwinBelief` metadata. The administrative
-CLI supports this operation only with an explicit acknowledgement:
+The estimator that actually consumes an artifact should bind its content
+address into the resulting `TwinBelief`. Administrative binding requires an
+explicit acknowledgement.
+
+For a marginalized observation belief:
 
 ```bash
 causal4d-observation-lineage bind \
@@ -41,19 +80,48 @@ causal4d-observation-lineage bind \
   --confirm-observation-was-consumed
 ```
 
-Binding creates a new content-addressed `TwinBelief`; it never mutates the
-source artifact. The metadata records the observation belief ID, schema,
-case/stream identity, causal cutoff, feeder repository/revision, and source
-manifest digest.
+For an exact Prob4D factor bundle:
 
-The acknowledgement is not a substitute for estimator integration. It prevents
-accidental binding during inspection, while the intended production path is for
-the Bayesian-PhysTwin estimator to call
-`bind_twin_belief_observation_lineage` immediately after constructing the
-belief from that exact artifact.
+```bash
+causal4d-observation-lineage bind-factor-bundle \
+  observation_factors.json \
+  unbound_twin_belief.npz \
+  bound_twin_belief.npz \
+  --confirm-factor-bundle-was-consumed
+```
+
+Binding creates a new content-addressed `TwinBelief`; it never mutates the
+source artifact. Factor-bundle metadata records:
+
+- the exact combined artifact ID;
+- manifest and payload SHA-256 values;
+- schema and version;
+- case, stream, and producer sequence identity;
+- exclusive causal cutoff;
+- source repository and revision.
+
+When a binding already exists, validation checks every recorded lineage field,
+not only the top-level artifact ID. A partial or internally inconsistent binding
+fails closed.
+
+The acknowledgement is not a substitute for estimator integration. Production
+Bayesian-PhysTwin code should bind the exact artifact immediately after
+constructing the belief from it. Inspection of a merely compatible artifact must
+not create provenance.
 
 ## Cross-repository compatibility
 
-Prob4D, Bayesian-PhysTwin, and Causal4D carry the same golden fixture. Its fixed
-artifact ID detects changes to descriptor canonicalization, array names, dtypes,
-shapes, or hashing rules before incompatible artifacts are exchanged.
+Prob4D owns the unfused observation-factor producer. Bayesian-PhysTwin owns the
+state, gauge, bias, and guarded-update inference. Causal4D independently checks
+the immutable artifact identities before using the resulting physical belief.
+This preserves the dependency direction:
+
+```text
+Prob4D factor bundle
+        -> Bayesian-PhysTwin guarded belief
+        -> Causal4D lineage validation and counterfactual inference
+```
+
+The existing cross-repository golden `ObservationBeliefV1` fixture still
+detects changes to the marginalized contract. The factor-bundle validator adds
+an exact byte-level lineage check for the richer estimator input.
