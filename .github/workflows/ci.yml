@@ -72,7 +72,19 @@ jobs:
           python -m pip install ".[dev]"
 
       - name: Run test suite
-        run: python -m pytest
+        run: >-
+          python -m pytest
+          --tb=short
+          --junitxml=pytest-results-${{ matrix.python-version }}.xml
+
+      - name: Upload pytest report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-results-${{ matrix.python-version }}
+          path: pytest-results-${{ matrix.python-version }}.xml
+          if-no-files-found: warn
+          retention-days: 14
 
   build:
     name: Build distribution
