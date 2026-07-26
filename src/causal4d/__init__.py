@@ -20,6 +20,7 @@ from causal4d.contracts import (
 from causal4d.counterfactual import apply_counterfactual_operator
 from causal4d.discrepancy_belief import (
     GraphDiscrepancyBelief,
+    graph_discrepancy_group_covariances,
     load_graph_discrepancy_belief,
     write_graph_discrepancy_belief,
 )
@@ -43,6 +44,7 @@ from causal4d.identifiability import (
     InterventionIdentifiabilityResult,
     assess_intervention_identifiability,
     finite_response_sensitivity,
+    project_identifiable_intervention_update,
 )
 from causal4d.observation_evidence import (
     GroupedObservationEvidence,
@@ -99,11 +101,13 @@ __all__ = [
     "build_protocol",
     "finite_response_sensitivity",
     "forecast_action_conditioned_persistence",
+    "graph_discrepancy_group_covariances",
     "graph_mode_joint_weights",
     "grouped_component_log_likelihoods",
     "load_graph_discrepancy_belief",
     "posterior_weights_from_grouped_evidence",
     "prefix_component_log_likelihood",
+    "project_identifiable_intervention_update",
     "run_counterfactual_benchmark",
     "run_latent_contact_benchmark",
     "update_joint_weights_from_prefix",
