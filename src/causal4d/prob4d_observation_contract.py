@@ -1,7 +1,7 @@
 """Independently validate legacy and joint-gauge Prob4D observation contracts.
 
 Causal4D intentionally validates the producer metadata without importing Prob4D
-or Bayesian-PhysTwin.  This keeps the causal lineage boundary available in the
+or Bayesian-PhysTwin. This keeps the causal lineage boundary available in the
 lightweight base installation and makes semantic drift fail closed.
 """
 
@@ -21,6 +21,8 @@ PROB4D_GAUGE_FACTOR_NAMES = PROB4D_LEGACY_GAUGE_FACTOR_NAMES
 PROB4D_JOINT_GAUGE_FACTOR_PREFIX = "joint_gauge_latent_"
 PROB4D_JOINT_GAUGE_MODEL = "sequential_joint_spanning_tree_v1"
 PROB4D_FIXED_LAG_GAUGE_MODEL = "fixed_lag_block_diagonal_approximation_v1"
+FIXED_EXTERNAL_CALIBRATION = "fixed_external_calibration"
+PROPAGATED_EXTERNAL_PRIOR = "propagated_external_prior"
 
 
 def _require(condition: bool, message: str) -> None:
@@ -64,9 +66,10 @@ def _require_probability(value: Any, *, name: str, positive: bool = False) -> fl
 def _validate_metric_anchor(
     metadata: Mapping[str, Any],
     *,
+    case_id: str,
     coordinate_frame: str,
     first_window: str,
-) -> tuple[str, str]:
+) -> tuple[str, str, str | None, str | None]:
     anchor = _require_mapping(
         metadata.get("metric_gauge_anchor"),
         name="metric_gauge_anchor",
@@ -84,6 +87,8 @@ def _validate_metric_anchor(
         "metric gauge anchor does not identify the first window",
     )
 
+    # Transitional artifacts predate the provider-specific stream version. Keep
+    # their optional fields compatible, but validate every field that is present.
     if "schema_name" in anchor:
         _require(
             anchor.get("schema_name") == "prob4d.metric-gauge-anchor",
@@ -103,31 +108,100 @@ def _validate_metric_anchor(
             anchor.get("metric_units") == "m",
             "metric gauge anchor must use metres",
         )
-    anchor_frame = anchor.get("coordinate_frame", anchor.get("world_frame_id"))
+    anchor_frame = anchor.get(
+        "coordinate_frame",
+        anchor.get("world_frame_id"),
+    )
     if anchor_frame is not None:
         _require(
             anchor_frame == coordinate_frame,
             "metric gauge-anchor frame differs from observation frame",
         )
-
+    if "world_frame_id" in anchor:
+        _require(
+            anchor.get("world_frame_id") == coordinate_frame,
+            "metric gauge-anchor world frame differs from observation frame",
+        )
+    if anchor.get("case_id") is not None:
+        _require(
+            anchor.get("case_id") == case_id,
+            "metric gauge-anchor case differs from observation case",
+        )
     if "source_kind" in anchor:
         _require(
             bool(str(anchor.get("source_kind", ""))),
             "metric gauge anchor has no source kind",
         )
-    if "calibration_artifact_sha256" in anchor:
-        _require_sha256(
-            anchor.get("calibration_artifact_sha256", ""),
+
+    calibration_digest = anchor.get("calibration_artifact_sha256")
+    if calibration_digest is not None:
+        calibration_digest = _require_sha256(
+            calibration_digest,
             name="metric gauge-anchor calibration_artifact_sha256",
         )
-    if "covariance_treatment" in anchor:
+    covariance_treatment = anchor.get("covariance_treatment")
+    if covariance_treatment is not None:
         _require(
-            anchor.get("covariance_treatment")
-            in {"fixed_external_calibration", "propagated_external_prior"},
-            "portable Prob4D causal artifact requires a fixed metric anchor or propagated external prior",
+            covariance_treatment
+            in {FIXED_EXTERNAL_CALIBRATION, PROPAGATED_EXTERNAL_PRIOR},
+            "portable Prob4D causal artifact requires a fixed metric anchor "
+            "or propagated external prior",
         )
 
-    return anchor_id, anchor_source_sha256
+    declared_version = metadata.get("prob4d_causal_stream_contract_version")
+    explicit_v2 = (
+        isinstance(declared_version, int)
+        and not isinstance(declared_version, bool)
+        and declared_version == 2
+    )
+    if explicit_v2:
+        _require(
+            anchor.get("schema_name") == "prob4d.metric-gauge-anchor"
+            and _require_integer(
+                anchor.get("schema_version"),
+                name="metric gauge-anchor schema_version",
+            )
+            == 1,
+            "Prob4D stream contract v2 requires metric gauge-anchor schema v1",
+        )
+        _require(
+            anchor.get("case_id") == case_id,
+            "Prob4D stream contract v2 anchor must identify the observation case",
+        )
+        _require(
+            anchor.get("coordinate_frame") == coordinate_frame
+            and anchor.get("world_frame_id") == coordinate_frame,
+            "Prob4D stream contract v2 anchor must identify the world frame",
+        )
+        _require(
+            anchor.get("metric_units") == "m",
+            "Prob4D stream contract v2 anchor must declare metric units",
+        )
+        _require(
+            bool(str(anchor.get("source_kind", ""))),
+            "Prob4D stream contract v2 anchor has no source kind",
+        )
+        _require(
+            calibration_digest is not None,
+            "Prob4D stream contract v2 anchor has no calibration_artifact_sha256",
+        )
+        _require(
+            covariance_treatment
+            in {FIXED_EXTERNAL_CALIBRATION, PROPAGATED_EXTERNAL_PRIOR},
+            "Prob4D stream contract v2 anchor has no covariance treatment",
+        )
+        _require(
+            metadata.get("metric_anchor_covariance_in_joint_factor") is True,
+            "Prob4D stream contract v2 must include metric-anchor covariance "
+            "in its joint factor",
+        )
+
+    return (
+        anchor_id,
+        anchor_source_sha256,
+        None if calibration_digest is None else str(calibration_digest),
+        None if covariance_treatment is None else str(covariance_treatment),
+    )
 
 
 def _validate_factor_semantics(
@@ -141,7 +215,8 @@ def _validate_factor_semantics(
     window_indices = np.asarray(arrays["window_indices"], dtype=np.int64)
 
     if factor_names == PROB4D_LEGACY_GAUGE_FACTOR_NAMES and np.array_equal(
-        factor_groups, window_indices
+        factor_groups,
+        window_indices,
     ):
         return {
             "covariance_semantics": "legacy_per_window_sim3_marginals_v1",
@@ -163,7 +238,10 @@ def _validate_factor_semantics(
         "Prob4D joint-gauge factor names are not canonical",
     )
     _require(
-        np.array_equal(np.unique(factor_groups), np.asarray([0], dtype=np.int64)),
+        np.array_equal(
+            np.unique(factor_groups),
+            np.asarray([0], dtype=np.int64),
+        ),
         "Prob4D joint-gauge artifact must use one shared factor group",
     )
     _require(
@@ -229,7 +307,10 @@ def _validate_factor_semantics(
     max_rank = posterior.get("max_gauge_rank")
     if max_rank is not None:
         _require(
-            _require_integer(max_rank, name="gauge-posterior max_gauge_rank")
+            _require_integer(
+                max_rank,
+                name="gauge-posterior max_gauge_rank",
+            )
             >= factor_rank,
             "gauge-posterior max rank is below the exported factor rank",
         )
@@ -313,6 +394,8 @@ def validate_prob4d_causal_observation_metadata(
         descriptor.get("source_artifact_sha256", ""),
         name="source_artifact_sha256",
     )
+    case_id = str(descriptor.get("case_id", ""))
+    _require(bool(case_id), "Prob4D causal artifact has no case ID")
     window_names = tuple(map(str, descriptor.get("window_names", ())))
     _require(
         bool(window_names),
@@ -337,12 +420,22 @@ def validate_prob4d_causal_observation_metadata(
         "Prob4D causal artifact has no coordinate frame",
     )
 
-    anchor_id, anchor_source_sha256 = _validate_metric_anchor(
+    (
+        anchor_id,
+        anchor_source_sha256,
+        calibration_artifact_sha256,
+        covariance_treatment,
+    ) = _validate_metric_anchor(
         metadata,
+        case_id=case_id,
         coordinate_frame=coordinate_frame,
         first_window=window_names[0],
     )
-    factor_validation = _validate_factor_semantics(descriptor, arrays, metadata)
+    factor_validation = _validate_factor_semantics(
+        descriptor,
+        arrays,
+        metadata,
+    )
 
     causal_stop = _require_integer(
         descriptor.get("causal_frame_stop"),
@@ -466,12 +559,15 @@ def validate_prob4d_causal_observation_metadata(
         "causal_frame_stop": causal_stop,
         "window_count": len(window_names),
         "metric_anchor_id": anchor_id,
+        "metric_anchor_covariance_treatment": covariance_treatment,
+        "calibration_artifact_sha256": calibration_artifact_sha256,
         "source_artifact_sha256": source_artifact_sha256,
         **factor_validation,
     }
 
 
 __all__ = [
+    "FIXED_EXTERNAL_CALIBRATION",
     "PROB4D_CAUSAL_LINEAGE_VERSION",
     "PROB4D_CAUSAL_STREAM_ID",
     "PROB4D_FIXED_LAG_GAUGE_MODEL",
@@ -480,6 +576,7 @@ __all__ = [
     "PROB4D_JOINT_GAUGE_MODEL",
     "PROB4D_LEGACY_GAUGE_FACTOR_NAMES",
     "PROB4D_SOURCE_REPOSITORY",
+    "PROPAGATED_EXTERNAL_PRIOR",
     "is_prob4d_causal_observation_descriptor",
     "validate_prob4d_causal_observation_metadata",
 ]

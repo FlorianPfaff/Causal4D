@@ -13,7 +13,10 @@ from causal4d.observation_lineage import (
     compute_observation_artifact_id,
     load_observation_lineage,
 )
-from causal4d.prob4d_observation_lineage import PROB4D_JOINT_GAUGE_MODEL
+from causal4d.prob4d_observation_lineage import (
+    PROB4D_JOINT_GAUGE_MODEL,
+    PROPAGATED_EXTERNAL_PRIOR,
+)
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "prob4d_joint_observation_v1.json"
 
@@ -45,6 +48,24 @@ def _parts() -> tuple[dict, dict[str, np.ndarray], str]:
         for name, record in payload["arrays"].items()
     }
     return descriptor, arrays, payload["expected_artifact_id"]
+
+
+def _declare_explicit_v2(descriptor: dict) -> None:
+    metadata = descriptor["metadata"]
+    metadata["prob4d_causal_stream_contract_version"] = 2
+    metadata["metric_anchor_covariance_in_joint_factor"] = True
+    metadata["metric_gauge_anchor"].update(
+        {
+            "schema_name": "prob4d.metric-gauge-anchor",
+            "schema_version": 1,
+            "case_id": descriptor["case_id"],
+            "coordinate_frame": "phystwin-world",
+            "world_frame_id": "phystwin-world",
+            "metric_units": "m",
+            "calibration_artifact_sha256": "b" * 64,
+            "covariance_treatment": PROPAGATED_EXTERNAL_PRIOR,
+        }
+    )
 
 
 def _write(path: Path, *, mutate=None) -> str:
@@ -88,6 +109,54 @@ def test_joint_gauge_fixture_is_validated_and_bound(tmp_path: Path) -> None:
         bound.metadata["source_observation_provider_validation"]
         == lineage.provider_validation
     )
+
+
+def test_explicit_v2_binds_calibration_and_anchor_covariance(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "observation-v2.npz"
+
+    def mutate(descriptor, arrays):
+        del arrays
+        _declare_explicit_v2(descriptor)
+
+    _write(path, mutate=mutate)
+    validation = load_observation_lineage(path).provider_validation
+
+    assert validation["stream_contract_version"] == 2
+    assert validation["stream_contract_version_inferred"] is False
+    assert validation["calibration_artifact_sha256"] == "b" * 64
+    assert validation["metric_anchor_covariance_treatment"] == PROPAGATED_EXTERNAL_PRIOR
+
+
+def test_explicit_v2_rejects_missing_calibration_digest(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "missing-calibration.npz"
+
+    def mutate(descriptor, arrays):
+        del arrays
+        _declare_explicit_v2(descriptor)
+        del descriptor["metadata"]["metric_gauge_anchor"]["calibration_artifact_sha256"]
+
+    _write(path, mutate=mutate)
+    with pytest.raises(ValueError, match="calibration_artifact_sha256"):
+        load_observation_lineage(path)
+
+
+def test_explicit_v2_rejects_untracked_anchor_covariance(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "untracked-anchor-covariance.npz"
+
+    def mutate(descriptor, arrays):
+        del arrays
+        _declare_explicit_v2(descriptor)
+        descriptor["metadata"]["metric_anchor_covariance_in_joint_factor"] = False
+
+    _write(path, mutate=mutate)
+    with pytest.raises(ValueError, match="include metric-anchor covariance"):
+        load_observation_lineage(path)
 
 
 def test_joint_gauge_fixture_rejects_per_window_factor_groups(
