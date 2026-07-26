@@ -1,6 +1,10 @@
+import inspect
+
 import numpy as np
 
+import causal4d.bpt_belief as bpt_belief_module
 from causal4d.bpt_belief import (
+    BPT_PROVIDER_REVISION,
     BPTBeliefExportConfig,
     build_twin_belief_from_replays,
     lift_isotropic_discrepancy_variance,
@@ -58,6 +62,10 @@ def test_full_belief_uses_particle_specific_endpoint_state() -> None:
     )
     assert belief.metadata["future_frames_read_by_estimator"] == 0
     assert belief.metadata["maximum_pairwise_endpoint_rmse_m"] > 0.0
+    assert belief.metadata["bpt_provider_revision"] == BPT_PROVIDER_REVISION
+    assert belief.metadata["bpt_provider_compatibility_validated"]
+    assert len(belief.metadata["bpt_provider_manifest_id"]) == 64
+    assert len(belief.metadata["bpt_physical_belief_id"]) == 64
 
 
 def test_belief_estimation_cannot_see_changed_future_frames() -> None:
@@ -108,3 +116,15 @@ def test_variance_lift_uses_squared_interpolation_weights() -> None:
     expected_extra = 0.25**2 * 1.0 + 0.75**2 * 4.0
     assert np.allclose(lifted[:2, 0], tracked)
     assert np.allclose(lifted[2], expected_extra)
+
+
+def test_adapter_does_not_import_private_bpt_implementation_modules() -> None:
+    source = inspect.getsource(bpt_belief_module)
+    forbidden = (
+        "phystwin_additional_bayesian_confirmation",
+        "phystwin_bayesian_anchor",
+        "phystwin_residual_dynamics",
+        "phystwin_state_injection",
+    )
+    assert all(name not in source for name in forbidden)
+    assert "bayesian_phystwin.causal4d_provider_v1" in source
