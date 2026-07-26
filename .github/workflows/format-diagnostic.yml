@@ -12,13 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-          cache: pip
-      - run: python -m pip install -e '.[dev]'
       - name: Print exact Ruff formatting diff
-        run: >-
-          python -m ruff format --diff
-          src/causal4d/prob4d_observation_lineage.py
-          tests/test_prob4d_stream_contract_version.py
+        uses: astral-sh/ruff-action@v3
+        with:
+          version: '0.16.0'
+          args: >-
+            format --diff
+            src/causal4d/prob4d_observation_lineage.py
+            tests/test_prob4d_stream_contract_version.py
