@@ -9,22 +9,38 @@ from pathlib import Path
 
 import numpy as np
 
-from causal4d.contracts import (
-    CounterfactualQuery,
-    FactualIntervention,
-    TwinBelief,
-    load_contract,
-    save_contract,
-)
-from causal4d.counterfactual import apply_counterfactual_operator
-from causal4d.phystwin_backend import (
-    OfficialPhysTwinBackend,
-    OfficialPhysTwinBackendConfig,
-    PhysTwinHypothesisConfig,
-    hidden_action_proposals,
-    known_action_proposal,
-    save_rollout_bank,
-)
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global CounterfactualQuery
+    global FactualIntervention
+    global TwinBelief
+    global load_contract
+    global save_contract
+    global apply_counterfactual_operator
+    global OfficialPhysTwinBackend
+    global OfficialPhysTwinBackendConfig
+    global PhysTwinHypothesisConfig
+    global hidden_action_proposals
+    global known_action_proposal
+    global save_rollout_bank
+
+    from causal4d.contracts import (
+        CounterfactualQuery,
+        FactualIntervention,
+        TwinBelief,
+        load_contract,
+        save_contract,
+    )
+    from causal4d.counterfactual import apply_counterfactual_operator
+    from causal4d.phystwin_backend import (
+        OfficialPhysTwinBackend,
+        OfficialPhysTwinBackendConfig,
+        PhysTwinHypothesisConfig,
+        hidden_action_proposals,
+        known_action_proposal,
+        save_rollout_bank,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -74,6 +90,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    _load_runtime_dependencies()
     belief_artifact = load_contract(args.twin_belief_npz)
     factual_artifact = load_contract(args.factual_intervention_npz)
     if not isinstance(belief_artifact, TwinBelief):

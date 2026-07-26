@@ -1,0 +1,216 @@
+name: Optional integrations
+
+on:
+  schedule:
+    - cron: "47 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      run_gpu:
+        description: Run the self-hosted CUDA/Warp smoke job
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: optional-integrations-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  vision:
+    name: Vision / OpenCV CPU
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install vision dependencies
+        run: python -m pip install -e ".[dev,vision]"
+      - name: Verify vision runtime
+        run: |
+          python - <<'PY'
+          import cv2
+          import PIL
+          import torch
+
+          print("OpenCV", cv2.__version__)
+          print("Pillow", PIL.__version__)
+          print("PyTorch", torch.__version__)
+          PY
+      - name: Run vision-facing Causal4D tests
+        run: |
+          python -m pytest -ra \
+            tests/test_deform360_object_sam2.py \
+            tests/test_deform360_sam2.py \
+            tests/test_deform360_sam2_prefix.py \
+            tests/test_deform360_sam2_suffix.py \
+            tests/test_deform360_sam2_views.py \
+            tests/test_deform360_splat_probe.py \
+            tests/test_deform360_visual_hull.py
+
+  bpt-vision:
+    name: Bayesian-PhysTwin OpenCV collection
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Causal4D
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Detect private-repository credential
+        id: access
+        env:
+          BPT_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
+        run: |
+          if [[ -n "${BPT_READ_TOKEN}" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::BPT_READ_TOKEN is absent; BPT OpenCV collection was not exercised."
+          fi
+      - name: Read exact provider pin
+        if: steps.access.outputs.enabled == 'true'
+        id: pin
+        run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
+      - name: Check out pinned Bayesian-PhysTwin
+        if: steps.access.outputs.enabled == 'true'
+        uses: actions/checkout@v6
+        with:
+          repository: FlorianPfaff/Bayesian-PhysTwin
+          ref: ${{ steps.pin.outputs.sha }}
+          token: ${{ secrets.BPT_READ_TOKEN }}
+          path: _bpt
+      - name: Install BPT tests with explicit vision runtime
+        if: steps.access.outputs.enabled == 'true'
+        run: |
+          python -m pip install -e "./_bpt[dev]" opencv-python
+      - name: Run BPT tests that collect OpenCV modules
+        if: steps.access.outputs.enabled == 'true'
+        run: |
+          python -m pytest -ra \
+            _bpt/tests/test_deform360_prefix_cadence_repair.py \
+            _bpt/tests/test_deform360_raw_camera_observation.py
+
+  warp-cpu:
+    name: Warp CPU boundary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Causal4D
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Detect private-repository credential
+        id: access
+        env:
+          BPT_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
+        run: |
+          if [[ -n "${BPT_READ_TOKEN}" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::BPT_READ_TOKEN is absent; Warp/provider integration was not exercised."
+          fi
+      - name: Read exact provider pin
+        if: steps.access.outputs.enabled == 'true'
+        id: pin
+        run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
+      - name: Check out pinned Bayesian-PhysTwin
+        if: steps.access.outputs.enabled == 'true'
+        uses: actions/checkout@v6
+        with:
+          repository: FlorianPfaff/Bayesian-PhysTwin
+          ref: ${{ steps.pin.outputs.sha }}
+          token: ${{ secrets.BPT_READ_TOKEN }}
+          path: _bpt
+      - name: Install Warp CPU stack
+        if: steps.access.outputs.enabled == 'true'
+        run: |
+          python -m pip install -e ".[dev,warp]"
+          python -m pip install -e ./_bpt
+          python -m pip check
+      - name: Verify Warp CPU runtime
+        if: steps.access.outputs.enabled == 'true'
+        run: |
+          python - <<'PY'
+          import torch
+          import warp as wp
+
+          wp.init()
+          print("PyTorch", torch.__version__)
+          print("Warp", wp.__version__)
+          print("Warp CPU", wp.get_device("cpu"))
+          PY
+      - name: Run Warp-boundary tests
+        if: steps.access.outputs.enabled == 'true'
+        run: |
+          python -m pytest -ra \
+            tests/test_deform360_phystwin_feasibility.py \
+            tests/test_deform360_replication_warp.py \
+            tests/test_pokeflex_warp_source.py
+
+  gpu:
+    name: CUDA / Warp self-hosted smoke
+    if: github.event_name == 'workflow_dispatch' && inputs.run_gpu
+    runs-on: [self-hosted, linux, x64, gpu]
+    steps:
+      - name: Check out Causal4D
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Require private-repository credential
+        env:
+          BPT_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
+        run: test -n "${BPT_READ_TOKEN}"
+      - name: Read exact provider pin
+        id: pin
+        run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
+      - name: Check out pinned Bayesian-PhysTwin
+        uses: actions/checkout@v6
+        with:
+          repository: FlorianPfaff/Bayesian-PhysTwin
+          ref: ${{ steps.pin.outputs.sha }}
+          token: ${{ secrets.BPT_READ_TOKEN }}
+          path: _bpt
+      - name: Install GPU integration stack
+        run: |
+          python -m pip install -e ".[dev,vision,warp]"
+          python -m pip install -e ./_bpt
+          python -m pip check
+      - name: Verify CUDA and Warp devices
+        run: |
+          python - <<'PY'
+          import torch
+          import warp as wp
+
+          if not torch.cuda.is_available():
+              raise SystemExit("PyTorch cannot see CUDA")
+          wp.init()
+          cuda_devices = wp.get_cuda_devices()
+          if not cuda_devices:
+              raise SystemExit("Warp cannot see a CUDA device")
+          print(torch.cuda.get_device_name(0))
+          print(cuda_devices)
+          PY
+      - name: Run focused GPU-safe contract tests
+        run: |
+          python scripts/ci/run_bpt_integration_tests.py
+          python -m pytest -ra \
+            tests/test_deform360_phystwin_feasibility.py \
+            tests/test_deform360_replication_warp.py

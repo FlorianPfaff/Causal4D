@@ -8,14 +8,26 @@ from collections.abc import Sequence
 from dataclasses import asdict
 from pathlib import Path
 
-from causal4d.contracts import PhysicalPosterior, load_contract, save_contract
-from causal4d.molmo_acceptance import load_molmo_acceptance_result
-from causal4d.molmo_adapter import load_molmo_forecasts
-from causal4d.semantic_posterior import molmo_task_evidence
-from causal4d.semantic_trust import (
-    apply_adaptive_semantic_trust,
-    load_semantic_trust_calibration,
-)
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global PhysicalPosterior
+    global load_contract
+    global save_contract
+    global load_molmo_acceptance_result
+    global load_molmo_forecasts
+    global molmo_task_evidence
+    global apply_adaptive_semantic_trust
+    global load_semantic_trust_calibration
+
+    from causal4d.contracts import PhysicalPosterior, load_contract, save_contract
+    from causal4d.molmo_acceptance import load_molmo_acceptance_result
+    from causal4d.molmo_adapter import load_molmo_forecasts
+    from causal4d.semantic_posterior import molmo_task_evidence
+    from causal4d.semantic_trust import (
+        apply_adaptive_semantic_trust,
+        load_semantic_trust_calibration,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -39,6 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    _load_runtime_dependencies()
     physical_artifact = load_contract(args.physical_posterior_npz)
     if not isinstance(physical_artifact, PhysicalPosterior):
         raise TypeError("physical_posterior_npz must contain a PhysicalPosterior")

@@ -12,13 +12,23 @@ from pathlib import Path
 
 import numpy as np
 
-from bayesian_phystwin.causal4d_provider_v1 import target_validity
-from causal4d.contracts import TwinBelief, load_contract
-from causal4d.parameter_support_audit import (
-    ParameterSupportAuditConfig,
-    audit_parameter_support,
-)
-from causal4d.phystwin_backend import load_rollout_bank
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global target_validity
+    global TwinBelief
+    global load_contract
+    global ParameterSupportAuditConfig
+    global audit_parameter_support
+    global load_rollout_bank
+
+    from bayesian_phystwin.causal4d_provider_v1 import target_validity
+    from causal4d.contracts import TwinBelief, load_contract
+    from causal4d.parameter_support_audit import (
+        ParameterSupportAuditConfig,
+        audit_parameter_support,
+    )
+    from causal4d.phystwin_backend import load_rollout_bank
 
 
 def _sha256(path: str | Path) -> str:
@@ -101,6 +111,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    _load_runtime_dependencies()
     bank, manifest = load_rollout_bank(args.full_rollout_bank_npz)
     artifact = load_contract(args.full_twin_belief_npz)
     if not isinstance(artifact, TwinBelief):

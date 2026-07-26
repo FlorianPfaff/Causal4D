@@ -7,11 +7,18 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
-from causal4d.molmo_adapter import (
-    prepare_molmo_phystwin_query,
-    run_molmo_motion_forecasts,
-    save_molmo_forecasts,
-)
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global prepare_molmo_phystwin_query
+    global run_molmo_motion_forecasts
+    global save_molmo_forecasts
+
+    from causal4d.molmo_adapter import (
+        prepare_molmo_phystwin_query,
+        run_molmo_motion_forecasts,
+        save_molmo_forecasts,
+    )
 
 
 def _caption(value: str) -> tuple[str, str]:
@@ -53,6 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    _load_runtime_dependencies()
     captions = dict(args.caption)
     if len(captions) != len(args.caption):
         raise ValueError("caption ids must be unique")

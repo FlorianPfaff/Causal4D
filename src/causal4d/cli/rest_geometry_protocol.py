@@ -5,9 +5,14 @@ from __future__ import annotations
 import argparse
 import json
 
-from causal4d.rest_geometry_protocol import (
-    write_rest_geometry_protocol_artifacts,
-)
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global write_rest_geometry_protocol_artifacts
+
+    from causal4d.rest_geometry_protocol import (
+        write_rest_geometry_protocol_artifacts,
+    )
 
 
 def main() -> None:
@@ -21,6 +26,7 @@ def main() -> None:
     parser.add_argument("output_dir")
     parser.add_argument("--verify-files", action="store_true")
     args = parser.parse_args()
+    _load_runtime_dependencies()
     result = write_rest_geometry_protocol_artifacts(
         args.dataset_root,
         args.output_dir,

@@ -5,9 +5,14 @@ from __future__ import annotations
 import argparse
 import json
 
-from causal4d.phystwin_discrepancy_localization import (
-    evaluate_phystwin_discrepancy_localization_case,
-)
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global evaluate_phystwin_discrepancy_localization_case
+
+    from causal4d.phystwin_discrepancy_localization import (
+        evaluate_phystwin_discrepancy_localization_case,
+    )
 
 
 def main() -> None:
@@ -26,6 +31,7 @@ def main() -> None:
     parser.add_argument("--force-step-n", type=float, default=0.01)
     parser.add_argument("--structural-step-m", type=float, default=0.002)
     args = parser.parse_args()
+    _load_runtime_dependencies()
     result = evaluate_phystwin_discrepancy_localization_case(
         args.official_repo,
         args.final_data,
