@@ -50,6 +50,9 @@ from causal4d.observation_evidence import (
     GroupedObservationEvidence,
     ObservationGroup,
 )
+from causal4d.partial_identifiability import (
+    preserve_prior_within_unidentified_subspace,
+)
 from causal4d.prefix_likelihood import (
     PrefixLikelihoodConfig,
     prefix_component_log_likelihood,
@@ -63,6 +66,10 @@ from causal4d.semantic_freshness import (
     SemanticFreshnessLimits,
     SemanticTimingMetadata,
     apply_semantic_freshness_gate,
+)
+from causal4d.stable_discrepancy_dynamics import (
+    StableDiscrepancyTransitionModel,
+    forecast_action_conditioned_dynamics,
 )
 
 __all__ = [
@@ -89,6 +96,7 @@ __all__ = [
     "SemanticFreshnessDecision",
     "SemanticFreshnessLimits",
     "SparseTrajectoryEvidence",
+    "StableDiscrepancyTransitionModel",
     "TaskPosterior",
     "SemanticTimingMetadata",
     "TwinBelief",
@@ -100,6 +108,7 @@ __all__ = [
     "build_action_conditioned_features",
     "build_protocol",
     "finite_response_sensitivity",
+    "forecast_action_conditioned_dynamics",
     "forecast_action_conditioned_persistence",
     "graph_discrepancy_group_covariances",
     "graph_mode_joint_weights",
@@ -107,6 +116,7 @@ __all__ = [
     "load_graph_discrepancy_belief",
     "posterior_weights_from_grouped_evidence",
     "prefix_component_log_likelihood",
+    "preserve_prior_within_unidentified_subspace",
     "project_identifiable_intervention_update",
     "run_counterfactual_benchmark",
     "run_latent_contact_benchmark",
