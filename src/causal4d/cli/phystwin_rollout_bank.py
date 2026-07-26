@@ -156,9 +156,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "case": backend.case_name,
                 "action_setting": args.action_setting,
                 "rollout_shape": list(bank.trajectories.shape),
+                "bpt_retained_parameter_mass": (
+                    backend.particles.bpt_retained_probability_mass
+                ),
+                "causal4d_retained_parameter_mass": (
+                    backend.particles.causal4d_retained_probability_mass
+                ),
                 "retained_parameter_mass": backend.particles.retained_probability_mass,
                 "represented_parameter_mass": (
                     backend.particles.represented_probability_mass
+                ),
+                "parameter_mass_accounting": (
+                    backend.particles.probability_mass_accounting()
                 ),
                 "parameter_support_method": support_method,
                 "twin_belief": str(twin_belief_path.resolve()),

@@ -40,7 +40,11 @@ def _load_pickle(path: str | Path) -> Any:
 
 @dataclass(frozen=True)
 class BayesianPhysTwinParticles:
-    """Selected object/controller spring-scale particles from a saved profile."""
+    """Selected spring-scale particles with staged posterior-mass accounting.
+
+    The legacy retained and represented fields are composed masses relative to
+    the pre-truncation Bayesian-PhysTwin posterior.
+    """
 
     log_scales: np.ndarray
     weights: np.ndarray
@@ -50,6 +54,11 @@ class BayesianPhysTwinParticles:
     selection_method: SupportMethod = "top_mass"
     represented_probability_mass: float | None = None
     source_particle_count: int | None = None
+    bpt_retained_probability_mass: float = 1.0
+    causal4d_retained_probability_mass: float | None = None
+    causal4d_represented_probability_mass: float | None = None
+    profile_grid_cell_count: int | None = None
+    bpt_source_weight_key: str | None = None
 
     def __post_init__(self) -> None:
         particles = np.asarray(self.log_scales, dtype=float)
@@ -63,29 +72,153 @@ class BayesianPhysTwinParticles:
             raise ValueError("particle arrays must be finite")
         if np.any(weights < 0.0) or not np.isclose(np.sum(weights), 1.0):
             raise ValueError("particle weights must be nonnegative and sum to one")
-        if not 0.0 < self.retained_probability_mass <= 1.0 + 1e-12:
-            raise ValueError("retained probability mass must lie in (0, 1]")
         if self.selection_method not in {"top_mass", "weighted_coreset"}:
             raise ValueError("unknown parameter support selection method")
-        represented = (
-            self.retained_probability_mass
+
+        composed_retained = float(self.retained_probability_mass)
+        composed_represented = float(
+            composed_retained
             if self.represented_probability_mass is None
             else self.represented_probability_mass
         )
-        if not 0.0 < represented <= 1.0 + 1e-12:
-            raise ValueError("represented probability mass must lie in (0, 1]")
+        bpt_retained = float(self.bpt_retained_probability_mass)
+        for name, value in (
+            ("retained probability mass", composed_retained),
+            ("represented probability mass", composed_represented),
+            ("BPT retained probability mass", bpt_retained),
+        ):
+            if not np.isfinite(value) or not 0.0 < value <= 1.0 + 1e-12:
+                raise ValueError(f"{name} must lie in (0, 1]")
+
+        causal4d_retained = float(
+            composed_retained / bpt_retained
+            if self.causal4d_retained_probability_mass is None
+            else self.causal4d_retained_probability_mass
+        )
+        causal4d_represented = float(
+            composed_represented / bpt_retained
+            if self.causal4d_represented_probability_mass is None
+            else self.causal4d_represented_probability_mass
+        )
+        for name, value in (
+            ("Causal4D retained probability mass", causal4d_retained),
+            ("Causal4D represented probability mass", causal4d_represented),
+        ):
+            if not np.isfinite(value) or not 0.0 < value <= 1.0 + 1e-12:
+                raise ValueError(f"{name} must lie in (0, 1]")
+        if not np.isclose(
+            composed_retained,
+            bpt_retained * causal4d_retained,
+            rtol=1e-12,
+            atol=1e-15,
+        ):
+            raise ValueError("composed retained mass must equal the two stage masses")
+        if not np.isclose(
+            composed_represented,
+            bpt_retained * causal4d_represented,
+            rtol=1e-12,
+            atol=1e-15,
+        ):
+            raise ValueError("composed represented mass must equal the stage masses")
+
         source_count = (
             len(particles)
             if self.source_particle_count is None
             else int(self.source_particle_count)
         )
+        profile_count = (
+            source_count
+            if self.profile_grid_cell_count is None
+            else int(self.profile_grid_cell_count)
+        )
         if source_count < len(particles):
             raise ValueError("source particle count cannot be below selected count")
+        if profile_count < source_count:
+            raise ValueError("profile grid count cannot be below source particle count")
         object.__setattr__(self, "log_scales", particles)
         object.__setattr__(self, "weights", weights)
         object.__setattr__(self, "grid_indices", indices)
-        object.__setattr__(self, "represented_probability_mass", represented)
+        object.__setattr__(self, "retained_probability_mass", composed_retained)
+        object.__setattr__(
+            self, "represented_probability_mass", composed_represented
+        )
+        object.__setattr__(self, "bpt_retained_probability_mass", bpt_retained)
+        object.__setattr__(
+            self, "causal4d_retained_probability_mass", causal4d_retained
+        )
+        object.__setattr__(
+            self,
+            "causal4d_represented_probability_mass",
+            causal4d_represented,
+        )
         object.__setattr__(self, "source_particle_count", source_count)
+        object.__setattr__(self, "profile_grid_cell_count", profile_count)
+
+    def probability_mass_accounting(self) -> dict[str, Any]:
+        """Return producer, consumer, and composed posterior-mass diagnostics."""
+
+        return {
+            "bpt_truncation": {
+                "source_weight_key": self.bpt_source_weight_key,
+                "retained_probability_mass": self.bpt_retained_probability_mass,
+                "profile_grid_cell_count": self.profile_grid_cell_count,
+                "retained_grid_cell_count": self.source_particle_count,
+            },
+            "causal4d_support_reduction": {
+                "method": self.selection_method,
+                "directly_retained_probability_mass": (
+                    self.causal4d_retained_probability_mass
+                ),
+                "represented_probability_mass": (
+                    self.causal4d_represented_probability_mass
+                ),
+                "source_particle_count": self.source_particle_count,
+                "selected_particle_count": len(self.weights),
+            },
+            "composed_relative_to_original_posterior": {
+                "directly_retained_probability_mass": (
+                    self.retained_probability_mass
+                ),
+                "represented_probability_mass": self.represented_probability_mass,
+            },
+        }
+
+
+def _normalized_profile_weight_grid(
+    values: np.ndarray,
+    *,
+    expected_shape: tuple[int, int],
+    label: str,
+) -> np.ndarray:
+    weights = np.asarray(values, dtype=float)
+    if weights.shape != expected_shape:
+        raise ValueError(f"{label} must have shape {expected_shape}")
+    if np.any(weights < 0.0) or not np.all(np.isfinite(weights)):
+        raise ValueError(f"{label} must be finite and nonnegative")
+    total = float(np.sum(weights))
+    if total <= 0.0:
+        raise ValueError(f"{label} must have positive mass")
+    return weights / total
+
+
+def _bpt_truncation_mass(
+    prediction_weights: np.ndarray,
+    source_weights: np.ndarray,
+    *,
+    source_weight_key: str,
+) -> float:
+    active = prediction_weights > 0.0
+    retained = float(np.sum(source_weights[active]))
+    if retained <= 0.0:
+        raise ValueError(f"{source_weight_key} has no mass on prediction support")
+    expected = np.zeros_like(source_weights)
+    expected[active] = source_weights[active] / retained
+    if not np.allclose(prediction_weights, expected, rtol=1e-8, atol=1e-12):
+        raise ValueError(
+            "prediction_weights are not a truncation and renormalization of "
+            f"{source_weight_key}"
+        )
+    return retained
 
 
 def load_bayesian_phystwin_particles(
@@ -122,15 +255,50 @@ def load_bayesian_phystwin_particles(
             if selected_weight_key not in archive.files:
                 raise ValueError(f"parameter profile has no {selected_weight_key!r}")
         weight_grid = np.asarray(archive[selected_weight_key], dtype=float)
+        source_prediction_grid = (
+            np.asarray(archive["source_prediction_weights"], dtype=float)
+            if "source_prediction_weights" in archive.files
+            else None
+        )
+        posterior_grid = (
+            np.asarray(archive["posterior_weights"], dtype=float)
+            if "posterior_weights" in archive.files
+            else None
+        )
+
     expected = (len(object_grid), len(controller_grid))
-    if weight_grid.shape != expected:
-        raise ValueError(f"profile weight grid must have shape {expected}")
-    if np.any(weight_grid < 0.0) or not np.all(np.isfinite(weight_grid)):
-        raise ValueError("profile weights must be finite and nonnegative")
-    total = float(np.sum(weight_grid))
-    if total <= 0.0:
-        raise ValueError("profile weights must have positive mass")
-    normalized = weight_grid / total
+    normalized = _normalized_profile_weight_grid(
+        weight_grid,
+        expected_shape=expected,
+        label=f"profile {selected_weight_key}",
+    )
+    bpt_retained_mass = 1.0
+    bpt_source_weight_key = selected_weight_key
+    if selected_weight_key == "prediction_weights":
+        source_grid = None
+        if source_prediction_grid is not None:
+            bpt_source_weight_key = "source_prediction_weights"
+            source_grid = source_prediction_grid
+        elif posterior_grid is not None:
+            bpt_source_weight_key = "posterior_weights"
+            source_grid = posterior_grid
+        if source_grid is not None:
+            normalized_source = _normalized_profile_weight_grid(
+                source_grid,
+                expected_shape=expected,
+                label=f"profile {bpt_source_weight_key}",
+            )
+            bpt_retained_mass = _bpt_truncation_mass(
+                normalized,
+                normalized_source,
+                source_weight_key=bpt_source_weight_key,
+            )
+        elif np.any(normalized == 0.0):
+            raise ValueError(
+                "truncated prediction_weights require source_prediction_weights "
+                "to recover their mass relative to the original posterior"
+            )
+
     object_mesh, controller_mesh = np.meshgrid(
         object_grid,
         controller_grid,
@@ -141,22 +309,33 @@ def load_bayesian_phystwin_particles(
         np.unravel_index(np.arange(weight_grid.size), weight_grid.shape)
     )
     flat_weights = normalized.reshape(-1)
+    # Exact zeros are outside BPT's retained support and need no Warp rollout.
+    positive = np.flatnonzero(flat_weights > 0.0)
     reduction = reduce_parameter_support(
-        particles,
-        flat_weights,
+        particles[positive],
+        flat_weights[positive],
         maximum_count=maximum_count,
         method=support_method,
     )
-    selected = reduction.indices
+    selected = positive[reduction.indices]
+    causal4d_retained_mass = reduction.directly_retained_probability_mass
+    causal4d_represented_mass = reduction.represented_probability_mass
     return BayesianPhysTwinParticles(
         log_scales=particles[selected],
         weights=reduction.weights,
         grid_indices=grid_indices[selected],
         source_weight_key=selected_weight_key,
-        retained_probability_mass=reduction.directly_retained_probability_mass,
+        retained_probability_mass=bpt_retained_mass * causal4d_retained_mass,
         selection_method=support_method,
-        represented_probability_mass=reduction.represented_probability_mass,
+        represented_probability_mass=(
+            bpt_retained_mass * causal4d_represented_mass
+        ),
         source_particle_count=reduction.source_particle_count,
+        bpt_retained_probability_mass=bpt_retained_mass,
+        causal4d_retained_probability_mass=causal4d_retained_mass,
+        causal4d_represented_probability_mass=causal4d_represented_mass,
+        profile_grid_cell_count=weight_grid.size,
+        bpt_source_weight_key=bpt_source_weight_key,
     )
 
 
@@ -737,12 +916,17 @@ class OfficialPhysTwinBackend:
                 "count": len(self.particles.weights),
                 "log_scale_names": ["object_springs", "controller_springs"],
                 "source_weight_key": self.particles.source_weight_key,
+                "bpt_source_weight_key": self.particles.bpt_source_weight_key,
                 "selection_method": self.particles.selection_method,
                 "retained_probability_mass": self.particles.retained_probability_mass,
                 "represented_probability_mass": (
                     self.particles.represented_probability_mass
                 ),
+                "probability_mass_accounting": (
+                    self.particles.probability_mass_accounting()
+                ),
                 "source_particle_count": self.particles.source_particle_count,
+                "profile_grid_cell_count": self.particles.profile_grid_cell_count,
                 "grid_indices": self.particles.grid_indices.tolist(),
                 "log_scales": self.particles.log_scales.tolist(),
                 "weights": self.particles.weights.tolist(),
