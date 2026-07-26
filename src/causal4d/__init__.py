@@ -29,6 +29,11 @@ from causal4d.discrepancy_belief import (
     write_graph_discrepancy_belief,
 )
 from causal4d.evaluation import run_counterfactual_benchmark
+from causal4d.finite_query_ambiguity import (
+    FiniteQueryAmbiguityConfig,
+    FiniteQueryAmbiguityResult,
+    assess_finite_query_ambiguity,
+)
 from causal4d.graph_mode_abduction import (
     GraphModeAbductionConfig,
     abduct_factual_intervention_graph_mode,
@@ -62,6 +67,13 @@ from causal4d.prefix_likelihood import (
     prefix_component_log_likelihood,
     update_joint_weights_from_prefix,
 )
+from causal4d.provider_contract import (
+    BASE_CAUSAL4D_PROVIDER_CAPABILITIES,
+    PHYSICAL_BELIEF_PROVIDER_SCHEMA_VERSION,
+    PhysicalBeliefProviderManifest,
+    ProviderCompatibilityResult,
+    validate_provider_compatibility,
+)
 from causal4d.rollout_bank import JointRolloutBank, SparseTrajectoryEvidence
 from causal4d.semantic_freshness import (
     SEMANTIC_TIMING_SCHEMA_VERSION,
@@ -81,9 +93,12 @@ __all__ = [
     "ActionConditionedDiscrepancyForecast",
     "ActionConditionedDiscrepancyModel",
     "ActionConditionedPhysicalPosterior",
+    "BASE_CAUSAL4D_PROVIDER_CAPABILITIES",
     "CounterfactualBenchmarkConfig",
     "CounterfactualQuery",
     "FactualIntervention",
+    "FiniteQueryAmbiguityConfig",
+    "FiniteQueryAmbiguityResult",
     "GraphDiscrepancyBelief",
     "GraphModeAbductionConfig",
     "GroupLikelihoodDiagnostics",
@@ -94,8 +109,11 @@ __all__ = [
     "LatentContactConfig",
     "JointRolloutBank",
     "ObservationGroup",
+    "PHYSICAL_BELIEF_PROVIDER_SCHEMA_VERSION",
+    "PhysicalBeliefProviderManifest",
     "PhysicalPosterior",
     "PrefixLikelihoodConfig",
+    "ProviderCompatibilityResult",
     "SEMANTIC_TIMING_SCHEMA_VERSION",
     "SEMANTIC_TIMING_SCOPE",
     "SemanticFreshnessDecision",
@@ -110,6 +128,7 @@ __all__ = [
     "apply_action_conditioned_counterfactual_operator",
     "apply_counterfactual_operator",
     "apply_semantic_freshness_gate",
+    "assess_finite_query_ambiguity",
     "assess_intervention_identifiability",
     "build_action_conditioned_features",
     "build_protocol",
@@ -127,6 +146,7 @@ __all__ = [
     "run_counterfactual_benchmark",
     "run_latent_contact_benchmark",
     "update_joint_weights_from_prefix",
+    "validate_provider_compatibility",
     "write_graph_discrepancy_belief",
 ]
 
