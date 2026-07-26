@@ -10,6 +10,8 @@ from causal4d.hierarchical_abduction import abduct_hierarchical_interventions
 from causal4d.identifiability import (
     IdentifiabilityConfig,
     assess_intervention_identifiability,
+)
+from causal4d.partial_identifiability import (
     preserve_prior_within_unidentified_subspace,
 )
 from causal4d.prefix_likelihood import PrefixLikelihoodConfig
@@ -209,14 +211,14 @@ def test_parameter_scaling_makes_unit_conversion_invariant() -> None:
     )
     reference = assess_intervention_identifiability(
         sensitivity,
-        parameter_scale=[1.0, 1.0],
+        parameter_scales=[1.0, 1.0],
         config=config,
     )
     degrees = sensitivity.copy()
     degrees[:, 1] *= 180.0 / np.pi
     converted = assess_intervention_identifiability(
         degrees,
-        parameter_scale=[1.0, np.pi / 180.0],
+        parameter_scales=[1.0, np.pi / 180.0],
         config=config,
     )
     np.testing.assert_allclose(
