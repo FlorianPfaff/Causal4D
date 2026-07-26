@@ -43,6 +43,7 @@ from causal4d.identifiability import (
     InterventionIdentifiabilityResult,
     assess_intervention_identifiability,
     finite_response_sensitivity,
+    preserve_prior_within_unidentified_subspace,
 )
 from causal4d.observation_evidence import (
     GroupedObservationEvidence,
@@ -61,6 +62,10 @@ from causal4d.semantic_freshness import (
     SemanticFreshnessLimits,
     SemanticTimingMetadata,
     apply_semantic_freshness_gate,
+)
+from causal4d.stable_discrepancy_dynamics import (
+    StableDiscrepancyTransitionModel,
+    forecast_action_conditioned_dynamics,
 )
 
 __all__ = [
@@ -87,6 +92,7 @@ __all__ = [
     "SemanticFreshnessDecision",
     "SemanticFreshnessLimits",
     "SparseTrajectoryEvidence",
+    "StableDiscrepancyTransitionModel",
     "TaskPosterior",
     "SemanticTimingMetadata",
     "TwinBelief",
@@ -98,12 +104,14 @@ __all__ = [
     "build_action_conditioned_features",
     "build_protocol",
     "finite_response_sensitivity",
+    "forecast_action_conditioned_dynamics",
     "forecast_action_conditioned_persistence",
     "graph_mode_joint_weights",
     "grouped_component_log_likelihoods",
     "load_graph_discrepancy_belief",
     "posterior_weights_from_grouped_evidence",
     "prefix_component_log_likelihood",
+    "preserve_prior_within_unidentified_subspace",
     "run_counterfactual_benchmark",
     "run_latent_contact_benchmark",
     "update_joint_weights_from_prefix",
