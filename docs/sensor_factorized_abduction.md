@@ -36,10 +36,15 @@ causal frame. `ContactWrenchEvidence` provides the analogous contract for force
 or wrench quantities with explicit column names. Both artifacts:
 
 - are immutable after construction;
+- bind the protocol, case, and observed-action identities;
 - have deterministic SHA-256 artifact identities;
 - serialize to non-pickled NPZ files;
 - reject evidence extending beyond the factual-abduction prefix;
 - require provenance explaining the independently measured sensor stream.
+
+When actuator and wrench evidence are combined, they must name the same trusted
+clock. Evidence from another protocol, case, or observed action is rejected
+before any likelihood is evaluated.
 
 Use `save_independent_sensor_evidence` and
 `load_independent_sensor_evidence` for checksummed round trips.
@@ -70,6 +75,9 @@ from causal4d import (
 )
 
 actuator = ActuatorEvidence(
+    protocol_id=factual.context.protocol_id,
+    case_id=factual.context.case_id,
+    observed_action_id=factual.context.u_obs.action_id,
     stream_id="measured_end_effector",
     clock_id="robot_monotonic",
     provenance="robot encoder independent of RGB-D reconstruction",
