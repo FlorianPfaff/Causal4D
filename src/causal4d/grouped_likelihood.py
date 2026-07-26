@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import lgamma
+from typing import Mapping
 
 import numpy as np
 
@@ -17,6 +18,7 @@ class GroupLikelihoodDiagnostics:
     group_ids: tuple[str, ...]
     effective_group_weights: tuple[float, ...]
     nominal_responsibilities: np.ndarray
+    full_covariance_group_ids: tuple[str, ...] = ()
 
 
 def _multivariate_student_t_log_density(
@@ -53,13 +55,50 @@ def _multivariate_student_t_log_density(
     )
 
 
+def _broadcast_additive_covariance(
+    values: np.ndarray,
+    *,
+    leading_shape: tuple[int, ...],
+    dimension: int,
+) -> np.ndarray:
+    covariance = np.asarray(values, dtype=float)
+    try:
+        covariance = np.broadcast_to(
+            covariance,
+            (*leading_shape, dimension, dimension),
+        )
+    except ValueError as error:
+        raise ValueError(
+            "additive_covariance_m2 must broadcast to component leading dimensions "
+            "and end in (coordinate, coordinate)"
+        ) from error
+    if not np.all(np.isfinite(covariance)):
+        raise ValueError("additive covariance must be finite")
+    if not np.allclose(
+        covariance,
+        covariance.swapaxes(-1, -2),
+        atol=1e-12,
+        rtol=1e-10,
+    ):
+        raise ValueError("additive covariance must be symmetric")
+    if float(np.min(np.linalg.eigvalsh(covariance), initial=0.0)) < -1e-10:
+        raise ValueError("additive covariance must be positive semidefinite")
+    return covariance
+
+
 def group_log_likelihood(
     predicted_values_m: np.ndarray,
     group: ObservationGroup,
     *,
     additive_variance_m2: np.ndarray | None = None,
+    additive_covariance_m2: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return robust mixture log likelihood and posterior nominal responsibility."""
+    """Return robust mixture log likelihood and posterior nominal responsibility.
+
+    ``additive_covariance_m2`` preserves component-specific correlation. The
+    legacy ``additive_variance_m2`` argument remains a diagonal convenience and
+    can be combined with the full covariance term.
+    """
 
     predictions = np.asarray(predicted_values_m, dtype=float)
     if predictions.shape[-1] != group.coordinate_count:
@@ -73,6 +112,12 @@ def group_log_likelihood(
         if np.any(~np.isfinite(additive)) or np.any(additive < 0.0):
             raise ValueError("additive variances must be finite and nonnegative")
         covariance = covariance + additive[..., :, None] * np.eye(group.coordinate_count)
+    if additive_covariance_m2 is not None:
+        covariance = covariance + _broadcast_additive_covariance(
+            additive_covariance_m2,
+            leading_shape=predictions.shape[:-1],
+            dimension=group.coordinate_count,
+        )
     nominal = _multivariate_student_t_log_density(
         residual,
         covariance,
@@ -97,8 +142,15 @@ def grouped_component_log_likelihoods(
     *,
     prefix_frame_count: int,
     component_variance_m2: np.ndarray | None = None,
+    component_group_covariance_m2: Mapping[str, np.ndarray] | None = None,
 ) -> tuple[np.ndarray, GroupLikelihoodDiagnostics]:
-    """Score arbitrary leading component dimensions against grouped O-plus evidence."""
+    """Score arbitrary leading component dimensions against grouped O-plus evidence.
+
+    ``component_group_covariance_m2`` maps a group ID to a covariance that is
+    broadcastable to ``component_shape + (group_coordinate, group_coordinate)``.
+    It is intended for low-rank graph discrepancy, shared camera bias, gauge, or
+    other correlated component uncertainty that would be lost by diagonalization.
+    """
 
     components = np.asarray(predicted_components_m, dtype=float)
     if components.ndim < 4:
@@ -117,16 +169,28 @@ def grouped_component_log_likelihoods(
         )
         if np.any(~np.isfinite(variance)) or np.any(variance < 0.0):
             raise ValueError("component variances must be finite and nonnegative")
+    covariance_by_group = dict(component_group_covariance_m2 or {})
+    known_group_ids = {group.group_id for group in evidence.groups}
+    unknown = set(covariance_by_group) - known_group_ids
+    if unknown:
+        raise ValueError(f"component covariance references unknown groups: {sorted(unknown)}")
     total = np.zeros(leading_shape, dtype=float)
     responsibilities = []
     effective_weights = evidence.effective_group_weights
+    full_covariance_groups = []
     for group, weight in zip(evidence.groups, effective_weights, strict=True):
         selected = group.selected_predictions(components)
         selected_variance = (
             None if variance is None else group.selected_predictions(variance)
         )
+        selected_covariance = covariance_by_group.get(group.group_id)
+        if selected_covariance is not None:
+            full_covariance_groups.append(group.group_id)
         log_likelihood, responsibility = group_log_likelihood(
-            selected, group, additive_variance_m2=selected_variance
+            selected,
+            group,
+            additive_variance_m2=selected_variance,
+            additive_covariance_m2=selected_covariance,
         )
         total += weight * log_likelihood
         responsibilities.append(responsibility)
@@ -134,6 +198,7 @@ def grouped_component_log_likelihoods(
         group_ids=tuple(group.group_id for group in evidence.groups),
         effective_group_weights=effective_weights,
         nominal_responsibilities=np.stack(responsibilities, axis=-1),
+        full_covariance_group_ids=tuple(full_covariance_groups),
     )
     return total, diagnostics
 
@@ -145,6 +210,7 @@ def posterior_weights_from_grouped_evidence(
     *,
     prefix_frame_count: int,
     component_variance_m2: np.ndarray | None = None,
+    component_group_covariance_m2: Mapping[str, np.ndarray] | None = None,
 ) -> tuple[np.ndarray, GroupLikelihoodDiagnostics]:
     """Apply grouped evidence to finite component support in log space."""
 
@@ -158,6 +224,7 @@ def posterior_weights_from_grouped_evidence(
         evidence,
         prefix_frame_count=prefix_frame_count,
         component_variance_m2=component_variance_m2,
+        component_group_covariance_m2=component_group_covariance_m2,
     )
     log_posterior = np.log(np.maximum(prior, 1e-300)) + score
     maximum = float(np.max(log_posterior))

@@ -6,11 +6,12 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 
 from causal4d.contracts import array_sha256
+from causal4d.observation_evidence import GroupedObservationEvidence
 
 
 GRAPH_DISCREPANCY_BELIEF_VERSION = 1
@@ -147,6 +148,85 @@ class GraphDiscrepancyBelief:
             digest.update(name.encode("utf-8"))
             digest.update(array_sha256(values).encode("ascii"))
         return digest.hexdigest()
+
+
+def graph_discrepancy_group_covariances(
+    belief: GraphDiscrepancyBelief,
+    graph_basis: np.ndarray,
+    evidence: GroupedObservationEvidence,
+    *,
+    component_ids: Sequence[str] | None = None,
+) -> dict[str, np.ndarray]:
+    """Map coefficient covariance to complete grouped observation covariance.
+
+    The coefficient state is persistent over the scored prefix. Consequently,
+    observations of the same graph mode at different frames remain correlated.
+    Cross-coordinate covariance is zero because the current belief stores one
+    coefficient covariance per Cartesian coordinate. ``projection_variance_m2``
+    is retained as an independent coordinate-wise diagonal remainder.
+
+    When ``component_ids`` are supplied, output covariances are selected and
+    reordered to match that component order. A particle-level covariance with
+    shape ``(P, d, d)`` can then broadcast over rollout components with leading
+    shape ``(H, P)`` in the grouped likelihood.
+    """
+
+    basis = np.asarray(graph_basis, dtype=float)
+    if basis.ndim != 2 or basis.shape[1] != belief.rank:
+        raise ValueError("graph_basis must have shape (node_count, belief.rank)")
+    if not np.all(np.isfinite(basis)):
+        raise ValueError("graph_basis must be finite")
+    if array_sha256(basis) != belief.basis_sha256:
+        raise ValueError("graph basis hash differs from the discrepancy belief")
+
+    if component_ids is None:
+        selected_indices = np.arange(len(belief.component_ids), dtype=np.int64)
+    else:
+        requested = tuple(component_ids)
+        if not requested or len(set(requested)) != len(requested):
+            raise ValueError("component_ids must be nonempty and unique")
+        lookup = {
+            identifier: index for index, identifier in enumerate(belief.component_ids)
+        }
+        missing = [identifier for identifier in requested if identifier not in lookup]
+        if missing:
+            raise ValueError(f"unknown discrepancy components: {missing}")
+        selected_indices = np.asarray(
+            [lookup[identifier] for identifier in requested],
+            dtype=np.int64,
+        )
+
+    coefficient_covariance = belief.coefficient_covariance_m2[selected_indices]
+    result: dict[str, np.ndarray] = {}
+    for group in evidence.groups:
+        if np.any(group.node_indices >= basis.shape[0]):
+            raise ValueError(
+                f"group {group.group_id!r} references unavailable graph nodes"
+            )
+        if np.any(group.coordinate_indices >= 3):
+            raise ValueError(
+                f"group {group.group_id!r} references unavailable coordinates"
+            )
+        count = group.coordinate_count
+        covariance = np.zeros((len(selected_indices), count, count), dtype=float)
+        for coordinate in range(3):
+            selected = np.flatnonzero(group.coordinate_indices == coordinate)
+            if not len(selected):
+                continue
+            design = basis[group.node_indices[selected]]
+            block = np.einsum(
+                "ir,krs,js->kij",
+                design,
+                coefficient_covariance[:, coordinate],
+                design,
+            )
+            covariance[:, selected[:, None], selected[None, :]] = block
+        diagonal = np.arange(count)
+        covariance[:, diagonal, diagonal] += belief.projection_variance_m2[
+            group.coordinate_indices
+        ]
+        result[group.group_id] = covariance
+    return result
 
 
 def write_graph_discrepancy_belief(

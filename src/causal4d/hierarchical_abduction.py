@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Sequence
 
@@ -69,6 +70,44 @@ def _ordered_unique_rows(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return np.asarray(keys, dtype=float), indices
 
 
+def _session_evidence_powers(
+    execution_count: int,
+    session_ids: Sequence[str] | None,
+    execution_evidence_powers: Sequence[float] | None,
+) -> tuple[tuple[str, ...], np.ndarray, str]:
+    if execution_evidence_powers is not None:
+        powers = np.asarray(tuple(execution_evidence_powers), dtype=float)
+        if powers.shape != (execution_count,) or not np.all(np.isfinite(powers)):
+            raise ValueError("execution_evidence_powers must match executions")
+        if np.any(powers <= 0.0):
+            raise ValueError("execution_evidence_powers must be positive")
+        if session_ids is None:
+            identifiers = tuple(
+                f"execution-{index}" for index in range(execution_count)
+            )
+        else:
+            identifiers = tuple(map(str, session_ids))
+            if len(identifiers) != execution_count or any(
+                not value for value in identifiers
+            ):
+                raise ValueError("session_ids must be nonempty and match executions")
+        return identifiers, powers, "explicit_execution_powers"
+
+    if session_ids is None:
+        return (
+            tuple(f"execution-{index}" for index in range(execution_count)),
+            np.ones(execution_count, dtype=float),
+            "independent_execution_product",
+        )
+
+    identifiers = tuple(map(str, session_ids))
+    if len(identifiers) != execution_count or any(not value for value in identifiers):
+        raise ValueError("session_ids must be nonempty and match executions")
+    counts = Counter(identifiers)
+    powers = np.asarray([1.0 / counts[value] for value in identifiers], dtype=float)
+    return identifiers, powers, "equal_session_composite_likelihood"
+
+
 @dataclass(frozen=True)
 class HierarchicalAbductionResult:
     """Posterior with shared ``(theta, phi)`` and local execution hypotheses."""
@@ -107,12 +146,18 @@ class HierarchicalAbductionResult:
         object.__setattr__(
             self,
             "execution_joint_weights",
-            tuple(np.asarray(value, dtype=float) for value in self.execution_joint_weights),
+            tuple(
+                np.asarray(value, dtype=float)
+                for value in self.execution_joint_weights
+            ),
         )
         object.__setattr__(
             self,
             "execution_log_evidence",
-            tuple(np.asarray(value, dtype=float) for value in self.execution_log_evidence),
+            tuple(
+                np.asarray(value, dtype=float)
+                for value in self.execution_log_evidence
+            ),
         )
 
     @property
@@ -136,12 +181,21 @@ def abduct_hierarchical_interventions(
     shared_phi_prior: np.ndarray | None = None,
     particle_discrepancy_m: Sequence[np.ndarray | None] | None = None,
     particle_discrepancy_variance_m2: Sequence[np.ndarray | None] | None = None,
+    session_ids: Sequence[str] | None = None,
+    execution_evidence_powers: Sequence[float] | None = None,
 ) -> HierarchicalAbductionResult:
     """Pool persistent intervention and twin variables across executions.
 
     Physical parameter particles and persistent intervention variables ``phi``
     are shared. Each execution retains its own local hypothesis within a ``phi``
     group, so contact and slip variables remain event-specific.
+
+    When ``session_ids`` are supplied, execution log evidences are weighted by
+    the reciprocal number of executions in that session. Each grasp/session then
+    contributes one unit of composite evidence to shared variables, while every
+    execution retains its full local ``kappa`` posterior. Supplying neither
+    session IDs nor explicit powers preserves the original independent-execution
+    product exactly.
     """
 
     bank_list = tuple(banks)
@@ -169,6 +223,11 @@ def abduct_hierarchical_interventions(
         == len(bank_list)
     ):
         raise ValueError("execution-specific optional inputs must align")
+    session_identifiers, evidence_powers, evidence_mode = _session_evidence_powers(
+        len(bank_list),
+        session_ids,
+        execution_evidence_powers,
+    )
 
     reference = bank_list[0]
     for bank in bank_list[1:]:
@@ -235,7 +294,9 @@ def abduct_hierarchical_interventions(
         group_mass = np.zeros(phi_count, dtype=float)
         np.add.at(group_mass, groups, bank.hypothesis_prior_weights)
         if np.any(group_mass <= 0.0):
-            raise ValueError("every execution must assign prior mass to every phi value")
+            raise ValueError(
+                "every execution must assign prior mass to every phi value"
+            )
         conditional_prior = bank.hypothesis_prior_weights / group_mass[groups]
         local_log_prior = np.log(np.maximum(conditional_prior, 1e-300))
         local_log_priors.append(local_log_prior)
@@ -262,8 +323,8 @@ def abduct_hierarchical_interventions(
         np.log(np.maximum(phi_prior, 1e-300))[:, None]
         + np.log(np.maximum(reference.parameter_weights, 1e-300))[None]
     )
-    for evidence in execution_log_evidence:
-        shared_log_weights += evidence
+    for power, evidence in zip(evidence_powers, execution_log_evidence, strict=True):
+        shared_log_weights += float(power) * evidence
     shared_weights = _normalize_log_weights(shared_log_weights)
 
     execution_joint_weights = []
@@ -292,6 +353,10 @@ def abduct_hierarchical_interventions(
         execution_log_evidence=tuple(execution_log_evidence),
         metadata={
             "execution_count": len(bank_list),
+            "session_count": len(set(session_identifiers)),
+            "session_ids": list(session_identifiers),
+            "execution_evidence_powers": evidence_powers.tolist(),
+            "shared_evidence_mode": evidence_mode,
             "shared_variables": ["theta", "phi"],
             "execution_specific_variables": ["kappa"],
             "future_frames_read": 0,

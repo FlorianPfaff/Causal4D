@@ -17,6 +17,7 @@ class IdentifiabilityConfig:
     maximum_condition_number: float = 1e8
     minimum_residualized_response_fraction: float = 0.10
     maximum_subspace_cosine: float = 0.995
+    maximum_query_null_response_fraction: float = 0.10
 
     def __post_init__(self) -> None:
         if not 0.0 < self.relative_rank_tolerance < 1.0:
@@ -29,11 +30,18 @@ class IdentifiabilityConfig:
             raise ValueError("minimum_residualized_response_fraction must lie in [0, 1]")
         if not 0.0 <= self.maximum_subspace_cosine <= 1.0:
             raise ValueError("maximum_subspace_cosine must lie in [0, 1]")
+        if not 0.0 <= self.maximum_query_null_response_fraction <= 1.0:
+            raise ValueError("maximum_query_null_response_fraction must lie in [0, 1]")
 
 
 @dataclass(frozen=True)
 class InterventionIdentifiabilityResult:
-    """Conditional information remaining after projecting out nuisance response."""
+    """Conditional information remaining after projecting out nuisance response.
+
+    ``identified_basis`` and ``null_basis`` are expressed in standardized
+    intervention coordinates. ``parameter_scales`` maps those coordinates back
+    to the physical parameter units supplied to the sensitivity calculation.
+    """
 
     conditional_information: np.ndarray
     eigenvalues: np.ndarray
@@ -43,26 +51,87 @@ class InterventionIdentifiabilityResult:
     condition_number: float
     residualized_response_fraction: float
     maximum_subspace_cosine: float
+    parameter_scales: np.ndarray
+    identified_basis: np.ndarray
+    null_basis: np.ndarray
+    query_null_response_fraction: float | None
+    query_identifiable: bool | None
     identifiable: bool
     failure_reasons: tuple[str, ...]
+    query_failure_reasons: tuple[str, ...] = ()
+    extended_diagnostics: bool = False
 
     def __post_init__(self) -> None:
         information = np.asarray(self.conditional_information, dtype=float).copy()
         eigenvalues = np.asarray(self.eigenvalues, dtype=float).copy()
+        scales = np.asarray(self.parameter_scales, dtype=float).copy()
+        identified = np.asarray(self.identified_basis, dtype=float).copy()
+        null = np.asarray(self.null_basis, dtype=float).copy()
         if information.shape != (self.parameter_count, self.parameter_count):
             raise ValueError("conditional_information must match parameter_count")
         if eigenvalues.shape != (self.parameter_count,):
             raise ValueError("eigenvalues must match parameter_count")
-        if not np.all(np.isfinite(information)) or not np.all(np.isfinite(eigenvalues)):
+        if scales.shape != (self.parameter_count,):
+            raise ValueError("parameter_scales must match parameter_count")
+        if identified.shape != (self.parameter_count, self.effective_rank):
+            raise ValueError("identified_basis must match effective_rank")
+        if null.shape != (
+            self.parameter_count,
+            self.parameter_count - self.effective_rank,
+        ):
+            raise ValueError("null_basis must span the unresolved complement")
+        if not all(
+            np.all(np.isfinite(value))
+            for value in (information, eigenvalues, scales, identified, null)
+        ):
             raise ValueError("identifiability arrays must be finite")
+        if np.any(scales <= 0.0):
+            raise ValueError("parameter_scales must be positive")
+        for basis, name in ((identified, "identified_basis"), (null, "null_basis")):
+            if basis.shape[1] and not np.allclose(
+                basis.T @ basis,
+                np.eye(basis.shape[1]),
+                atol=1e-10,
+                rtol=1e-10,
+            ):
+                raise ValueError(f"{name} must have orthonormal columns")
+        if identified.shape[1] and null.shape[1] and not np.allclose(
+            identified.T @ null,
+            0.0,
+            atol=1e-10,
+            rtol=1e-10,
+        ):
+            raise ValueError("identified and null bases must be orthogonal")
+        if self.query_null_response_fraction is not None and not (
+            np.isfinite(self.query_null_response_fraction)
+            and 0.0 <= self.query_null_response_fraction <= 1.0 + 1e-12
+        ):
+            raise ValueError("query_null_response_fraction must lie in [0, 1]")
         information.setflags(write=False)
         eigenvalues.setflags(write=False)
+        scales.setflags(write=False)
+        identified.setflags(write=False)
+        null.setflags(write=False)
         object.__setattr__(self, "conditional_information", information)
         object.__setattr__(self, "eigenvalues", eigenvalues)
+        object.__setattr__(self, "parameter_scales", scales)
+        object.__setattr__(self, "identified_basis", identified)
+        object.__setattr__(self, "null_basis", null)
         object.__setattr__(self, "failure_reasons", tuple(self.failure_reasons))
+        object.__setattr__(
+            self,
+            "query_failure_reasons",
+            tuple(self.query_failure_reasons),
+        )
+
+    @property
+    def identified_projection(self) -> np.ndarray:
+        """Projection onto identified standardized intervention directions."""
+
+        return self.identified_basis @ self.identified_basis.T
 
     def as_dict(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "effective_rank": self.effective_rank,
             "parameter_count": self.parameter_count,
             "minimum_eigenvalue": self.minimum_eigenvalue,
@@ -75,6 +144,18 @@ class InterventionIdentifiabilityResult:
             "failure_reasons": list(self.failure_reasons),
             "eigenvalues": self.eigenvalues.tolist(),
         }
+        if self.extended_diagnostics:
+            result.update(
+                {
+                    "parameter_scales": self.parameter_scales.tolist(),
+                    "identified_basis": self.identified_basis.tolist(),
+                    "null_basis": self.null_basis.tolist(),
+                    "query_null_response_fraction": self.query_null_response_fraction,
+                    "query_identifiable": self.query_identifiable,
+                    "query_failure_reasons": list(self.query_failure_reasons),
+                }
+            )
+        return result
 
 
 def finite_response_sensitivity(
@@ -143,22 +224,61 @@ def _orthonormal_basis(matrix: np.ndarray, tolerance: float) -> np.ndarray:
     return left[:, :rank]
 
 
+def _parameter_scales(values: np.ndarray | None, parameter_count: int) -> np.ndarray:
+    if values is None:
+        return np.ones(parameter_count, dtype=float)
+    scales = np.asarray(values, dtype=float)
+    if scales.shape != (parameter_count,):
+        raise ValueError("parameter_scales must match the intervention parameter count")
+    if np.any(~np.isfinite(scales)) or np.any(scales <= 0.0):
+        raise ValueError("parameter_scales must be finite and positive")
+    return scales
+
+
+def project_identifiable_intervention_update(
+    update: np.ndarray,
+    result: InterventionIdentifiabilityResult,
+) -> np.ndarray:
+    """Project a physical-unit update onto locally identified directions.
+
+    Scaling occurs before projection, so the result is invariant to equivalent
+    unit changes when ``parameter_scales`` are transformed consistently.
+    """
+
+    values = np.asarray(update, dtype=float)
+    if values.shape[-1] != result.parameter_count or not np.all(np.isfinite(values)):
+        raise ValueError("update must be finite and end in parameter_count")
+    standardized = values / result.parameter_scales
+    projected = standardized @ result.identified_projection
+    return projected * result.parameter_scales
+
+
 def assess_intervention_identifiability(
     intervention_sensitivity: np.ndarray,
     nuisance_sensitivity: np.ndarray | None = None,
     *,
     covariance: np.ndarray | None = None,
+    parameter_scales: np.ndarray | None = None,
+    query_sensitivity: np.ndarray | None = None,
     config: IdentifiabilityConfig | None = None,
 ) -> InterventionIdentifiabilityResult:
     """Assess intervention information conditional on nuisance response.
 
-    The supplied sensitivities are whitened by ``covariance``. Intervention
-    columns are then projected onto the orthogonal complement of the nuisance
-    response. The resulting Gram matrix is the local conditional information.
+    Intervention columns are first converted to standardized parameter
+    coordinates using ``parameter_scales`` and whitened by ``covariance``. They
+    are then projected onto the orthogonal complement of nuisance response. If a
+    future ``query_sensitivity`` is supplied, the result also reports how much of
+    that query response lies in the unresolved intervention subspace. Thus a
+    parameter vector can be only partially identified while a particular future
+    prediction remains locally identifiable.
     """
 
     settings = config or IdentifiabilityConfig()
-    intervention = _whiten(intervention_sensitivity, covariance)
+    raw_intervention = np.asarray(intervention_sensitivity, dtype=float)
+    if raw_intervention.ndim != 2 or raw_intervention.shape[1] == 0:
+        raise ValueError("intervention_sensitivity must be a nonempty matrix")
+    scales = _parameter_scales(parameter_scales, raw_intervention.shape[1])
+    intervention = _whiten(raw_intervention * scales[None], covariance)
     response_count, parameter_count = intervention.shape
     if nuisance_sensitivity is None:
         nuisance = np.zeros((response_count, 0), dtype=float)
@@ -175,12 +295,16 @@ def assess_intervention_identifiability(
     residualized = intervention - nuisance_basis @ (nuisance_basis.T @ intervention)
     information = residualized.T @ residualized
     information = 0.5 * (information + information.T)
-    eigenvalues = np.maximum(np.linalg.eigvalsh(information), 0.0)
+    eigenvalues, eigenvectors = np.linalg.eigh(information)
+    eigenvalues = np.maximum(eigenvalues, 0.0)
     largest = float(eigenvalues[-1])
     tolerance = settings.relative_rank_tolerance * max(largest, 1.0)
-    effective_rank = int(np.sum(eigenvalues > tolerance))
+    identified_mask = eigenvalues > tolerance
+    effective_rank = int(np.sum(identified_mask))
+    identified_basis = eigenvectors[:, identified_mask]
+    null_basis = eigenvectors[:, ~identified_mask]
     minimum = float(eigenvalues[0])
-    positive = eigenvalues[eigenvalues > tolerance]
+    positive = eigenvalues[identified_mask]
     condition_number = (
         float(np.max(positive) / np.min(positive)) if len(positive) else float("inf")
     )
@@ -205,6 +329,30 @@ def assess_intervention_identifiability(
         reasons.append("intervention_response_absorbed_by_nuisance")
     if maximum_cosine > settings.maximum_subspace_cosine:
         reasons.append("intervention_and_nuisance_subspaces_nearly_collinear")
+
+    query_fraction: float | None = None
+    query_identifiable: bool | None = None
+    query_reasons: list[str] = []
+    if query_sensitivity is not None:
+        query = np.asarray(query_sensitivity, dtype=float)
+        if query.ndim != 2 or query.shape[1] != parameter_count:
+            raise ValueError("query_sensitivity must have shape (query, parameter)")
+        if not np.all(np.isfinite(query)):
+            raise ValueError("query_sensitivity must be finite")
+        standardized_query = query * scales[None]
+        total_query_energy = float(np.sum(np.square(standardized_query)))
+        null_query = standardized_query @ null_basis
+        null_query_energy = float(np.sum(np.square(null_query)))
+        query_fraction = (
+            null_query_energy / total_query_energy if total_query_energy > 0.0 else 0.0
+        )
+        query_fraction = min(max(query_fraction, 0.0), 1.0)
+        query_identifiable = (
+            query_fraction <= settings.maximum_query_null_response_fraction
+        )
+        if not query_identifiable:
+            query_reasons.append("query_depends_on_unidentified_intervention_directions")
+
     return InterventionIdentifiabilityResult(
         conditional_information=information,
         eigenvalues=eigenvalues,
@@ -214,6 +362,15 @@ def assess_intervention_identifiability(
         condition_number=condition_number,
         residualized_response_fraction=float(residual_fraction),
         maximum_subspace_cosine=maximum_cosine,
+        parameter_scales=scales,
+        identified_basis=identified_basis,
+        null_basis=null_basis,
+        query_null_response_fraction=query_fraction,
+        query_identifiable=query_identifiable,
         identifiable=not reasons,
         failure_reasons=tuple(reasons),
+        query_failure_reasons=tuple(query_reasons),
+        extended_diagnostics=(
+            parameter_scales is not None or query_sensitivity is not None
+        ),
     )
