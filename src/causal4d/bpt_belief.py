@@ -16,12 +16,22 @@ from bayesian_phystwin.causal4d_provider_v1 import (
     target_validity,
 )
 from causal4d.contracts import CausalContext, TwinBelief
+from causal4d.provider_contract import (
+    BASE_CAUSAL4D_PROVIDER_CAPABILITIES,
+    PhysicalBeliefProviderManifest,
+    validate_provider_compatibility,
+)
 
 if TYPE_CHECKING:
     from causal4d.phystwin_backend import OfficialPhysTwinBackend
 
 BPT_PROVIDER_REVISION = "aed1de60a0fca195bdd227fe598cb4eb65f113b9"
 BPTBeliefExportConfig = BPTBeliefExportConfigV1
+_REQUIRED_BPT_CAPABILITIES = (
+    *BASE_CAUSAL4D_PROVIDER_CAPABILITIES,
+    "exact_baseline_fallback",
+    "readout_discrepancy_moments",
+)
 
 
 def lift_isotropic_discrepancy_variance(
@@ -70,13 +80,39 @@ def lift_isotropic_discrepancy_variance(
 
 
 def _provider_manifest() -> ProviderManifestV1:
-    return ProviderManifestV1(
+    provider = ProviderManifestV1(
         provider_revision=BPT_PROVIDER_REVISION,
         metadata={
             "consumer": "causal4d",
             "contract": "causal4d_provider_v1",
         },
     )
+    local = PhysicalBeliefProviderManifest(
+        provider_name=provider.provider_name,
+        provider_version=provider.provider_version,
+        provider_revision=provider.provider_revision,
+        schema_version=provider.schema_version,
+        capabilities=provider.capabilities,
+        artifact_schema_versions=provider.artifact_schema_versions,
+        metadata=provider.metadata,
+    )
+    compatibility = validate_provider_compatibility(
+        local,
+        required_capabilities=_REQUIRED_BPT_CAPABILITIES,
+        required_artifact_versions={"PhysicalBeliefV1": 1},
+    )
+    if not compatibility.compatible:
+        raise ValueError(
+            "Bayesian-PhysTwin provider is incompatible: "
+            f"missing={compatibility.missing_capabilities}, "
+            f"schema={compatibility.unsupported_schema_version}, "
+            f"artifacts={compatibility.artifact_version_mismatches}"
+        )
+    if compatibility.provider_manifest_id != provider.manifest_id:
+        raise ValueError(
+            "provider manifest canonicalization differs across repositories"
+        )
+    return provider
 
 
 def _maximum_pairwise_endpoint_rmse(positions: np.ndarray) -> float:
@@ -113,6 +149,10 @@ def _to_twin_belief(
             "bpt_physical_belief_id": physical.artifact_id,
             "bpt_provider_api": (
                 "bayesian_phystwin.causal4d_provider_v1"
+            ),
+            "bpt_provider_compatibility_validated": True,
+            "bpt_required_capabilities": list(
+                _REQUIRED_BPT_CAPABILITIES
             ),
         }
     )
