@@ -16,6 +16,9 @@ from causal4d.contracts import (
 )
 from causal4d.discrepancy_belief import GraphDiscrepancyBelief
 from causal4d.rollout_bank import JointRolloutBank
+from causal4d.stable_discrepancy_dynamics import (
+    StableDiscrepancyTransitionModel,
+)
 
 
 def _problem():
@@ -182,6 +185,7 @@ def test_zero_innovation_matches_static_readout_moments() -> None:
     np.testing.assert_allclose(posterior.readout_variance_m2, 3e-6)
     assert posterior.component_ids == ("nominal::p0", "shift::p0")
     assert posterior.metadata["future_observations_read"] == 0
+    assert posterior.metadata["discrepancy_mean_transition"] == "graph_persistence"
 
 
 def test_action_conditioned_covariance_grows_over_horizon() -> None:
@@ -225,3 +229,59 @@ def test_action_conditioned_covariance_grows_over_horizon() -> None:
         offset.shape,
     )
     np.testing.assert_allclose(offset, expected_offset)
+
+
+def test_stable_transition_contracts_discrepancy_mean() -> None:
+    (
+        bank,
+        manifest,
+        twin,
+        factual,
+        query,
+        discrepancy,
+        basis,
+        anchor,
+        feature_names,
+    ) = _problem()
+    innovation = ActionConditionedDiscrepancyModel(
+        feature_names=feature_names,
+        base_innovation_covariance_m2=np.zeros((1, 1)),
+        feature_directions=np.zeros((0, 1)),
+        feature_weights=np.zeros((0, len(feature_names))),
+    )
+    contraction_weights = np.zeros((1, len(feature_names)))
+    contraction_weights[0, feature_names.index("control_speed_mps")] = 4.0
+    transition = StableDiscrepancyTransitionModel(
+        feature_names=feature_names,
+        rank=1,
+        skew_generators=np.zeros((0, 1, 1)),
+        skew_feature_weights=np.zeros((0, len(feature_names))),
+        contraction_directions=np.ones((1, 1)),
+        contraction_feature_weights=contraction_weights,
+        drift_directions_m=np.zeros((0, 1, 3)),
+        drift_feature_weights=np.zeros((0, len(feature_names))),
+        model_id="unit-stable-contraction",
+    )
+    posterior = apply_action_conditioned_counterfactual_operator(
+        bank,
+        manifest,
+        twin,
+        factual,
+        query,
+        discrepancy,
+        innovation,
+        basis,
+        anchor,
+        frame_dt_s=0.1,
+        transition_model=transition,
+    )
+    offset = (
+        posterior.readout_trajectories_m
+        - posterior.state_trajectories_m
+    )[:, :, 0, 0]
+    assert np.all(np.diff(offset, axis=1) <= 1e-15)
+    assert np.all(offset[:, -1] < offset[:, 0])
+    assert (
+        posterior.metadata["discrepancy_mean_transition"]
+        == "unit-stable-contraction"
+    )
