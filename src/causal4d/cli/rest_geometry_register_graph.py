@@ -5,7 +5,12 @@ from __future__ import annotations
 import argparse
 import json
 
-from causal4d.rest_geometry_protocol import write_rest_geometry_registration
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global write_rest_geometry_registration
+
+    from causal4d.rest_geometry_protocol import write_rest_geometry_registration
 
 
 def main() -> None:
@@ -19,6 +24,7 @@ def main() -> None:
     parser.add_argument("dataset_root")
     parser.add_argument("canonical_graph")
     args = parser.parse_args()
+    _load_runtime_dependencies()
     result = write_rest_geometry_registration(
         args.protocol,
         args.dataset_root,

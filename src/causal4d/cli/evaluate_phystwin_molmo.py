@@ -6,12 +6,20 @@ import argparse
 import json
 from collections.abc import Sequence
 
-from causal4d.molmo_adapter import load_molmo_forecasts
-from causal4d.phystwin_backend import load_rollout_bank
-from causal4d.phystwin_evaluation import (
-    evaluate_phystwin_rollout_bank,
-    write_phystwin_evaluation,
-)
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global load_molmo_forecasts
+    global load_rollout_bank
+    global evaluate_phystwin_rollout_bank
+    global write_phystwin_evaluation
+
+    from causal4d.molmo_adapter import load_molmo_forecasts
+    from causal4d.phystwin_backend import load_rollout_bank
+    from causal4d.phystwin_evaluation import (
+        evaluate_phystwin_rollout_bank,
+        write_phystwin_evaluation,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -33,6 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    _load_runtime_dependencies()
     bank, manifest = load_rollout_bank(args.rollout_bank)
     molmo = load_molmo_forecasts(args.molmo_forecasts)
     result = evaluate_phystwin_rollout_bank(

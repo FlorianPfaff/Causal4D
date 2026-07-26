@@ -12,22 +12,37 @@ from pathlib import Path
 
 import numpy as np
 
-from bayesian_phystwin.phystwin_graph import (
-    PhysTwinSpringGraphConfig,
-    build_phystwin_spring_graph,
-)
-from bayesian_phystwin.phystwin_residual_dynamics import _target_validity
-from causal4d.contracts import PhysicalPosterior, load_contract
-from causal4d.graph_temporal_discrepancy import (
-    fit_graph_temporal_discrepancy,
-    forecast_graph_temporal_discrepancy,
-    graph_laplacian_basis,
-)
-from causal4d.physical_validation import physical_posterior_moments
-from causal4d.real_calibration import (
-    RealCalibrationCase,
-    evaluate_real_prediction_case,
-)
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global PhysTwinSpringGraphConfig
+    global build_phystwin_spring_graph
+    global _target_validity
+    global PhysicalPosterior
+    global load_contract
+    global fit_graph_temporal_discrepancy
+    global forecast_graph_temporal_discrepancy
+    global graph_laplacian_basis
+    global physical_posterior_moments
+    global RealCalibrationCase
+    global evaluate_real_prediction_case
+
+    from bayesian_phystwin.phystwin_graph import (
+        PhysTwinSpringGraphConfig,
+        build_phystwin_spring_graph,
+    )
+    from bayesian_phystwin.phystwin_residual_dynamics import _target_validity
+    from causal4d.contracts import PhysicalPosterior, load_contract
+    from causal4d.graph_temporal_discrepancy import (
+        fit_graph_temporal_discrepancy,
+        forecast_graph_temporal_discrepancy,
+        graph_laplacian_basis,
+    )
+    from causal4d.physical_validation import physical_posterior_moments
+    from causal4d.real_calibration import (
+        RealCalibrationCase,
+        evaluate_real_prediction_case,
+    )
 
 
 def _sha256(path: str | Path) -> str:
@@ -158,6 +173,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    _load_runtime_dependencies()
     artifact = load_contract(args.physical_posterior_npz)
     if not isinstance(artifact, PhysicalPosterior):
         raise TypeError("physical_posterior_npz must contain a PhysicalPosterior")

@@ -13,22 +13,42 @@ from typing import Any
 
 import numpy as np
 
-from bayesian_phystwin.phystwin_residual_dynamics import _target_validity
-from causal4d.contracts import PhysicalPosterior, TwinBelief, load_contract
-from causal4d.intervention_abduction import FactualAbductionConfig
-from causal4d.phystwin_backend import load_rollout_bank
-from causal4d.real_oracle_audit import (
-    HoldoutOracleProtocol,
-    audit_oracle_bank,
-    bpt_nominal_prediction,
-    causal4d_posterior_prediction,
-    evaluate_prediction,
-    oracle_gap_report,
-    protocol_dict,
-    released_phystwin_prediction,
-    variance_decomposition,
-    verify_nested_rollout_banks,
-)
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global _target_validity
+    global PhysicalPosterior
+    global TwinBelief
+    global load_contract
+    global FactualAbductionConfig
+    global load_rollout_bank
+    global HoldoutOracleProtocol
+    global audit_oracle_bank
+    global bpt_nominal_prediction
+    global causal4d_posterior_prediction
+    global evaluate_prediction
+    global oracle_gap_report
+    global protocol_dict
+    global released_phystwin_prediction
+    global variance_decomposition
+    global verify_nested_rollout_banks
+
+    from bayesian_phystwin.phystwin_residual_dynamics import _target_validity
+    from causal4d.contracts import PhysicalPosterior, TwinBelief, load_contract
+    from causal4d.intervention_abduction import FactualAbductionConfig
+    from causal4d.phystwin_backend import load_rollout_bank
+    from causal4d.real_oracle_audit import (
+        HoldoutOracleProtocol,
+        audit_oracle_bank,
+        bpt_nominal_prediction,
+        causal4d_posterior_prediction,
+        evaluate_prediction,
+        oracle_gap_report,
+        protocol_dict,
+        released_phystwin_prediction,
+        variance_decomposition,
+        verify_nested_rollout_banks,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -118,6 +138,7 @@ def _write_component_csv(path: str | Path, rows: Sequence[dict[str, Any]]) -> No
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    _load_runtime_dependencies()
     if args.o_plus_prefix_frames < 1:
         raise ValueError("--o-plus-prefix-frames must be positive")
     current_bank, current_manifest = load_rollout_bank(args.current_bank_npz)

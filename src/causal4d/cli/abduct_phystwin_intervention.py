@@ -10,20 +10,36 @@ from pathlib import Path
 
 import numpy as np
 
-from bayesian_phystwin.phystwin_residual_dynamics import _target_validity
-from causal4d.contracts import TwinBelief, load_contract, save_contract
-from causal4d.identifiability import (
-    IdentifiabilityConfig,
-    InterventionIdentifiabilityResult,
-    assess_intervention_identifiability,
-)
-from causal4d.intervention_abduction import (
-    FactualAbductionConfig,
-    abduct_factual_intervention,
-    evaluate_factual_abduction,
-)
-from causal4d.observation_evidence import GroupedObservationEvidence
-from causal4d.phystwin_backend import load_rollout_bank
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global _target_validity
+    global TwinBelief
+    global load_contract
+    global save_contract
+    global IdentifiabilityConfig
+    global InterventionIdentifiabilityResult
+    global assess_intervention_identifiability
+    global FactualAbductionConfig
+    global abduct_factual_intervention
+    global evaluate_factual_abduction
+    global GroupedObservationEvidence
+    global load_rollout_bank
+
+    from bayesian_phystwin.phystwin_residual_dynamics import _target_validity
+    from causal4d.contracts import TwinBelief, load_contract, save_contract
+    from causal4d.identifiability import (
+        IdentifiabilityConfig,
+        InterventionIdentifiabilityResult,
+        assess_intervention_identifiability,
+    )
+    from causal4d.intervention_abduction import (
+        FactualAbductionConfig,
+        abduct_factual_intervention,
+        evaluate_factual_abduction,
+    )
+    from causal4d.observation_evidence import GroupedObservationEvidence
+    from causal4d.phystwin_backend import load_rollout_bank
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -106,6 +122,7 @@ def _load_identifiability(
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    _load_runtime_dependencies()
     if args.o_plus_prefix_frames < 1:
         raise ValueError("--o-plus-prefix-frames must be positive")
     if args.abstain_when_unidentifiable and args.identifiability_npz is None:

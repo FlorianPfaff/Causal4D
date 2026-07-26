@@ -5,10 +5,16 @@ from __future__ import annotations
 import argparse
 import json
 
-from causal4d.real_protocol import load_protocol
-from causal4d.rest_geometry_transfer import (
-    write_source_rest_geometry_correction,
-)
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global load_protocol
+    global write_source_rest_geometry_correction
+
+    from causal4d.real_protocol import load_protocol
+    from causal4d.rest_geometry_transfer import (
+        write_source_rest_geometry_correction,
+    )
 
 
 def main() -> None:
@@ -24,6 +30,7 @@ def main() -> None:
     parser.add_argument("archive")
     parser.add_argument("output_dir")
     args = parser.parse_args()
+    _load_runtime_dependencies()
     result = write_source_rest_geometry_correction(
         load_protocol(args.protocol),
         args.source_execution_id,

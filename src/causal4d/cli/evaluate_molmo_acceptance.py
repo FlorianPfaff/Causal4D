@@ -12,14 +12,24 @@ from typing import Any
 
 import numpy as np
 
-from causal4d.molmo_acceptance import (
-    MolmoAcceptanceThresholds,
-    aggregate_molmo_acceptance,
-    evaluate_molmo_acceptance_case,
-    molmo_acceptance_result_id,
-)
-from causal4d.molmo_adapter import load_molmo_forecasts
-from causal4d.phystwin_backend import load_rollout_bank
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global MolmoAcceptanceThresholds
+    global aggregate_molmo_acceptance
+    global evaluate_molmo_acceptance_case
+    global molmo_acceptance_result_id
+    global load_molmo_forecasts
+    global load_rollout_bank
+
+    from causal4d.molmo_acceptance import (
+        MolmoAcceptanceThresholds,
+        aggregate_molmo_acceptance,
+        evaluate_molmo_acceptance_case,
+        molmo_acceptance_result_id,
+    )
+    from causal4d.molmo_adapter import load_molmo_forecasts
+    from causal4d.phystwin_backend import load_rollout_bank
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -54,6 +64,7 @@ def _artifact_descriptor(path: Path) -> dict[str, Any]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    _load_runtime_dependencies()
     manifest_path = Path(args.benchmark_manifest_json)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("schema_version") != 1:

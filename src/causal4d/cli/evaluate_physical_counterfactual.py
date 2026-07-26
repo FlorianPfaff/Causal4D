@@ -10,9 +10,17 @@ from pathlib import Path
 
 import numpy as np
 
-from bayesian_phystwin.phystwin_residual_dynamics import _target_validity
-from causal4d.contracts import PhysicalPosterior, load_contract
-from causal4d.physical_validation import evaluate_beta_zero_physical_posterior
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global _target_validity
+    global PhysicalPosterior
+    global load_contract
+    global evaluate_beta_zero_physical_posterior
+
+    from bayesian_phystwin.phystwin_residual_dynamics import _target_validity
+    from causal4d.contracts import PhysicalPosterior, load_contract
+    from causal4d.physical_validation import evaluate_beta_zero_physical_posterior
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -29,6 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    _load_runtime_dependencies()
     artifact = load_contract(args.physical_posterior_npz)
     if not isinstance(artifact, PhysicalPosterior):
         raise TypeError("physical_posterior_npz must contain a PhysicalPosterior")

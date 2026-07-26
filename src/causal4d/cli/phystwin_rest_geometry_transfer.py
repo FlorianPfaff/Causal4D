@@ -6,10 +6,17 @@ import argparse
 import json
 from pathlib import Path
 
-from causal4d.phystwin_rest_geometry_transfer import (
-    evaluate_phystwin_rest_geometry_transfer_case,
-)
-from causal4d.real_protocol import load_protocol, validate_execution_manifest
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global evaluate_phystwin_rest_geometry_transfer_case
+    global load_protocol
+    global validate_execution_manifest
+
+    from causal4d.phystwin_rest_geometry_transfer import (
+        evaluate_phystwin_rest_geometry_transfer_case,
+    )
+    from causal4d.real_protocol import load_protocol, validate_execution_manifest
 
 
 def main() -> None:
@@ -30,6 +37,7 @@ def main() -> None:
     parser.add_argument("--velocity-history-frames", type=int, default=3)
     parser.add_argument("--atomic-spring-forces", action="store_true")
     args = parser.parse_args()
+    _load_runtime_dependencies()
 
     protocol = load_protocol(args.protocol)
     execution_manifest_path = Path(args.execution_manifest)
