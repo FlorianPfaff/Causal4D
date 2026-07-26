@@ -3,6 +3,9 @@ name: Apply reviewed provider migration to current main
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
 
 permissions:
   contents: write
@@ -10,8 +13,11 @@ permissions:
 jobs:
   apply:
     if: >-
-      contains(github.event.head_commit.message,
-      'Bootstrap current-main BPT provider migration')
+      (github.event_name == 'push' &&
+       contains(github.event.head_commit.message,
+       'Bootstrap current-main BPT provider migration')) ||
+      (github.event_name == 'pull_request' &&
+       github.head_ref == 'agent/run-bpt-provider-current-main')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -37,7 +43,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git switch -c agent/applied-bpt-provider-current-main
+          git switch -C agent/applied-bpt-provider-current-main
           git apply --3way --index /tmp/provider.patch
           python - <<'PY'
           from pathlib import Path
@@ -52,11 +58,13 @@ jobs:
           )
           if workflow.exists():
               text = workflow.read_text(encoding="utf-8")
+              secret_expression = "$" + "{{ secrets.BPT_READ_TOKEN }}"
+              token_expression = "$" + "{{ env.BPT_READ_TOKEN }}"
               text = text.replace(
                   "jobs:\n  compatibility:\n",
                   "jobs:\n  compatibility:\n"
                   "    env:\n"
-                  "      BPT_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}\n",
+                  f"      BPT_READ_TOKEN: {secret_expression}\n",
                   1,
               )
               text = text.replace(
@@ -78,7 +86,7 @@ jobs:
               text = text.replace(
                   "          path: bayesian-phystwin\n",
                   "          path: bayesian-phystwin\n"
-                  "          token: ${{ env.BPT_READ_TOKEN }}\n",
+                  f"          token: {token_expression}\n",
                   1,
               )
               for name in (
@@ -96,6 +104,7 @@ jobs:
           PY
           git rm -r .agent
           git rm .github/workflows/agent-apply-provider-current-main.yml
+          rm -f .github/provider-current-main-trigger
       - name: Validate current Causal4D suite
         shell: bash
         run: |
@@ -114,5 +123,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "Consume Bayesian-PhysTwin provider API v1"
-          git push --force-with-lease origin \
+          git push --force origin \
             HEAD:agent/applied-bpt-provider-current-main
