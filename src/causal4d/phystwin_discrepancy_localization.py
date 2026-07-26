@@ -32,24 +32,20 @@ from bayesian_phystwin.phystwin_graph import (
     PhysTwinSpringGraphConfig,
     build_phystwin_spring_graph,
 )
-from bayesian_phystwin.phystwin_residual_dynamics import (
-    _load_pickle,
-    _sha256,
-    _target_validity,
-)
-from bayesian_phystwin.phystwin_state_injection import (
-    _initialize_simulator,
-    _metric_summary,
-    _released_self_collision_for_case,
-    _state_numpy,
-)
-from bayesian_phystwin.phystwin_structural_diagnostic import (
-    _attachment_support_nodes,
-    _far_graph_observation_error,
-    _graph_distance,
-    _horizon_summary,
-    _object_rest_lengths,
-    _set_simulator_arrays,
+from bayesian_phystwin.causal4d_provider_v1 import (
+    attachment_support_nodes,
+    far_graph_observation_error,
+    graph_distance as compute_graph_distance,
+    horizon_summary,
+    initialize_simulator,
+    load_pickle,
+    metric_summary,
+    object_rest_lengths,
+    released_self_collision_for_case,
+    set_simulator_arrays,
+    sha256_file,
+    state_numpy,
+    target_validity,
 )
 
 
@@ -101,7 +97,7 @@ def _configure_rollout(
     external_forces_n: np.ndarray,
     device: str,
 ) -> None:
-    _set_simulator_arrays(
+    set_simulator_arrays(
         simulator,
         torch,
         wp,
@@ -154,7 +150,7 @@ def _rollout_state_segment(
             simulator.update_collision_graph()
         wp.capture_launch(simulator.forward_graph)
         wp.synchronize()
-        position, velocity = _state_numpy(simulator.wp_states[-1], wp)
+        position, velocity = state_numpy(simulator.wp_states[-1], wp)
         if not np.all(np.isfinite(position)) or not np.all(np.isfinite(velocity)):
             raise RuntimeError(f"non-finite Warp state at frame {frame}")
         positions.append(position)
@@ -234,7 +230,7 @@ def _correction_response(
                 structural_coefficient_steps_m[mode] * graph_basis[:, mode]
             )
             perturbed_positions = structure_m + rest_field
-            perturbed_lengths = _object_rest_lengths(
+            perturbed_lengths = object_rest_lengths(
                 perturbed_positions,
                 graph_springs,
                 nominal_rest_lengths_m,
@@ -424,7 +420,7 @@ def _rest_strain(
     *,
     num_object_springs: int,
 ) -> dict[str, float]:
-    corrected = _object_rest_lengths(
+    corrected = object_rest_lengths(
         rest_positions_m + structural_field_m,
         springs,
         rest_lengths_m,
@@ -523,16 +519,16 @@ def evaluate_phystwin_discrepancy_localization_case(
     if num_substeps < 1 or not deterministic_spring_forces:
         raise ValueError("localization requires deterministic positive-substep Warp")
 
-    data = _load_pickle(final_data_path)
-    optimal = _load_pickle(optimal_params_path)
-    released = np.asarray(_load_pickle(baseline_trajectory_path), dtype=float)
+    data = load_pickle(final_data_path)
+    optimal = load_pickle(optimal_params_path)
+    released = np.asarray(load_pickle(baseline_trajectory_path), dtype=float)
     observed = np.asarray(data["object_points"], dtype=float)
     visible = np.asarray(data["object_visibilities"], dtype=bool)
     motion_valid = np.asarray(data["object_motions_valid"], dtype=bool)
     controller = np.asarray(data["controller_points"], dtype=float)
     surface = np.asarray(data["surface_points"], dtype=float)
     interior = np.asarray(data["interior_points"], dtype=float)
-    gt_track = np.asarray(_load_pickle(gt_track_path), dtype=float)
+    gt_track = np.asarray(load_pickle(gt_track_path), dtype=float)
     frame_count, original_count, _ = observed.shape
     endpoint_frame = train_end_frame - 1
     prefix_frame_count = o_plus_prefix_frames + 1
@@ -582,11 +578,11 @@ def evaluate_phystwin_discrepancy_localization_case(
     if not np.allclose(belief.weights, particles.weights, rtol=0.0, atol=1e-15):
         raise ValueError("TwinBelief weights differ from the parameter profile")
 
-    valid = _target_validity(visible, motion_valid)
-    self_collision = _released_self_collision_for_case(
+    valid = target_validity(visible, motion_valid)
+    self_collision = released_self_collision_for_case(
         Path(final_data_path).resolve().parent.name
     )
-    simulator, torch, wp, _ = _initialize_simulator(
+    simulator, torch, wp, _ = initialize_simulator(
         official_repo,
         data,
         optimal,
@@ -759,12 +755,12 @@ def evaluate_phystwin_discrepancy_localization_case(
         maximum_node_norm=maximum_structural_correction_m,
     )
     source_checksums = {
-        "baseline_trajectory": _sha256(baseline_trajectory_path),
-        "checkpoint": _sha256(checkpoint_path),
-        "final_data": _sha256(final_data_path),
-        "optimal_params": _sha256(optimal_params_path),
-        "parameter_profile": _sha256(parameter_profile_path),
-        "twin_belief": _sha256(twin_belief_path),
+        "baseline_trajectory": sha256_file(baseline_trajectory_path),
+        "checkpoint": sha256_file(checkpoint_path),
+        "final_data": sha256_file(final_data_path),
+        "optimal_params": sha256_file(optimal_params_path),
+        "parameter_profile": sha256_file(parameter_profile_path),
+        "twin_belief": sha256_file(twin_belief_path),
     }
     correction = DynamicDiscrepancyCorrection(
         case_id=belief.context.case_id,
@@ -855,7 +851,7 @@ def evaluate_phystwin_discrepancy_localization_case(
         external_forces_n=force_field,
         device=device,
     )
-    corrected_rest_lengths = _object_rest_lengths(
+    corrected_rest_lengths = object_rest_lengths(
         structure + structural_field,
         graph.springs,
         graph.rest_lengths,
@@ -902,8 +898,8 @@ def evaluate_phystwin_discrepancy_localization_case(
         )
 
     baseline_metrics = metrics(global_trajectories[BASELINE])
-    support_nodes = _attachment_support_nodes(graph, len(structure))
-    graph_distance = _graph_distance(
+    support_nodes = attachment_support_nodes(graph, len(structure))
+    graph_distance = compute_graph_distance(
         len(structure), object_springs, support_nodes
     )
     relative_heldout_start = prefix_frame_count
@@ -960,9 +956,9 @@ def evaluate_phystwin_discrepancy_localization_case(
             variance_floor_m2=variance_floor_m2,
         )
         method_results[method] = {
-            "future": _metric_summary(baseline_metrics, candidate_metrics),
-            "horizon": _horizon_summary(baseline_metrics, candidate_metrics),
-            "far_graph": _far_graph_observation_error(
+            "future": metric_summary(baseline_metrics, candidate_metrics),
+            "horizon": horizon_summary(baseline_metrics, candidate_metrics),
+            "far_graph": far_graph_observation_error(
                 global_trajectories[method],
                 observed,
                 valid,
@@ -1069,11 +1065,11 @@ def evaluate_phystwin_discrepancy_localization_case(
             "dynamic_discrepancy_correction": artifact_record,
             "localization_rollouts": {
                 "path": str(archive_path.resolve()),
-                "sha256": _sha256(archive_path),
+                "sha256": sha256_file(archive_path),
             },
         },
         "inputs": {
-            name: {"path": str(Path(path).resolve()), "sha256": _sha256(path)}
+            name: {"path": str(Path(path).resolve()), "sha256": sha256_file(path)}
             for name, path in (
                 ("final_data", final_data_path),
                 ("baseline_trajectory", baseline_trajectory_path),

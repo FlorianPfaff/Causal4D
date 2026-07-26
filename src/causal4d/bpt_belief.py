@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import gc
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -16,10 +15,13 @@ from bayesian_phystwin.phystwin_additional_bayesian_confirmation import (
     FIXED_PROCESS_STD_M,
 )
 from bayesian_phystwin.phystwin_bayesian_anchor import robust_random_walk_endpoint
-from bayesian_phystwin.phystwin_residual_dynamics import (
-    _lift_map,
-    _lift_residual,
-    _target_validity,
+from bayesian_phystwin.causal4d_provider_v1 import (
+    PhysTwinReplayProvider,
+    build_lift_map,
+    create_official_replay_provider,
+    lift_residual,
+    released_self_collision_for_case,
+    target_validity,
 )
 from causal4d.contracts import CausalContext, TwinBelief
 
@@ -131,7 +133,7 @@ def build_twin_belief_from_replays(
         raise ValueError("interpolation_neighbors exceeds the tracked point count")
 
     # Material associations are fixed from the common initial graph geometry.
-    lift_indices, lift_weights = _lift_map(
+    lift_indices, lift_weights = build_lift_map(
         positions[0, 0],
         tracked_count,
         settings.interpolation_neighbors,
@@ -154,7 +156,7 @@ def build_twin_belief_from_replays(
             inlier_prior=settings.inlier_prior,
             outlier_variance_multiplier=settings.outlier_variance_multiplier,
         )
-        discrepancy_means[particle_index] = _lift_residual(
+        discrepancy_means[particle_index] = lift_residual(
             posterior.mean[None],
             state_count,
             lift_indices,
@@ -236,18 +238,12 @@ def export_official_phystwin_twin_belief(
         or context.o_minus.frame_stop != backend.train_end_frame
     ):
         raise ValueError("causal context O- does not match the backend training split")
-    from bayesian_phystwin.phystwin_state_injection import (
-        _initialize_simulator,
-        _released_self_collision_for_case,
-        _rollout_initial,
-    )
-
     self_collision = (
-        _released_self_collision_for_case(backend.case_name)
+        released_self_collision_for_case(backend.case_name)
         if backend.config.self_collision is None
         else backend.config.self_collision
     )
-    simulator, torch, wp, _ = _initialize_simulator(
+    replay_provider: PhysTwinReplayProvider = create_official_replay_provider(
         backend.official_repo,
         backend.data,
         backend.optimal,
@@ -266,27 +262,16 @@ def export_official_phystwin_twin_belief(
     replay_velocities = []
     try:
         for particle in backend.particles.log_scales:
-            with torch.no_grad():
-                simulator.group_log_scale_tensor.copy_(
-                    torch.as_tensor(
-                        particle,
-                        dtype=torch.float32,
-                        device=backend.config.device,
-                    )
-                )
-            positions, velocities = _rollout_initial(
-                simulator,
-                wp,
-                frame_count=backend.train_end_frame,
+            replay_provider.set_group_log_scales(particle)
+            positions, velocities = replay_provider.replay_initial(
+                frame_count=backend.train_end_frame
             )
             replay_positions.append(positions)
             replay_velocities.append(velocities)
     finally:
-        del simulator
-        gc.collect()
-        torch.cuda.empty_cache()
+        replay_provider.close()
 
-    valid = _target_validity(backend.visible, backend.motion_valid)
+    valid = target_validity(backend.visible, backend.motion_valid)
     particle_ids = tuple(
         "grid_" + "_".join(map(str, grid_index))
         for grid_index in backend.particles.grid_indices

@@ -1,0 +1,84 @@
+name: Bayesian-PhysTwin provider compatibility
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/causal4d/provider_contract.py"
+      - "src/causal4d/bpt_belief.py"
+      - "src/causal4d/phystwin_backend.py"
+      - "tests/test_bpt_provider_*.py"
+      - "pyproject.toml"
+      - ".github/workflows/bayesian-phystwin-provider-compatibility.yml"
+  workflow_dispatch:
+    inputs:
+      bpt_ref:
+        description: Bayesian-PhysTwin branch, tag, or commit to validate
+        required: false
+        default: main
+  schedule:
+    - cron: "43 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bpt-provider-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BPT_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
+    steps:
+      - name: Report unavailable private-repository token
+        if: env.BPT_READ_TOKEN == ''
+        run: >-
+          echo "Set BPT_READ_TOKEN to run private Bayesian-PhysTwin compatibility checks."
+
+      - name: Check out Causal4D
+        if: env.BPT_READ_TOKEN != ''
+        uses: actions/checkout@v6
+        with:
+          path: causal4d
+
+      - name: Check out Bayesian-PhysTwin
+        if: env.BPT_READ_TOKEN != ''
+        uses: actions/checkout@v7
+        with:
+          repository: FlorianPfaff/Bayesian-PhysTwin
+          ref: ${{ inputs.bpt_ref || 'main' }}
+          path: bayesian-phystwin
+          token: ${{ env.BPT_READ_TOKEN }}
+
+      - name: Set up Python
+        if: env.BPT_READ_TOKEN != ''
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            causal4d/pyproject.toml
+            bayesian-phystwin/pyproject.toml
+
+      - name: Install both repositories
+        if: env.BPT_READ_TOKEN != ''
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "./bayesian-phystwin[dev,graph]" opencv-python-headless
+          python -m pip install -e "./causal4d[dev]"
+
+      - name: Run cross-repository compatibility tests
+        if: env.BPT_READ_TOKEN != ''
+        env:
+          CAUSAL4D_REQUIRE_BPT_PROVIDER: "1"
+        run: >-
+          python -m pytest -q
+          causal4d/tests/test_bpt_provider_import_boundary.py
+          causal4d/tests/test_bpt_provider_integration.py
+          causal4d/tests/test_causal4d_provider_contract.py
+          causal4d/tests/test_causal4d_bpt_belief.py
+          causal4d/tests/test_causal4d_phystwin_backend.py
+          bayesian-phystwin/tests/test_causal4d_provider_v1.py

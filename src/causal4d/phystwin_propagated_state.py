@@ -29,21 +29,17 @@ from bayesian_phystwin.phystwin_graph import (
     PhysTwinSpringGraphConfig,
     build_phystwin_spring_graph,
 )
-from bayesian_phystwin.phystwin_residual_dynamics import (
-    _load_pickle,
-    _sha256,
-    _target_validity,
-)
-from bayesian_phystwin.phystwin_state_injection import (
-    _initialize_simulator,
-    _metric_summary,
-    _released_self_collision_for_case,
-)
-from bayesian_phystwin.phystwin_structural_diagnostic import (
-    _attachment_support_nodes,
-    _far_graph_observation_error,
-    _graph_distance,
-    _horizon_summary,
+from bayesian_phystwin.causal4d_provider_v1 import (
+    attachment_support_nodes,
+    far_graph_observation_error,
+    graph_distance as compute_graph_distance,
+    horizon_summary,
+    initialize_simulator,
+    load_pickle,
+    metric_summary,
+    released_self_collision_for_case,
+    sha256_file,
+    target_validity,
 )
 from bayesian_phystwin.propagated_state_belief import (
     PropagatedStateBeliefConfig,
@@ -74,7 +70,7 @@ def _localization_input_path(summary: Mapping[str, Any], name: str) -> Path:
     record = summary["inputs"][name]
     path = Path(str(record["path"]))
     _require(path.is_file(), f"localization input is missing: {name}")
-    _require(_sha256(path) == record["sha256"], f"localization input changed: {name}")
+    _require(sha256_file(path) == record["sha256"], f"localization input changed: {name}")
     return path
 
 
@@ -293,16 +289,16 @@ def evaluate_guarded_propagated_state_case(
     )
     twin_belief_path = _localization_input_path(localization_summary, "twin_belief")
     gt_track_path = _localization_input_path(localization_summary, "gt_track")
-    data = _load_pickle(final_data_path)
-    optimal = _load_pickle(optimal_path)
-    released = np.asarray(_load_pickle(baseline_path), dtype=np.float32)
+    data = load_pickle(final_data_path)
+    optimal = load_pickle(optimal_path)
+    released = np.asarray(load_pickle(baseline_path), dtype=np.float32)
     observed = np.asarray(data["object_points"], dtype=np.float64)
     visible = np.asarray(data["object_visibilities"], dtype=bool)
     motion_valid = np.asarray(data["object_motions_valid"], dtype=bool)
     controller = np.asarray(data["controller_points"], dtype=np.float64)
     surface = np.asarray(data["surface_points"], dtype=np.float64)
     interior = np.asarray(data["interior_points"], dtype=np.float64)
-    gt_track = np.asarray(_load_pickle(gt_track_path), dtype=np.float64)
+    gt_track = np.asarray(load_pickle(gt_track_path), dtype=np.float64)
     frame_count, original_count, _ = observed.shape
     _require(heldout_start_frame < frame_count, "prefix consumes the forecast")
     structure = np.concatenate((observed[0], surface, interior), axis=0)
@@ -358,7 +354,7 @@ def evaluate_guarded_propagated_state_case(
         "frozen localization particle mixture changed",
     )
 
-    simulator, torch, wp, _ = _initialize_simulator(
+    simulator, torch, wp, _ = initialize_simulator(
         official_repo,
         data,
         optimal,
@@ -368,7 +364,7 @@ def evaluate_guarded_propagated_state_case(
         original_count=original_count,
         dt=float(config["dt"]),
         num_substeps=int(config["num_substeps"]),
-        self_collision=_released_self_collision_for_case(case_id),
+        self_collision=released_self_collision_for_case(case_id),
         deterministic_spring_forces=True,
         spring_parameterization="grouped",
         device=device,
@@ -432,7 +428,7 @@ def evaluate_guarded_propagated_state_case(
         controller_points_m=controller,
         device=device,
     )
-    valid = _target_validity(visible, motion_valid)
+    valid = target_validity(visible, motion_valid)
     truth_relative = observed[endpoint_frame:, :original_count]
     valid_relative = valid[endpoint_frame:, :original_count]
     frozen_baseline_mean = _weighted_mean(frozen_baseline_particles, particles.weights)
@@ -591,8 +587,8 @@ def evaluate_guarded_propagated_state_case(
         )
 
     baseline_metrics = metrics(frozen_global_baseline)
-    support_nodes = _attachment_support_nodes(graph, len(structure))
-    graph_distance = _graph_distance(
+    support_nodes = attachment_support_nodes(graph, len(structure))
+    graph_distance = compute_graph_distance(
         len(structure), graph.springs[: graph.num_object_springs], support_nodes
     )
     method_results: dict[str, Any] = {}
@@ -608,9 +604,9 @@ def evaluate_guarded_propagated_state_case(
         ):
             method_variance = coefficient_variance[:, :original_count]
         method_results[method] = {
-            "future": _metric_summary(baseline_metrics, candidate_metrics),
-            "horizon": _horizon_summary(baseline_metrics, candidate_metrics),
-            "far_graph": _far_graph_observation_error(
+            "future": metric_summary(baseline_metrics, candidate_metrics),
+            "horizon": horizon_summary(baseline_metrics, candidate_metrics),
+            "far_graph": far_graph_observation_error(
                 global_trajectories[method],
                 observed,
                 valid,
@@ -640,13 +636,13 @@ def evaluate_guarded_propagated_state_case(
         1.0 - raw_bias_energy / frozen_bias_energy if frozen_bias_energy > 0.0 else 0.0
     )
     source_checksums = {
-        "localization_summary": _sha256(localization_summary_path),
-        "localization_archive": _sha256(localization_archive_path),
-        "localization_correction": _sha256(localization_correction_path),
-        "final_data": _sha256(final_data_path),
-        "checkpoint": _sha256(checkpoint_path),
-        "parameter_profile": _sha256(parameter_profile_path),
-        "twin_belief": _sha256(twin_belief_path),
+        "localization_summary": sha256_file(localization_summary_path),
+        "localization_archive": sha256_file(localization_archive_path),
+        "localization_correction": sha256_file(localization_correction_path),
+        "final_data": sha256_file(final_data_path),
+        "checkpoint": sha256_file(checkpoint_path),
+        "parameter_profile": sha256_file(parameter_profile_path),
+        "twin_belief": sha256_file(twin_belief_path),
     }
     selected_weights = selection.state_weights
     selected_bias = (
@@ -766,11 +762,11 @@ def evaluate_guarded_propagated_state_case(
             "correction": artifact_record,
             "rollouts": {
                 "path": str(archive_path.resolve()),
-                "sha256": _sha256(archive_path),
+                "sha256": sha256_file(archive_path),
             },
         },
         "inputs": {
-            name: {"path": str(path.resolve()), "sha256": _sha256(path)}
+            name: {"path": str(path.resolve()), "sha256": sha256_file(path)}
             for name, path in {
                 "localization_summary": localization_summary_path,
                 "localization_archive": localization_archive_path,
@@ -844,7 +840,7 @@ def aggregate_guarded_propagated_state_cases(
             method_values[method]["coverage_90"].append(
                 float(summary["methods"][method]["coverage"]["coordinate_coverage_90"])
             )
-        input_records.append({"path": str(path.resolve()), "sha256": _sha256(path)})
+        input_records.append({"path": str(path.resolve()), "sha256": sha256_file(path)})
 
     aggregate_methods: dict[str, Any] = {}
     for method, metrics in method_values.items():

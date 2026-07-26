@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from bayesian_phystwin.phystwin_residual_dynamics import _target_validity
+from bayesian_phystwin.causal4d_provider_v1 import target_validity
 from causal4d.contracts import PhysicalPosterior, load_contract
 from causal4d.molmo_acceptance import (
     gate_beta_candidates,
@@ -75,7 +75,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ) as handle:
             data = pickle.load(handle)
         observed = np.asarray(data["object_points"], dtype=float)
-        valid = _target_validity(
+        valid = target_validity(
             np.asarray(data["object_visibilities"], dtype=bool),
             np.asarray(data["object_motions_valid"], dtype=bool),
         )

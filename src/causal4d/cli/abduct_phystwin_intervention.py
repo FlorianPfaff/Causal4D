@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from bayesian_phystwin.phystwin_residual_dynamics import _target_validity
+from bayesian_phystwin.causal4d_provider_v1 import target_validity
 from causal4d.contracts import TwinBelief, load_contract, save_contract
 from causal4d.identifiability import (
     IdentifiabilityConfig,
@@ -121,7 +121,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     observed = np.asarray(data["object_points"], dtype=float)
     visible = np.asarray(data["object_visibilities"], dtype=bool)
     motion_valid = np.asarray(data["object_motions_valid"], dtype=bool)
-    valid = _target_validity(visible, motion_valid)
+    valid = target_validity(visible, motion_valid)
     endpoint = artifact.endpoint_frame
     observations_from_endpoint = observed[endpoint:]
     mask_from_endpoint = valid[endpoint:]

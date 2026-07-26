@@ -11,6 +11,19 @@ from typing import Iterable
 
 import numpy as np
 
+from bayesian_phystwin.causal4d_provider_v1 import (
+    chamfer_by_frame,
+    git_commit,
+    initialize_simulator,
+    load_pickle,
+    lock_protocol,
+    metric_summary,
+    released_self_collision_for_case,
+    rollout_restart,
+    sha256_file,
+    simulator_runtime,
+    target_validity,
+)
 from bayesian_phystwin.phystwin_additional_bayesian_confirmation import (
     FIXED_INITIAL_STD_M,
     FIXED_INLIER_PRIOR,
@@ -18,14 +31,13 @@ from bayesian_phystwin.phystwin_additional_bayesian_confirmation import (
     FIXED_OUTLIER_VARIANCE_MULTIPLIER,
     FIXED_PROCESS_STD_M,
 )
-from bayesian_phystwin.phystwin_additional_confirmation import _chamfer_by_frame
 from bayesian_phystwin.phystwin_bayesian_anchor import robust_random_walk_endpoint
 from bayesian_phystwin.phystwin_comparison import (
     official_metrics_by_frame,
     paired_block_bootstrap,
     phystwin_physical_object_cluster,
 )
-from bayesian_phystwin.phystwin_confirmatory import DEVELOPMENT_CASES, _lock_protocol
+from bayesian_phystwin.phystwin_confirmatory import DEVELOPMENT_CASES
 from bayesian_phystwin.phystwin_graph import (
     PhysTwinSpringGraphConfig,
     build_phystwin_spring_graph,
@@ -34,20 +46,7 @@ from bayesian_phystwin.phystwin_graph_discrepancy import (
     graph_discrepancy_diagnostics,
     normalized_spring_laplacian,
 )
-from bayesian_phystwin.phystwin_residual_dynamics import (
-    _load_pickle,
-    _sha256,
-    _target_validity,
-)
-from bayesian_phystwin.phystwin_state_injection import (
-    _git_commit,
-    _initialize_simulator,
-    _metric_summary,
-    _released_self_collision_for_case,
-    _rollout_restart,
-    _simulator_runtime,
-    estimate_endpoint_velocity_delta,
-)
+from bayesian_phystwin.phystwin_state_injection import estimate_endpoint_velocity_delta
 
 from causal4d.rest_geometry import (
     GraphRestGeometryCorrection,
@@ -269,7 +268,7 @@ def _run_configured_restart(
         controller_points=controller_points,
         device=device,
     )
-    return _rollout_restart(
+    return rollout_restart(
         simulator,
         torch,
         wp,
@@ -327,9 +326,9 @@ def evaluate_phystwin_rest_geometry_case(
             "the pinned official simulator selects cuda:0; use CUDA_VISIBLE_DEVICES"
         )
 
-    data = _load_pickle(final_data_path)
-    optimal = _load_pickle(optimal_params_path)
-    baseline = np.asarray(_load_pickle(baseline_trajectory_path), dtype=float)
+    data = load_pickle(final_data_path)
+    optimal = load_pickle(optimal_params_path)
+    baseline = np.asarray(load_pickle(baseline_trajectory_path), dtype=float)
     observed = np.asarray(data["object_points"], dtype=float)
     visible = np.asarray(data["object_visibilities"], dtype=bool)
     motion_valid = np.asarray(data["object_motions_valid"], dtype=bool)
@@ -347,7 +346,7 @@ def evaluate_phystwin_rest_geometry_case(
     if baseline.shape[1] != len(structure_points):
         raise ValueError("released trajectory and object state size disagree")
     if self_collision is None:
-        self_collision = _released_self_collision_for_case(
+        self_collision = released_self_collision_for_case(
             Path(final_data_path).resolve().parent.name
         )
     graph_config = PhysTwinSpringGraphConfig(
@@ -376,7 +375,7 @@ def evaluate_phystwin_rest_geometry_case(
     object_springs = graph.springs[: graph.num_object_springs]
     laplacian = normalized_spring_laplacian(len(structure_points), object_springs)
     residual = observed - baseline[:, :original_count]
-    valid = _target_validity(visible, motion_valid)
+    valid = target_validity(visible, motion_valid)
     frame_dt = dt * num_substeps
 
     warnings.filterwarnings(
@@ -386,7 +385,7 @@ def evaluate_phystwin_rest_geometry_case(
             "recorded kernel set_control_points.*"
         ),
     )
-    simulator, torch, wp, checkpoint = _initialize_simulator(
+    simulator, torch, wp, checkpoint = initialize_simulator(
         official_repo,
         data,
         optimal,
@@ -617,14 +616,14 @@ def evaluate_phystwin_rest_geometry_case(
     gt_track = (
         None
         if gt_track_path is None
-        else np.asarray(_load_pickle(gt_track_path), dtype=float)
+        else np.asarray(load_pickle(gt_track_path), dtype=float)
     )
     num_surface_points = original_count + len(surface)
 
     def metrics_by_frame(trajectory: np.ndarray) -> dict[str, np.ndarray]:
         if gt_track is None:
             return {
-                "chamfer_distance_m": _chamfer_by_frame(
+                "chamfer_distance_m": chamfer_by_frame(
                     trajectory,
                     observed,
                     visible,
@@ -645,7 +644,7 @@ def evaluate_phystwin_rest_geometry_case(
 
     released_metrics = metrics_by_frame(baseline)
     method_results = {
-        method: {"future": _metric_summary(released_metrics, metrics_by_frame(value))}
+        method: {"future": metric_summary(released_metrics, metrics_by_frame(value))}
         for method, value in candidates.items()
     }
     output = Path(output_dir)
@@ -691,7 +690,7 @@ def evaluate_phystwin_rest_geometry_case(
             "self_collision": self_collision,
             "deterministic_spring_forces": deterministic_spring_forces,
             "device": device,
-            "runtime": _simulator_runtime(),
+            "runtime": simulator_runtime(),
         },
         "information_boundary": {
             "correction_evidence_frames": [0, train_end_frame],
@@ -736,26 +735,26 @@ def evaluate_phystwin_rest_geometry_case(
             "future_observations": "none",
         },
         "inputs": {
-            "final_data": {"path": str(Path(final_data_path).resolve()), "sha256": _sha256(final_data_path)},
-            "baseline_trajectory": {"path": str(Path(baseline_trajectory_path).resolve()), "sha256": _sha256(baseline_trajectory_path)},
-            "optimal_params": {"path": str(Path(optimal_params_path).resolve()), "sha256": _sha256(optimal_params_path)},
+            "final_data": {"path": str(Path(final_data_path).resolve()), "sha256": sha256_file(final_data_path)},
+            "baseline_trajectory": {"path": str(Path(baseline_trajectory_path).resolve()), "sha256": sha256_file(baseline_trajectory_path)},
+            "optimal_params": {"path": str(Path(optimal_params_path).resolve()), "sha256": sha256_file(optimal_params_path)},
             "checkpoint": {
                 "path": str(Path(checkpoint_path).resolve()),
-                "sha256": _sha256(checkpoint_path),
+                "sha256": sha256_file(checkpoint_path),
                 "epoch": int(checkpoint.get("epoch", -1)),
             },
             "gt_track_3d": (
                 None
                 if gt_track_path is None
-                else {"path": str(Path(gt_track_path).resolve()), "sha256": _sha256(gt_track_path)}
+                else {"path": str(Path(gt_track_path).resolve()), "sha256": sha256_file(gt_track_path)}
             ),
-            "official_repo": {"path": str(Path(official_repo).resolve()), "commit": _git_commit(official_repo)},
+            "official_repo": {"path": str(Path(official_repo).resolve()), "commit": git_commit(official_repo)},
             "canonical_material_graph": (
                 None
                 if canonical_material_graph_path is None
                 else {
                     "path": str(Path(canonical_material_graph_path).resolve()),
-                    "sha256": _sha256(canonical_material_graph_path),
+                    "sha256": sha256_file(canonical_material_graph_path),
                 }
             ),
         },
@@ -885,10 +884,10 @@ def run_phystwin_rest_geometry_comparison(
     controller_rest_modes = _controller_rest_grid(controller_rest_mode_grid)
     clusters = {case: phystwin_physical_object_cluster(case) for case in selected}
     self_collision_by_case = {
-        case: _released_self_collision_for_case(case) for case in selected
+        case: released_self_collision_for_case(case) for case in selected
     }
-    runtime = _simulator_runtime()
-    code_commit = _git_commit(Path(__file__).resolve().parents[2])
+    runtime = simulator_runtime()
+    code_commit = git_commit(Path(__file__).resolve().parents[2])
     specification = {
         "method": "graph-regularized frame/rest-geometry PhysTwin injection",
         "code_commit": code_commit,
@@ -915,7 +914,7 @@ def run_phystwin_rest_geometry_comparison(
             "then refit on all O-minus; no future frame enters inference or selection"
         ),
         "official_repo": str(Path(official_repo).resolve()),
-        "official_commit": _git_commit(official_repo),
+        "official_commit": git_commit(official_repo),
         "runtime": runtime,
         "bootstrap": {
             "samples": bootstrap_samples,
@@ -928,13 +927,13 @@ def run_phystwin_rest_geometry_comparison(
             if canonical_material_graph_path is None
             else {
                 "path": str(Path(canonical_material_graph_path).resolve()),
-                "sha256": _sha256(canonical_material_graph_path),
+                "sha256": sha256_file(canonical_material_graph_path),
             }
         ),
         "status": "development" if cohort == "development" else "locked evaluation",
     }
     output = Path(output_dir)
-    locked = _lock_protocol(output, specification)
+    locked = lock_protocol(output, specification)
     case_results = {}
     paired_vs_released = {method: {} for method in REST_GEOMETRY_METHODS}
     paired_vs_restart = {
