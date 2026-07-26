@@ -59,6 +59,7 @@ class InterventionIdentifiabilityResult:
     identifiable: bool
     failure_reasons: tuple[str, ...]
     query_failure_reasons: tuple[str, ...] = ()
+    extended_diagnostics: bool = False
 
     def __post_init__(self) -> None:
         information = np.asarray(self.conditional_information, dtype=float).copy()
@@ -130,7 +131,7 @@ class InterventionIdentifiabilityResult:
         return self.identified_basis @ self.identified_basis.T
 
     def as_dict(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "effective_rank": self.effective_rank,
             "parameter_count": self.parameter_count,
             "minimum_eigenvalue": self.minimum_eigenvalue,
@@ -139,16 +140,22 @@ class InterventionIdentifiabilityResult:
             ),
             "residualized_response_fraction": self.residualized_response_fraction,
             "maximum_subspace_cosine": self.maximum_subspace_cosine,
-            "parameter_scales": self.parameter_scales.tolist(),
-            "identified_basis": self.identified_basis.tolist(),
-            "null_basis": self.null_basis.tolist(),
-            "query_null_response_fraction": self.query_null_response_fraction,
-            "query_identifiable": self.query_identifiable,
             "identifiable": self.identifiable,
             "failure_reasons": list(self.failure_reasons),
-            "query_failure_reasons": list(self.query_failure_reasons),
             "eigenvalues": self.eigenvalues.tolist(),
         }
+        if self.extended_diagnostics:
+            result.update(
+                {
+                    "parameter_scales": self.parameter_scales.tolist(),
+                    "identified_basis": self.identified_basis.tolist(),
+                    "null_basis": self.null_basis.tolist(),
+                    "query_null_response_fraction": self.query_null_response_fraction,
+                    "query_identifiable": self.query_identifiable,
+                    "query_failure_reasons": list(self.query_failure_reasons),
+                }
+            )
+        return result
 
 
 def finite_response_sensitivity(
@@ -363,4 +370,7 @@ def assess_intervention_identifiability(
         identifiable=not reasons,
         failure_reasons=tuple(reasons),
         query_failure_reasons=tuple(query_reasons),
+        extended_diagnostics=(
+            parameter_scales is not None or query_sensitivity is not None
+        ),
     )
