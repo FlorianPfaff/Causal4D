@@ -1,4 +1,4 @@
-name: Apply CI implementation patch
+name: Stage CI implementation
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  apply:
+  stage:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -19,7 +19,7 @@ jobs:
         with:
           ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
-      - name: Materialize the reviewed implementation
+      - name: Stage source changes and workflow blobs
         shell: bash
         env:
           TARGET_BRANCH: ${{ github.head_ref || github.ref_name }}
@@ -28,12 +28,18 @@ jobs:
           patch="$RUNNER_TEMP/causal4d-ci.patch.gz"
           cp .ci-bootstrap/changes.patch.gz "$patch"
           rm -rf .ci-bootstrap
-          rm .github/workflows/apply-ci-patch.yml
           git rm .github/workflows/ci.yml
           gzip -dc "$patch" | git apply --index
+
+          mkdir -p .ci-staging/workflows
+          git mv .github/workflows/bpt-main-compatibility.yml .ci-staging/workflows/
+          git mv .github/workflows/ci.yml .ci-staging/workflows/
+          git mv .github/workflows/optional-integrations.yml .ci-staging/workflows/
+          git checkout origin/main -- .github/workflows/ci.yml
+
           git add -A
           git diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Add dependency-boundary CI"
+          git commit -m "Stage dependency-boundary CI implementation"
           git push origin "HEAD:${TARGET_BRANCH}"
