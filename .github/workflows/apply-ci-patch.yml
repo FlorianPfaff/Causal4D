@@ -29,6 +29,7 @@ jobs:
           cp .ci-bootstrap/changes.patch.gz "$patch"
           rm -rf .ci-bootstrap
           rm .github/workflows/apply-ci-patch.yml
+          git rm .github/workflows/ci.yml
           gzip -dc "$patch" | git apply --index
           git add -A
           git diff --cached --check
