@@ -3,6 +3,8 @@ name: Apply CI implementation patch
 on:
   push:
     branches: [agent/ci-dependency-boundaries]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
@@ -15,10 +17,12 @@ jobs:
       - name: Check out implementation branch
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
       - name: Materialize the reviewed implementation
         shell: bash
+        env:
+          TARGET_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           set -euo pipefail
           patch="$RUNNER_TEMP/causal4d-ci.patch.gz"
@@ -31,4 +35,4 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "Add dependency-boundary CI"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "HEAD:${TARGET_BRANCH}"
