@@ -51,7 +51,7 @@ intervention-abduction evidence.
 
 ## Evidence status
 
-As of 2026-07-12:
+As of 2026-07-26:
 
 | Required link | Status | Evidence |
 | --- | --- | --- |
@@ -67,6 +67,32 @@ paper, but the complete first-paper claim is not yet ready. The next decisive
 evidence is the same-object multi-action real protocol, including either
 successful held-out calibration or a well-powered cross-action bound on its
 failure, not another architecture component.
+
+## Next scientific milestone and method freeze
+
+The primary method is frozen for the 36-execution confirmatory milestone. Until
+that result is reported, no new discrepancy mechanism, semantic component,
+reconstruction branch, planner, or public-data result may enter or rescue the
+primary real-experiment comparison.
+
+Before the first confirmatory execution, the acquisition team must seal:
+
+- the exact clean Causal4D commit;
+- the exact Bayesian-PhysTwin commit pin;
+- the protocol and acquisition-schedule checksums;
+- the six-frame observation boundary and registered analysis entrypoints;
+- the rule that target outcomes cannot select methods or hyperparameters; and
+- the obligation to report either successful transfer/calibration or a
+  well-powered negative result.
+
+The machine-readable seal is produced and validated with
+`causal4d-real-experiment-freeze`. A method-affecting change requires collection
+to stop and a new protocol/version before target outcomes are inspected. After
+target inspection, defects and failed gates are reported as limitations rather
+than repaired under the same registration.
+
+The operational checklist is in
+`docs/causal4d_real_experiment_milestone.md`.
 
 ## Main-paper experiment matrix
 
