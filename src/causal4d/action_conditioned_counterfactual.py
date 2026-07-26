@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 
 import numpy as np
 
@@ -23,6 +23,10 @@ from causal4d.contracts import (
 from causal4d.counterfactual import apply_counterfactual_operator
 from causal4d.discrepancy_belief import GraphDiscrepancyBelief
 from causal4d.rollout_bank import JointRolloutBank
+from causal4d.stable_discrepancy_dynamics import (
+    StableDiscrepancyTransitionModel,
+    forecast_action_conditioned_dynamics,
+)
 
 
 def _readonly(values: np.ndarray, *, dtype: type | None = float) -> np.ndarray:
@@ -44,8 +48,7 @@ class ActionConditionedPhysicalPosterior:
 
     ``physical`` preserves the existing provenance-complete Causal4D contract.
     The replacement readout mean and variance have shape ``(K, T, N, 3)`` and
-    are produced by graph-persistent discrepancy means with action-conditioned
-    positive-semidefinite covariance growth.
+    are produced by a separately transported graph-discrepancy belief.
     """
 
     physical: PhysicalPosterior
@@ -141,6 +144,7 @@ def _component_features(
     control_anchor_m: np.ndarray,
     *,
     frame_dt_s: float,
+    feature_schema: Literal["magnitude_v1", "signed_v2"],
 ) -> ActionConditionedDiscrepancyFeatures:
     built = [
         build_action_conditioned_features(
@@ -152,6 +156,7 @@ def _component_features(
             kappa_names=physical.kappa_names,
             kappa=physical.kappa_cf[index],
             contact_policy=query.contact_policy,
+            feature_schema=feature_schema,
         )
         for index in range(len(physical.weights))
     ]
@@ -162,6 +167,8 @@ def _component_features(
         names=names,
         values=np.stack([value.values for value in built], axis=0),
         component_ids=physical.component_ids,
+        step_duration_s=frame_dt_s,
+        schema_id=feature_schema,
     )
 
 
@@ -177,13 +184,16 @@ def apply_action_conditioned_counterfactual_operator(
     control_anchor_m: np.ndarray,
     *,
     frame_dt_s: float,
+    feature_schema: Literal["magnitude_v1", "signed_v2"] = "magnitude_v1",
+    transition_model: StableDiscrepancyTransitionModel | None = None,
 ) -> ActionConditionedPhysicalPosterior:
     """Apply ``do(u_cf)`` with temporal action-conditioned readout uncertainty.
 
-    The ordinary physical operator remains the source of state trajectories,
-    intervention transport, contact handling, weights, and provenance. This
-    extension replaces only the discrepancy-aware readout moments. It reads no
-    held-out object observation.
+    The ordinary physical operator remains authoritative for state trajectories,
+    intervention transport, contact handling, weights, and provenance. The
+    extension replaces only discrepancy-aware readout moments. Supplying a stable
+    transition model activates signed, physical-time discrepancy-mean transport;
+    omitting it preserves graph persistence exactly.
     """
 
     if not np.isfinite(frame_dt_s) or frame_dt_s <= 0.0:
@@ -208,13 +218,25 @@ def apply_action_conditioned_counterfactual_operator(
         query,
         anchor,
         frame_dt_s=frame_dt_s,
+        feature_schema=feature_schema,
     )
-    forecast = forecast_action_conditioned_persistence(
-        aligned_belief,
-        discrepancy_model,
-        features,
-        basis,
-    )
+    if transition_model is None:
+        forecast = forecast_action_conditioned_persistence(
+            aligned_belief,
+            discrepancy_model,
+            features,
+            basis,
+        )
+        mean_transition = "graph_persistence"
+    else:
+        forecast = forecast_action_conditioned_dynamics(
+            aligned_belief,
+            discrepancy_model,
+            transition_model,
+            features,
+            basis,
+        )
+        mean_transition = transition_model.model_id
     if forecast.readout_mean_m.shape != physical.state_trajectories_m.shape:
         raise ValueError(
             "counterfactual rollout must contain the endpoint plus query horizon"
@@ -232,8 +254,18 @@ def apply_action_conditioned_counterfactual_operator(
         discrepancy_model_id=forecast.model_id,
         metadata={
             "operator": "abduction-action-prediction",
-            "discrepancy_mean_transition": "graph_persistence",
-            "discrepancy_covariance_transition": "action_conditioned_psd_growth",
+            "discrepancy_mean_transition": mean_transition,
+            "discrepancy_covariance_transition": discrepancy_model.model_id,
+            "feature_schema": features.schema_id,
+            "frame_dt_s": float(frame_dt_s),
+            "mean_time_parameterization": (
+                "persistence"
+                if transition_model is None
+                else transition_model.time_parameterization
+            ),
+            "covariance_time_parameterization": (
+                discrepancy_model.time_parameterization
+            ),
             "base_physical_posterior_id": physical.artifact_id,
             "aligned_graph_discrepancy_belief_id": aligned_belief.artifact_id,
             "temporal_readout_uncertainty": True,
