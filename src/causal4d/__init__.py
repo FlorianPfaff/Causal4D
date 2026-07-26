@@ -12,8 +12,13 @@ from causal4d.action_conditioned_discrepancy import (
     forecast_action_conditioned_persistence,
 )
 from causal4d.benchmark import CounterfactualBenchmarkConfig, build_protocol
+from causal4d.causal_sufficiency import (
+    CausalSufficiencyResult,
+    assess_command_residual_sufficiency,
+)
 from causal4d.contact_evaluation import run_latent_contact_benchmark
 from causal4d.contact_inference import LatentContactConfig
+from causal4d.contact_traction import graph_traction_field, integrate_contact_wrench
 from causal4d.contracts import (
     CounterfactualQuery,
     FactualIntervention,
@@ -83,6 +88,18 @@ from causal4d.semantic_freshness import (
     SemanticTimingMetadata,
     apply_semantic_freshness_gate,
 )
+from causal4d.sensor_evidence import (
+    INDEPENDENT_SENSOR_SCHEMA_VERSION,
+    ActuatorEvidence,
+    ContactWrenchEvidence,
+    load_independent_sensor_evidence,
+    save_independent_sensor_evidence,
+)
+from causal4d.sensor_factorized_abduction import (
+    IndependentSensorAbductionConfig,
+    predict_affine_actuator_realizations,
+    reweight_factual_intervention_with_independent_sensors,
+)
 from causal4d.stable_discrepancy_dynamics import (
     StableDiscrepancyTransitionModel,
     forecast_action_conditioned_dynamics,
@@ -93,7 +110,10 @@ __all__ = [
     "ActionConditionedDiscrepancyForecast",
     "ActionConditionedDiscrepancyModel",
     "ActionConditionedPhysicalPosterior",
+    "ActuatorEvidence",
     "BASE_CAUSAL4D_PROVIDER_CAPABILITIES",
+    "CausalSufficiencyResult",
+    "ContactWrenchEvidence",
     "CounterfactualBenchmarkConfig",
     "CounterfactualQuery",
     "FactualIntervention",
@@ -104,7 +124,9 @@ __all__ = [
     "GroupLikelihoodDiagnostics",
     "GroupedObservationEvidence",
     "HierarchicalAbductionResult",
+    "INDEPENDENT_SENSOR_SCHEMA_VERSION",
     "IdentifiabilityConfig",
+    "IndependentSensorAbductionConfig",
     "InterventionIdentifiabilityResult",
     "LatentContactConfig",
     "JointRolloutBank",
@@ -128,6 +150,7 @@ __all__ = [
     "apply_action_conditioned_counterfactual_operator",
     "apply_counterfactual_operator",
     "apply_semantic_freshness_gate",
+    "assess_command_residual_sufficiency",
     "assess_finite_query_ambiguity",
     "assess_intervention_identifiability",
     "build_action_conditioned_features",
@@ -137,14 +160,20 @@ __all__ = [
     "forecast_action_conditioned_persistence",
     "graph_discrepancy_group_covariances",
     "graph_mode_joint_weights",
+    "graph_traction_field",
     "grouped_component_log_likelihoods",
+    "integrate_contact_wrench",
     "load_graph_discrepancy_belief",
+    "load_independent_sensor_evidence",
     "posterior_weights_from_grouped_evidence",
+    "predict_affine_actuator_realizations",
     "prefix_component_log_likelihood",
     "preserve_prior_within_unidentified_subspace",
     "project_identifiable_intervention_update",
+    "reweight_factual_intervention_with_independent_sensors",
     "run_counterfactual_benchmark",
     "run_latent_contact_benchmark",
+    "save_independent_sensor_evidence",
     "update_joint_weights_from_prefix",
     "validate_provider_compatibility",
     "write_graph_discrepancy_belief",
