@@ -18,8 +18,8 @@ jobs:
           set -euo pipefail
           git init -q
           git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git fetch -q --depth=100 origin main "${GITHUB_SHA}"
-          git checkout -q --detach FETCH_HEAD
+          git fetch -q --depth=100 origin main agent/ci-dependency-boundaries
+          git checkout -q --detach origin/agent/ci-dependency-boundaries
           python -m pip install -q "ruff>=0.15.22,<0.17" >/dev/null
           mapfile -t files < <(git diff --name-only --diff-filter=ACMR origin/main...HEAD -- '*.py')
           printf '%s\n' "${files[@]}"
