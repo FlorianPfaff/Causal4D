@@ -7,17 +7,32 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
-from causal4d.bpt_belief import export_official_phystwin_twin_belief
-from causal4d.contracts import TwinBelief, load_contract, save_contract
-from causal4d.phystwin_backend import (
-    OfficialPhysTwinBackend,
-    OfficialPhysTwinBackendConfig,
-    PhysTwinActionProposal,
-    PhysTwinHypothesisConfig,
-    hidden_action_proposals,
-    known_action_proposal,
-    save_rollout_bank,
-)
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global export_official_phystwin_twin_belief
+    global TwinBelief
+    global load_contract
+    global save_contract
+    global OfficialPhysTwinBackend
+    global OfficialPhysTwinBackendConfig
+    global PhysTwinActionProposal
+    global PhysTwinHypothesisConfig
+    global hidden_action_proposals
+    global known_action_proposal
+    global save_rollout_bank
+
+    from causal4d.bpt_belief import export_official_phystwin_twin_belief
+    from causal4d.contracts import TwinBelief, load_contract, save_contract
+    from causal4d.phystwin_backend import (
+        OfficialPhysTwinBackend,
+        OfficialPhysTwinBackendConfig,
+        PhysTwinActionProposal,
+        PhysTwinHypothesisConfig,
+        hidden_action_proposals,
+        known_action_proposal,
+        save_rollout_bank,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -93,6 +108,7 @@ def _action_proposals(
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    _load_runtime_dependencies()
     case_dir = Path(args.case_dir)
     train_end = _train_end(case_dir, args.train_end_frame)
     loaded_belief = None

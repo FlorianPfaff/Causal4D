@@ -13,22 +13,42 @@ from typing import Any
 
 import numpy as np
 
-from bayesian_phystwin.causal4d_provider_v1 import target_validity
-from causal4d.contracts import PhysicalPosterior, TwinBelief, load_contract
-from causal4d.intervention_abduction import FactualAbductionConfig
-from causal4d.phystwin_backend import load_rollout_bank
-from causal4d.real_oracle_audit import (
-    HoldoutOracleProtocol,
-    audit_oracle_bank,
-    bpt_nominal_prediction,
-    causal4d_posterior_prediction,
-    evaluate_prediction,
-    oracle_gap_report,
-    protocol_dict,
-    released_phystwin_prediction,
-    variance_decomposition,
-    verify_nested_rollout_banks,
-)
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global target_validity
+    global PhysicalPosterior
+    global TwinBelief
+    global load_contract
+    global FactualAbductionConfig
+    global load_rollout_bank
+    global HoldoutOracleProtocol
+    global audit_oracle_bank
+    global bpt_nominal_prediction
+    global causal4d_posterior_prediction
+    global evaluate_prediction
+    global oracle_gap_report
+    global protocol_dict
+    global released_phystwin_prediction
+    global variance_decomposition
+    global verify_nested_rollout_banks
+
+    from bayesian_phystwin.causal4d_provider_v1 import target_validity
+    from causal4d.contracts import PhysicalPosterior, TwinBelief, load_contract
+    from causal4d.intervention_abduction import FactualAbductionConfig
+    from causal4d.phystwin_backend import load_rollout_bank
+    from causal4d.real_oracle_audit import (
+        HoldoutOracleProtocol,
+        audit_oracle_bank,
+        bpt_nominal_prediction,
+        causal4d_posterior_prediction,
+        evaluate_prediction,
+        oracle_gap_report,
+        protocol_dict,
+        released_phystwin_prediction,
+        variance_decomposition,
+        verify_nested_rollout_banks,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -118,6 +138,7 @@ def _write_component_csv(path: str | Path, rows: Sequence[dict[str, Any]]) -> No
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    _load_runtime_dependencies()
     if args.o_plus_prefix_frames < 1:
         raise ValueError("--o-plus-prefix-frames must be positive")
     current_bank, current_manifest = load_rollout_bank(args.current_bank_npz)
@@ -131,7 +152,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if physical_artifact.source_twin_belief_id != belief_artifact.artifact_id:
         raise ValueError("PhysicalPosterior and TwinBelief provenance disagree")
     nesting = verify_nested_rollout_banks(current_bank, expanded_bank)
-    if physical_artifact.readout_trajectories_m.shape[1:] != current_bank.trajectories.shape[2:]:
+    if (
+        physical_artifact.readout_trajectories_m.shape[1:]
+        != current_bank.trajectories.shape[2:]
+    ):
         raise ValueError("PhysicalPosterior and current rollout bank shapes disagree")
 
     data = _load_pickle(args.final_data_pickle)
@@ -183,9 +207,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             **evaluate_prediction(bpt_prediction, truth, mask, protocol),
             "label_use_for_prediction": False,
             "o_plus_prefix_frames_used": args.o_plus_prefix_frames,
-            "effective_component_count": float(
-                1.0 / np.sum(np.square(bpt_weights))
-            ),
+            "effective_component_count": float(1.0 / np.sum(np.square(bpt_weights))),
         },
         "current_causal4d_posterior": {
             **evaluate_prediction(causal4d_prediction, truth, mask, protocol),
@@ -269,13 +291,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "twin_belief": _input_record(args.twin_belief_npz),
                 "physical_posterior": _input_record(args.physical_posterior_npz),
                 "final_data": _input_record(args.final_data_pickle),
-                "released_trajectory": _input_record(
-                    args.released_trajectory_pickle
-                ),
+                "released_trajectory": _input_record(args.released_trajectory_pickle),
             },
-            "component_metrics_csv": str(
-                Path(args.output_components_csv).resolve()
-            ),
+            "component_metrics_csv": str(Path(args.output_components_csv).resolve()),
         },
     }
     _write_component_csv(
@@ -292,9 +310,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         json.dumps(
             {
                 "output": str(output.resolve()),
-                "component_metrics": str(
-                    Path(args.output_components_csv).resolve()
-                ),
+                "component_metrics": str(Path(args.output_components_csv).resolve()),
                 "predictors": predictors,
                 "track_error_gaps": gaps["track_error_m"],
                 "variance_closure": variance["all_holdout"]["closure"],

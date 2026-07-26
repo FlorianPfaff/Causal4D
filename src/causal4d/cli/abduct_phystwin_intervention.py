@@ -10,20 +10,36 @@ from pathlib import Path
 
 import numpy as np
 
-from bayesian_phystwin.causal4d_provider_v1 import target_validity
-from causal4d.contracts import TwinBelief, load_contract, save_contract
-from causal4d.identifiability import (
-    IdentifiabilityConfig,
-    InterventionIdentifiabilityResult,
-    assess_intervention_identifiability,
-)
-from causal4d.intervention_abduction import (
-    FactualAbductionConfig,
-    abduct_factual_intervention,
-    evaluate_factual_abduction,
-)
-from causal4d.observation_evidence import GroupedObservationEvidence
-from causal4d.phystwin_backend import load_rollout_bank
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global target_validity
+    global TwinBelief
+    global load_contract
+    global save_contract
+    global IdentifiabilityConfig
+    global InterventionIdentifiabilityResult
+    global assess_intervention_identifiability
+    global FactualAbductionConfig
+    global abduct_factual_intervention
+    global evaluate_factual_abduction
+    global GroupedObservationEvidence
+    global load_rollout_bank
+
+    from bayesian_phystwin.causal4d_provider_v1 import target_validity
+    from causal4d.contracts import TwinBelief, load_contract, save_contract
+    from causal4d.identifiability import (
+        IdentifiabilityConfig,
+        InterventionIdentifiabilityResult,
+        assess_intervention_identifiability,
+    )
+    from causal4d.intervention_abduction import (
+        FactualAbductionConfig,
+        abduct_factual_intervention,
+        evaluate_factual_abduction,
+    )
+    from causal4d.observation_evidence import GroupedObservationEvidence
+    from causal4d.phystwin_backend import load_rollout_bank
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -62,9 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--abstain-when-unidentifiable", action="store_true")
     parser.add_argument("--identifiability-rank-tolerance", type=float, default=1e-6)
-    parser.add_argument(
-        "--minimum-information-eigenvalue", type=float, default=1e-6
-    )
+    parser.add_argument("--minimum-information-eigenvalue", type=float, default=1e-6)
     parser.add_argument("--maximum-condition-number", type=float, default=1e8)
     parser.add_argument(
         "--minimum-residualized-response-fraction", type=float, default=0.10
@@ -106,12 +120,11 @@ def _load_identifiability(
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    _load_runtime_dependencies()
     if args.o_plus_prefix_frames < 1:
         raise ValueError("--o-plus-prefix-frames must be positive")
     if args.abstain_when_unidentifiable and args.identifiability_npz is None:
-        raise ValueError(
-            "--abstain-when-unidentifiable requires --identifiability-npz"
-        )
+        raise ValueError("--abstain-when-unidentifiable requires --identifiability-npz")
     bank, manifest = load_rollout_bank(args.rollout_bank_npz)
     artifact = load_contract(args.twin_belief_npz)
     if not isinstance(artifact, TwinBelief):
@@ -203,9 +216,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         json.dumps(
             {
                 "evaluation": str(result_path.resolve()),
-                "factual_intervention": str(
-                    Path(args.output_factual_npz).resolve()
-                ),
+                "factual_intervention": str(Path(args.output_factual_npz).resolve()),
                 "factual_intervention_id": factual.artifact_id,
                 "map_hypothesis_id": evaluation["map_hypothesis_id"],
                 "relative_track_error_improvement": evaluation[
