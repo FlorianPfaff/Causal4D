@@ -256,28 +256,62 @@ jobs:
           python -m compileall -q src tests scripts
           python -m pytest --tb=short
           git diff --check
-      - name: Commit reconciled branch
+      - name: Export reviewed scope
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Rebase dependency-boundary CI onto provider-enabled main"
-      - name: Package validated commit
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p build/reconciled-ci
-          git format-patch --stdout origin/main..HEAD \
-            > build/reconciled-ci/reconciled.patch
-          git bundle create build/reconciled-ci/reconciled.bundle origin/main..HEAD
-          git diff --name-status origin/main..HEAD \
-            > build/reconciled-ci/changed-files.txt
-          git rev-parse HEAD > build/reconciled-ci/commit.txt
-      - name: Upload validated commit
+          root=build/reconciled-ci/selected
+          mkdir -p "$root"
+          files=(
+            .github/workflows/ci.yml
+            .github/workflows/optional-integrations.yml
+            docs/ci.md
+            pyproject.toml
+            requirements/ci/bayesian-phystwin-provider-v1.sha
+            scripts/ci/changed_python_files.py
+            scripts/ci/check_console_help.py
+            scripts/ci/read_bpt_pin.py
+            scripts/ci/run_bpt_integration_tests.py
+            scripts/ci/verify_frozen_manifest.py
+            scripts/ci/verify_result_bundle.py
+            src/causal4d/cli/abduct_phystwin_intervention.py
+            src/causal4d/cli/adaptive_molmo_task_posterior.py
+            src/causal4d/cli/audit_parameter_support.py
+            src/causal4d/cli/audit_real_oracle_gap.py
+            src/causal4d/cli/counterfactual_phystwin.py
+            src/causal4d/cli/discrepancy_localization_aggregate.py
+            src/causal4d/cli/evaluate_graph_temporal_discrepancy.py
+            src/causal4d/cli/evaluate_molmo_acceptance.py
+            src/causal4d/cli/evaluate_physical_counterfactual.py
+            src/causal4d/cli/evaluate_phystwin_molmo.py
+            src/causal4d/cli/evaluate_rest_geometry.py
+            src/causal4d/cli/export_bpt_belief.py
+            src/causal4d/cli/fit_semantic_trust.py
+            src/causal4d/cli/molmo_phystwin_forecast.py
+            src/causal4d/cli/molmo_task_posterior.py
+            src/causal4d/cli/phystwin_canonical_graph.py
+            src/causal4d/cli/phystwin_discrepancy_localization.py
+            src/causal4d/cli/phystwin_propagated_state.py
+            src/causal4d/cli/phystwin_propagated_state_aggregate.py
+            src/causal4d/cli/phystwin_rest_geometry_transfer.py
+            src/causal4d/cli/phystwin_rollout_bank.py
+            src/causal4d/cli/real_calibration.py
+            src/causal4d/cli/rest_geometry_protocol.py
+            src/causal4d/cli/rest_geometry_register_graph.py
+            src/causal4d/cli/rest_geometry_source_correction.py
+          )
+          : > build/reconciled-ci/modes.txt
+          for path in "${files[@]}"; do
+            test -f "$path"
+            mkdir -p "$root/$(dirname "$path")"
+            cp "$path" "$root/$path"
+            git ls-files -s -- "$path" | awk '{print $1 " " $4}' \
+              >> build/reconciled-ci/modes.txt
+          done
+          printf '%s\n' "${files[@]}" > build/reconciled-ci/selected-files.txt
+      - name: Upload reviewed scope
         uses: actions/upload-artifact@v7
         with:
-          name: reconciled-ci-current-main
+          name: reconciled-ci-selected-scope
           path: build/reconciled-ci/
           if-no-files-found: error
