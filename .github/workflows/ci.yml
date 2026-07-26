@@ -69,7 +69,7 @@ jobs:
       - name: Install package and test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install ".[dev]"
+          python -m pip install ".[dev,phystwin]"
 
       - name: Run test suite
         run: >-
