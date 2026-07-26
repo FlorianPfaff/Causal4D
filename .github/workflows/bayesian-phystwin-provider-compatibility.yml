@@ -1,60 +1,100 @@
-name: Bayesian-PhysTwin provider compatibility
+name: Three-repository installed-wheel compatibility
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/bayesian-phystwin-provider-compatibility.yml"
+      - "ci/three_repository_*.py"
+      - "docs/ci.md"
+      - "src/causal4d/observation_lineage.py"
+      - "src/causal4d/phystwin_backend.py"
+      - "src/causal4d/prob4d_observation_contract.py"
+      - "src/causal4d/provider_contract.py"
+      - "tests/test_bpt_provider_integration.py"
+      - "tests/test_causal4d_phystwin_backend.py"
   push:
     branches: [main]
     paths:
-      - "src/causal4d/provider_contract.py"
-      - "src/causal4d/bpt_belief.py"
-      - "src/causal4d/phystwin_backend.py"
-      - "tests/test_bpt_provider_*.py"
-      - "pyproject.toml"
       - ".github/workflows/bayesian-phystwin-provider-compatibility.yml"
+      - "ci/three_repository_*.py"
+      - "docs/ci.md"
+      - "src/causal4d/observation_lineage.py"
+      - "src/causal4d/phystwin_backend.py"
+      - "src/causal4d/prob4d_observation_contract.py"
+      - "src/causal4d/provider_contract.py"
+      - "tests/test_bpt_provider_integration.py"
+      - "tests/test_causal4d_phystwin_backend.py"
   workflow_dispatch:
     inputs:
       bpt_ref:
-        description: Bayesian-PhysTwin branch, tag, or commit to validate
+        description: Bayesian-PhysTwin revision to test
+        required: false
+        default: main
+      prob4d_ref:
+        description: Prob4D revision to test
         required: false
         default: main
   schedule:
-    - cron: "43 4 * * 1"
+    - cron: "17 4 * * 1"
 
 permissions:
   contents: read
 
 concurrency:
-  group: bpt-provider-${{ github.workflow }}-${{ github.ref }}
+  group: three-repository-installed-wheel-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  compatibility:
+  installed-wheel-golden-path:
+    name: Prob4D -> BPT -> Causal4D installed wheels
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      BPT_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
+      PRIVATE_REPOSITORY_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
     steps:
-      - name: Report unavailable private-repository token
-        if: env.BPT_READ_TOKEN == ''
-        run: >-
-          echo "Set BPT_READ_TOKEN to run private Bayesian-PhysTwin compatibility checks."
+      - name: Detect private-repository credential
+        id: access
+        run: |
+          if [[ -n "${PRIVATE_REPOSITORY_READ_TOKEN}" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::BPT_READ_TOKEN is not configured; the three-repository golden path was not exercised."
+            {
+              echo "### Three-repository installed-wheel compatibility"
+              echo
+              echo "Skipped because the repository secret \`BPT_READ_TOKEN\` is absent."
+              echo "The token must have read access to FlorianPfaff/Bayesian-PhysTwin and FlorianPfaff/Prob4D."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Check out Causal4D
-        if: env.BPT_READ_TOKEN != ''
+        if: steps.access.outputs.enabled == 'true'
         uses: actions/checkout@v6
         with:
           path: causal4d
 
       - name: Check out Bayesian-PhysTwin
-        if: env.BPT_READ_TOKEN != ''
-        uses: actions/checkout@v7
+        if: steps.access.outputs.enabled == 'true'
+        uses: actions/checkout@v6
         with:
           repository: FlorianPfaff/Bayesian-PhysTwin
           ref: ${{ inputs.bpt_ref || 'main' }}
+          token: ${{ secrets.BPT_READ_TOKEN }}
           path: bayesian-phystwin
-          token: ${{ env.BPT_READ_TOKEN }}
+
+      - name: Check out Prob4D
+        if: steps.access.outputs.enabled == 'true'
+        uses: actions/checkout@v6
+        with:
+          repository: FlorianPfaff/Prob4D
+          ref: ${{ inputs.prob4d_ref || 'main' }}
+          token: ${{ secrets.BPT_READ_TOKEN }}
+          path: prob4d
 
       - name: Set up Python
-        if: env.BPT_READ_TOKEN != ''
+        if: steps.access.outputs.enabled == 'true'
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -62,23 +102,114 @@ jobs:
           cache-dependency-path: |
             causal4d/pyproject.toml
             bayesian-phystwin/pyproject.toml
+            prob4d/pyproject.toml
 
-      - name: Install both repositories
-        if: env.BPT_READ_TOKEN != ''
+      - name: Check golden-path script quality
+        if: steps.access.outputs.enabled == 'true'
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e "./bayesian-phystwin[dev,graph]" opencv-python-headless
-          python -m pip install -e "./causal4d[dev]"
+          python -m pip install "ruff>=0.15.22,<0.17"
+          python -m ruff check causal4d/ci/three_repository_*.py
+          python -m ruff format --check --diff causal4d/ci/three_repository_*.py
 
-      - name: Run cross-repository compatibility tests
-        if: env.BPT_READ_TOKEN != ''
+      - name: Record exact clean repository revisions
+        if: steps.access.outputs.enabled == 'true'
+        id: revisions
+        run: |
+          for repository in prob4d bayesian-phystwin causal4d; do
+            test -z "$(git -C "$repository" status --porcelain=v1 --untracked-files=all)"
+          done
+          echo "prob4d=$(git -C prob4d rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "bpt=$(git -C bayesian-phystwin rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "causal4d=$(git -C causal4d rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build all three wheels
+        if: steps.access.outputs.enabled == 'true'
+        run: |
+          python -m pip install --upgrade build pip
+          wheelhouse="$RUNNER_TEMP/three-repository-wheelhouse"
+          mkdir -p "$wheelhouse"
+          python -m build --wheel --outdir "$wheelhouse" prob4d
+          python -m build --wheel --outdir "$wheelhouse" bayesian-phystwin
+          python -m build --wheel --outdir "$wheelhouse" causal4d
+          test "$(find "$wheelhouse" -maxdepth 1 -name '*.whl' | wc -l)" -eq 3
+
+      - name: Install wheels in a clean virtual environment
+        if: steps.access.outputs.enabled == 'true'
+        run: |
+          venv="$RUNNER_TEMP/three-repository-venv"
+          wheelhouse="$RUNNER_TEMP/three-repository-wheelhouse"
+          python -m venv "$venv"
+          "$venv/bin/python" -m pip install --upgrade pip
+          mapfile -t wheels < <(find "$wheelhouse" -maxdepth 1 -name '*.whl' -print | sort)
+          "$venv/bin/python" -m pip install \
+            "${wheels[@]}" \
+            pytest \
+            opencv-python-headless
+          "$venv/bin/python" -m pip check
+
+      - name: Run the isolated three-repository golden path
+        if: steps.access.outputs.enabled == 'true'
+        run: |
+          run_dir="$RUNNER_TEMP/three-repository-run"
+          mkdir -p "$run_dir"
+          cp causal4d/ci/three_repository_*.py "$run_dir/"
+          cd "$run_dir"
+          env -u PYTHONPATH \
+            "$RUNNER_TEMP/three-repository-venv/bin/python" \
+            three_repository_golden_path.py \
+              --prob4d-fixture \
+                "$GITHUB_WORKSPACE/prob4d/tests/fixtures/prob4d_joint_observation_v1.json" \
+              --prob4d-revision "${{ steps.revisions.outputs.prob4d }}" \
+              --bpt-revision "${{ steps.revisions.outputs.bpt }}" \
+              --causal4d-revision "${{ steps.revisions.outputs.causal4d }}" \
+              --checkout-root "$GITHUB_WORKSPACE/prob4d" \
+              --checkout-root "$GITHUB_WORKSPACE/bayesian-phystwin" \
+              --checkout-root "$GITHUB_WORKSPACE/causal4d" \
+              --output "$RUNNER_TEMP/three-repository-summary.json" \
+            | tee "$RUNNER_TEMP/three-repository-golden-path.log"
+
+      - name: Run cross-repository contract tests against installed wheels
+        if: steps.access.outputs.enabled == 'true'
         env:
           CAUSAL4D_REQUIRE_BPT_PROVIDER: "1"
-        run: >-
-          python -m pytest -q
-          causal4d/tests/test_bpt_provider_import_boundary.py
-          causal4d/tests/test_bpt_provider_integration.py
-          causal4d/tests/test_causal4d_provider_contract.py
-          causal4d/tests/test_causal4d_bpt_belief.py
-          causal4d/tests/test_causal4d_phystwin_backend.py
-          bayesian-phystwin/tests/test_causal4d_provider_v1.py
+        run: |
+          cd "$RUNNER_TEMP/three-repository-run"
+          env -u PYTHONPATH \
+            "$RUNNER_TEMP/three-repository-venv/bin/python" -m pytest -q \
+              --import-mode=importlib \
+              "$GITHUB_WORKSPACE/prob4d/tests/test_joint_observation_contract_fixture.py" \
+              "$GITHUB_WORKSPACE/bayesian-phystwin/tests/test_causal4d_provider_v1.py" \
+              "$GITHUB_WORKSPACE/bayesian-phystwin/tests/test_observation_belief_gauge_adapter.py" \
+              "$GITHUB_WORKSPACE/bayesian-phystwin/tests/test_run_manifest_v2.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_bpt_provider_import_boundary.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_bpt_provider_integration.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_provider_contract.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_phystwin_backend.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_bpt_belief.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_observation_lineage.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_prob4d_joint_contract_fixture.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_prob4d_stream_contract_version.py"
+
+      - name: Publish compatibility summary
+        if: steps.access.outputs.enabled == 'true' && always()
+        run: |
+          if [[ -f "$RUNNER_TEMP/three-repository-summary.json" ]]; then
+            {
+              echo "### Three-repository installed-wheel compatibility"
+              echo
+              echo '```json'
+              cat "$RUNNER_TEMP/three-repository-summary.json"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload golden-path diagnostics
+        if: steps.access.outputs.enabled == 'true' && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: three-repository-installed-wheel-golden-path
+          path: |
+            ${{ runner.temp }}/three-repository-summary.json
+            ${{ runner.temp }}/three-repository-golden-path.log
+          if-no-files-found: warn
+          retention-days: 7
