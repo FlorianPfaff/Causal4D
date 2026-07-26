@@ -115,6 +115,12 @@ causal4d-deform360-source-qa = "causal4d_public.cli.deform360_replication_source
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+causal4d = [
+    "contract_data/observation_belief_v1/*.json",
+    "contract_data/observation_belief_v1/vectors/*.json",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
