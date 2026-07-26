@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from causal4d.prob4d_observation_lineage import (
+    PROPAGATED_EXTERNAL_PRIOR,
     validate_prob4d_causal_observation_metadata,
 )
 
@@ -22,6 +23,11 @@ def _parts(*, explicit_version: bool) -> tuple[dict, dict[str, np.ndarray]]:
             "source_artifact_sha256": "1" * 64,
         },
         "gauge_mode": "sequential",
+        "factor_definition": "one shared joint gauge latent vector",
+        "factor_group_semantics": (
+            "all rows use one factor group; each window contributes its block "
+            "of the same joint gauge covariance root"
+        ),
         "joint_cross_window_gauge_covariance_represented": True,
         "gauge_posterior": {
             "model": "sequential_joint_spanning_tree_v1",
@@ -60,13 +66,17 @@ def _parts(*, explicit_version: bool) -> tuple[dict, dict[str, np.ndarray]]:
     }
     if explicit_version:
         metadata["prob4d_causal_stream_contract_version"] = 2
+        metadata["metric_anchor_covariance_in_joint_factor"] = True
         metadata["metric_gauge_anchor"].update(
             {
                 "schema_name": "prob4d.metric-gauge-anchor",
                 "schema_version": 1,
+                "case_id": "case",
                 "coordinate_frame": "phystwin-world",
+                "world_frame_id": "phystwin-world",
                 "metric_units": "m",
-                "covariance_treatment": "fixed_external_calibration",
+                "calibration_artifact_sha256": "b" * 64,
+                "covariance_treatment": PROPAGATED_EXTERNAL_PRIOR,
             }
         )
     descriptor = {
@@ -107,6 +117,10 @@ def test_explicit_prob4d_joint_stream_contract_v2_is_accepted() -> None:
     assert validation["gauge_covariance_semantics"] == (
         "joint_cross_window_sim3_gauge_covariance"
     )
+    assert validation["metric_anchor_covariance_treatment"] == (
+        PROPAGATED_EXTERNAL_PRIOR
+    )
+    assert validation["calibration_artifact_sha256"] == "b" * 64
 
 
 def test_prob4d_020_joint_stream_contract_is_inferred() -> None:
@@ -119,6 +133,7 @@ def test_prob4d_020_joint_stream_contract_is_inferred() -> None:
 
     assert validation["stream_contract_version"] == 2
     assert validation["stream_contract_version_inferred"] is True
+    assert validation["calibration_artifact_sha256"] is None
 
 
 def test_joint_stream_contract_rejects_approximate_fixed_lag_covariance() -> None:
@@ -138,4 +153,24 @@ def test_joint_stream_contract_rejects_noncanonical_factor_names() -> None:
     descriptor["factor_names"][1] = "joint_gauge_latent_bad"
 
     with pytest.raises(ValueError, match="factor names are not canonical"):
+        validate_prob4d_causal_observation_metadata(descriptor, arrays)
+
+
+def test_joint_stream_contract_rejects_missing_calibration_digest() -> None:
+    descriptor, arrays = _parts(explicit_version=True)
+    descriptor = deepcopy(descriptor)
+    del descriptor["metadata"]["metric_gauge_anchor"][
+        "calibration_artifact_sha256"
+    ]
+
+    with pytest.raises(ValueError, match="calibration_artifact_sha256"):
+        validate_prob4d_causal_observation_metadata(descriptor, arrays)
+
+
+def test_joint_stream_contract_rejects_untracked_anchor_covariance() -> None:
+    descriptor, arrays = _parts(explicit_version=True)
+    descriptor = deepcopy(descriptor)
+    descriptor["metadata"]["metric_anchor_covariance_in_joint_factor"] = False
+
+    with pytest.raises(ValueError, match="include metric-anchor covariance"):
         validate_prob4d_causal_observation_metadata(descriptor, arrays)
