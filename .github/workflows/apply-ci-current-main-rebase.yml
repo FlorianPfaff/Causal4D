@@ -264,4 +264,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "Rebase dependency-boundary CI onto provider-enabled main"
-          git push --force-with-lease origin HEAD:agent/ci-dependency-boundaries
+          git push --force origin HEAD:agent/ci-dependency-boundaries-current-main
