@@ -5,9 +5,14 @@ from __future__ import annotations
 import argparse
 import json
 
-from causal4d.phystwin_propagated_state import (
-    evaluate_guarded_propagated_state_case,
-)
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global evaluate_guarded_propagated_state_case
+
+    from causal4d.phystwin_propagated_state import (
+        evaluate_guarded_propagated_state_case,
+    )
 
 
 def main() -> None:
@@ -19,6 +24,7 @@ def main() -> None:
     parser.add_argument("--position-step-m", type=float, default=0.005)
     parser.add_argument("--velocity-step-mps", type=float, default=0.05)
     args = parser.parse_args()
+    _load_runtime_dependencies()
     result = evaluate_guarded_propagated_state_case(
         args.official_repo,
         args.localization_case_dir,

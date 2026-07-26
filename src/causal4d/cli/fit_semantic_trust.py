@@ -10,19 +10,33 @@ from pathlib import Path
 
 import numpy as np
 
-from bayesian_phystwin.causal4d_provider_v1 import target_validity
-from causal4d.contracts import PhysicalPosterior, load_contract
-from causal4d.molmo_acceptance import (
-    gate_beta_candidates,
-    load_molmo_acceptance_result,
-)
-from causal4d.molmo_adapter import load_molmo_forecasts
-from causal4d.semantic_posterior import molmo_task_evidence
-from causal4d.semantic_trust import (
-    SemanticValidationCase,
-    fit_semantic_trust_calibration,
-    save_semantic_trust_calibration,
-)
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global target_validity
+    global PhysicalPosterior
+    global load_contract
+    global gate_beta_candidates
+    global load_molmo_acceptance_result
+    global load_molmo_forecasts
+    global molmo_task_evidence
+    global SemanticValidationCase
+    global fit_semantic_trust_calibration
+    global save_semantic_trust_calibration
+
+    from bayesian_phystwin.causal4d_provider_v1 import target_validity
+    from causal4d.contracts import PhysicalPosterior, load_contract
+    from causal4d.molmo_acceptance import (
+        gate_beta_candidates,
+        load_molmo_acceptance_result,
+    )
+    from causal4d.molmo_adapter import load_molmo_forecasts
+    from causal4d.semantic_posterior import molmo_task_evidence
+    from causal4d.semantic_trust import (
+        SemanticValidationCase,
+        fit_semantic_trust_calibration,
+        save_semantic_trust_calibration,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -48,6 +62,7 @@ def _resolve(base: Path, value: str) -> Path:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    _load_runtime_dependencies()
     manifest_path = Path(args.source_manifest_json)
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     entries = payload.get("cases", [])
@@ -115,9 +130,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "evaluated_beta_candidates": list(betas),
                 "molmo_acceptance_passed": bool(
                     acceptance
-                    and acceptance["decision"][
-                        "accepted_for_semantic_reweighting"
-                    ]
+                    and acceptance["decision"]["accepted_for_semantic_reweighting"]
                 ),
                 "source_case_ids": list(calibration.source_case_ids),
                 "source_mean_rmse_m": dict(

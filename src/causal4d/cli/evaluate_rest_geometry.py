@@ -5,9 +5,14 @@ from __future__ import annotations
 import argparse
 import json
 
-from causal4d.phystwin_rest_geometry import (
-    run_phystwin_rest_geometry_comparison,
-)
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global run_phystwin_rest_geometry_comparison
+
+    from causal4d.phystwin_rest_geometry import (
+        run_phystwin_rest_geometry_comparison,
+    )
 
 
 def main() -> None:
@@ -61,6 +66,7 @@ def main() -> None:
     parser.add_argument("--bootstrap-samples", type=int, default=10000)
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
+    _load_runtime_dependencies()
     if args.maximum_rest_ratio <= 1.0:
         parser.error("--maximum-rest-ratio must be greater than one")
 
@@ -77,9 +83,7 @@ def main() -> None:
             (0.0, 0.5, 1.0) if args.frame_scales is None else args.frame_scales
         ),
         rest_geometry_scale_grid=(
-            (0.0, 0.25, 0.5, 1.0)
-            if args.rest_scales is None
-            else args.rest_scales
+            (0.0, 0.25, 0.5, 1.0) if args.rest_scales is None else args.rest_scales
         ),
         controller_rest_mode_grid=(
             ("preserve", "recompute")

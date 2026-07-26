@@ -12,16 +12,29 @@ from pathlib import Path
 
 import numpy as np
 
-from bayesian_phystwin.causal4d_provider_v1 import target_validity
-from causal4d.contracts import PhysicalPosterior, load_contract
-from causal4d.real_calibration import (
-    RealCalibrationCase,
-    case_from_physical_posterior,
-    evaluate_real_calibration_case,
-    fit_affine_variance_calibration,
-    load_affine_variance_calibration,
-    save_affine_variance_calibration,
-)
+
+def _load_runtime_dependencies() -> None:
+    """Load optional integrations only after argparse handles ``--help``."""
+    global target_validity
+    global PhysicalPosterior
+    global load_contract
+    global RealCalibrationCase
+    global case_from_physical_posterior
+    global evaluate_real_calibration_case
+    global fit_affine_variance_calibration
+    global load_affine_variance_calibration
+    global save_affine_variance_calibration
+
+    from bayesian_phystwin.causal4d_provider_v1 import target_validity
+    from causal4d.contracts import PhysicalPosterior, load_contract
+    from causal4d.real_calibration import (
+        RealCalibrationCase,
+        case_from_physical_posterior,
+        evaluate_real_calibration_case,
+        fit_affine_variance_calibration,
+        load_affine_variance_calibration,
+        save_affine_variance_calibration,
+    )
 
 
 def _sha256(path: str | Path) -> str:
@@ -33,6 +46,7 @@ def _sha256(path: str | Path) -> str:
 
 
 def _load_case(specification: dict) -> RealCalibrationCase:
+    _load_runtime_dependencies()
     final_data_path = Path(specification["final_data"])
     with final_data_path.open("rb") as handle:
         data = pickle.load(handle)
@@ -162,6 +176,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    _load_runtime_dependencies()
     if args.command == "fit":
         manifest = _load_manifest(args.source_manifest_json)
         fit_cases = tuple(_load_case(value) for value in manifest.get("fit", []))
