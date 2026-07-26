@@ -1,0 +1,36 @@
+git status --short
+A  .github/workflows/bayesian-phystwin-provider-compatibility.yml
+M  README.md
+A  docs/bayesian_phystwin_provider.md
+M  docs/migration_from_bayesian_phystwin.md
+M  pyproject.toml
+A  requirements/frozen/causal4d-0.3.0.txt
+M  scripts/remote/evaluate_deform360_dynamic_window_source_case.py
+M  scripts/remote/stage_deform360_dynamic_window_source_prefix.py
+UU src/causal4d/__init__.py
+M  src/causal4d/bpt_belief.py
+M  src/causal4d/cli/abduct_phystwin_intervention.py
+M  src/causal4d/cli/audit_parameter_support.py
+M  src/causal4d/cli/audit_real_oracle_gap.py
+M  src/causal4d/cli/evaluate_graph_temporal_discrepancy.py
+M  src/causal4d/cli/evaluate_physical_counterfactual.py
+M  src/causal4d/cli/fit_semantic_trust.py
+M  src/causal4d/cli/real_calibration.py
+M  src/causal4d/phystwin_backend.py
+M  src/causal4d/phystwin_canonical_graph.py
+M  src/causal4d/phystwin_discrepancy_localization.py
+M  src/causal4d/phystwin_propagated_state.py
+M  src/causal4d/phystwin_rest_geometry.py
+M  src/causal4d/phystwin_rest_geometry_transfer.py
+M  src/causal4d/provider_contract.py
+M  src/causal4d_public/deform360_phystwin_feasibility.py
+M  src/causal4d_public/deform360_replication_warp.py
+M  src/causal4d_public/pokeflex_warp_source.py
+A  tests/test_bpt_provider_import_boundary.py
+A  tests/test_bpt_provider_integration.py
+M  tests/test_causal4d_provider_contract.py
+
+unmerged index entries
+100644 2e1046daf17ba2c894fd85b1e327e46407911a86 1	src/causal4d/__init__.py
+100644 efad9829cd86d42d08bed3f282d798dbc78af74c 2	src/causal4d/__init__.py
+100644 da7526104d8306fbb98e6bb1e4412b546f3b9cd5 3	src/causal4d/__init__.py
