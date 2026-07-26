@@ -36,6 +36,30 @@ Use `--require-bound` when a downstream command requires proof that the
 `TwinBelief` was produced from the artifact rather than merely being compatible
 with it.
 
+## Strict Prob4D causal stream
+
+When an artifact declares repository `FlorianPfaff/Prob4D` and stream
+`prob4d:causal-overlap-window-points`, Causal4D performs an additional
+provider-independent validation directly from the descriptor and numeric
+arrays. It requires:
+
+- an exact producer revision rather than `unknown`;
+- the frozen seven-dimensional gauge-factor names and factor-group/window
+  mapping;
+- metric units, a nonempty world frame, and a fixed external metric anchor;
+- binding of that anchor to the first selected source payload;
+- the registered MotionCrafter windowing model and independently decoded
+  overlap-window product;
+- equality of descriptor and lineage cutoffs and source digests;
+- zero reported future-payload access;
+- source bounds for every selected window wholly before the cutoff; and
+- containment of every observation row within its declared source window.
+
+This check is implemented independently from Prob4D and Bayesian-PhysTwin. A
+syntactically valid generic observation artifact cannot acquire a causal Prob4D
+claim merely by using the provider's repository name. The completed validation
+summary is retained when the observation belief is bound to a `TwinBelief`.
+
 ## Exact factor-bundle validation
 
 ```bash
@@ -91,7 +115,9 @@ causal4d-observation-lineage bind-factor-bundle \
 ```
 
 Binding creates a new content-addressed `TwinBelief`; it never mutates the
-source artifact. Factor-bundle metadata records:
+source artifact. Marginalized-belief metadata records the artifact identity,
+case/stream, causal cutoff, feeder repository/revision, source digest, and any
+completed provider-specific validation summary. Factor-bundle metadata records:
 
 - the exact combined artifact ID;
 - manifest and payload SHA-256 values;
@@ -111,17 +137,17 @@ not create provenance.
 
 ## Cross-repository compatibility
 
-Prob4D owns the unfused observation-factor producer. Bayesian-PhysTwin owns the
-state, gauge, bias, and guarded-update inference. Causal4D independently checks
-the immutable artifact identities before using the resulting physical belief.
-This preserves the dependency direction:
+Prob4D owns the observation producers. Bayesian-PhysTwin owns the state, gauge,
+bias, and guarded-update inference. Causal4D independently checks the immutable
+artifact identities and causal producer claims before using the resulting
+physical belief. This preserves the dependency direction:
 
 ```text
-Prob4D factor bundle
+Prob4D observation artifact
         -> Bayesian-PhysTwin guarded belief
         -> Causal4D lineage validation and counterfactual inference
 ```
 
-The existing cross-repository golden `ObservationBeliefV1` fixture still
-detects changes to the marginalized contract. The factor-bundle validator adds
-an exact byte-level lineage check for the richer estimator input.
+The existing cross-repository golden `ObservationBeliefV1` fixture detects
+changes to the marginalized contract. The factor-bundle validator adds an exact
+byte-level lineage check for the richer estimator input.
