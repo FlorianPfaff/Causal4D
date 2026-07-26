@@ -23,6 +23,10 @@ from causal4d.discrepancy_belief import (
     load_graph_discrepancy_belief,
     write_graph_discrepancy_belief,
 )
+from causal4d.discrepancy_mean_transition import (
+    ActionConditionedMeanTransitionModel,
+    forecast_action_conditioned_movement,
+)
 from causal4d.evaluation import run_counterfactual_benchmark
 from causal4d.graph_mode_abduction import (
     GraphModeAbductionConfig,
@@ -67,6 +71,7 @@ __all__ = [
     "ActionConditionedDiscrepancyFeatures",
     "ActionConditionedDiscrepancyForecast",
     "ActionConditionedDiscrepancyModel",
+    "ActionConditionedMeanTransitionModel",
     "CounterfactualBenchmarkConfig",
     "CounterfactualQuery",
     "FactualIntervention",
@@ -98,6 +103,7 @@ __all__ = [
     "build_action_conditioned_features",
     "build_protocol",
     "finite_response_sensitivity",
+    "forecast_action_conditioned_movement",
     "forecast_action_conditioned_persistence",
     "graph_mode_joint_weights",
     "grouped_component_log_likelihoods",
