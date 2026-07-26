@@ -173,10 +173,12 @@ def test_zero_innovation_matches_static_readout_moments() -> None:
         anchor,
         frame_dt_s=0.1,
     )
-    np.testing.assert_allclose(
-        posterior.readout_trajectories_m - posterior.state_trajectories_m,
+    offset = posterior.readout_trajectories_m - posterior.state_trajectories_m
+    expected_offset = np.broadcast_to(
         np.asarray([0.002, 0.0, 0.0]),
+        offset.shape,
     )
+    np.testing.assert_allclose(offset, expected_offset)
     np.testing.assert_allclose(posterior.readout_variance_m2, 3e-6)
     assert posterior.component_ids == ("nominal::p0", "shift::p0")
     assert posterior.metadata["future_observations_read"] == 0
@@ -217,7 +219,9 @@ def test_action_conditioned_covariance_grows_over_horizon() -> None:
     variance = posterior.readout_variance_m2[:, :, 0, 0]
     assert np.all(np.diff(variance, axis=1) >= -1e-15)
     assert np.all(variance[:, -1] > variance[:, 0])
-    np.testing.assert_allclose(
-        posterior.readout_trajectories_m - posterior.state_trajectories_m,
+    offset = posterior.readout_trajectories_m - posterior.state_trajectories_m
+    expected_offset = np.broadcast_to(
         np.asarray([0.002, 0.0, 0.0]),
+        offset.shape,
     )
+    np.testing.assert_allclose(offset, expected_offset)
