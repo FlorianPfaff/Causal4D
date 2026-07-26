@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   reconcile:
@@ -264,106 +264,20 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "Rebase dependency-boundary CI onto provider-enabled main"
-      - name: Publish through Git data API
+      - name: Package validated commit
         shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          python - <<'PY'
-          from __future__ import annotations
-
-          import base64
-          import json
-          import os
-          from pathlib import Path
-          import subprocess
-          from urllib.error import HTTPError
-          from urllib.request import Request, urlopen
-
-          repository = os.environ["GITHUB_REPOSITORY"]
-          token = os.environ["GITHUB_TOKEN"]
-          target_branch = "agent/ci-dependency-boundaries-current-main"
-
-
-          def git(*args: str) -> str:
-              return subprocess.check_output(["git", *args], text=True).strip()
-
-
-          def api(method: str, path: str, payload: object | None = None) -> object:
-              data = None if payload is None else json.dumps(payload).encode("utf-8")
-              request = Request(
-                  f"https://api.github.com/repos/{repository}{path}",
-                  data=data,
-                  method=method,
-                  headers={
-                      "Accept": "application/vnd.github+json",
-                      "Authorization": f"Bearer {token}",
-                      "X-GitHub-Api-Version": "2022-11-28",
-                      "User-Agent": "causal4d-ci-reconciler",
-                  },
-              )
-              with urlopen(request) as response:
-                  body = response.read()
-              return {} if not body else json.loads(body)
-
-
-          base_sha = git("rev-parse", "origin/main")
-          base_commit = api("GET", f"/git/commits/{base_sha}")
-          base_tree_sha = base_commit["tree"]["sha"]
-          raw_paths = subprocess.check_output(
-              ["git", "diff", "--name-only", "-z", f"{base_sha}..HEAD"]
-          )
-          paths = [value.decode("utf-8") for value in raw_paths.split(b"\0") if value]
-          entries = []
-          for path_text in paths:
-              path = Path(path_text)
-              if not path.exists():
-                  entries.append(
-                      {"path": path_text, "mode": "100644", "type": "blob", "sha": None}
-                  )
-                  continue
-              index_record = git("ls-files", "-s", "--", path_text)
-              mode = index_record.split()[0]
-              blob = api(
-                  "POST",
-                  "/git/blobs",
-                  {
-                      "content": base64.b64encode(path.read_bytes()).decode("ascii"),
-                      "encoding": "base64",
-                  },
-              )
-              entries.append(
-                  {"path": path_text, "mode": mode, "type": "blob", "sha": blob["sha"]}
-              )
-
-          tree = api(
-              "POST",
-              "/git/trees",
-              {"base_tree": base_tree_sha, "tree": entries},
-          )
-          commit = api(
-              "POST",
-              "/git/commits",
-              {
-                  "message": "Rebase dependency-boundary CI onto provider-enabled main",
-                  "tree": tree["sha"],
-                  "parents": [base_sha],
-              },
-          )
-          try:
-              api(
-                  "POST",
-                  "/git/refs",
-                  {"ref": f"refs/heads/{target_branch}", "sha": commit["sha"]},
-              )
-          except HTTPError as error:
-              if error.code != 422:
-                  raise
-              api(
-                  "PATCH",
-                  f"/git/refs/heads/{target_branch}",
-                  {"sha": commit["sha"], "force": True},
-              )
-          print(json.dumps({"branch": target_branch, "commit": commit["sha"]}))
-          PY
+          mkdir -p build/reconciled-ci
+          git format-patch --stdout origin/main..HEAD \
+            > build/reconciled-ci/reconciled.patch
+          git bundle create build/reconciled-ci/reconciled.bundle origin/main..HEAD
+          git diff --name-status origin/main..HEAD \
+            > build/reconciled-ci/changed-files.txt
+          git rev-parse HEAD > build/reconciled-ci/commit.txt
+      - name: Upload validated commit
+        uses: actions/upload-artifact@v7
+        with:
+          name: reconciled-ci-current-main
+          path: build/reconciled-ci/
+          if-no-files-found: error
