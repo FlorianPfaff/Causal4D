@@ -1,0 +1,28 @@
+name: Diagnose formatting
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: github.head_ref == 'agent/ci-dependency-boundaries'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run compact formatting diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init -q
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --depth=100 origin main "${GITHUB_SHA}"
+          git checkout -q --detach FETCH_HEAD
+          python -m pip install -q "ruff>=0.15.22,<0.17" >/dev/null
+          mapfile -t files < <(git diff --name-only --diff-filter=ACMR origin/main...HEAD -- '*.py')
+          printf '%s\n' "${files[@]}"
+          python -m ruff format --check "${files[@]}"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
