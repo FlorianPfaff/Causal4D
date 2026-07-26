@@ -25,11 +25,15 @@ jobs:
           git fetch origin agent/ci-dependency-boundaries
           git switch -c agent/rebased-ci-dependency-boundaries
           set +e
-          git merge --no-commit --no-ff FETCH_HEAD
+          git merge --no-commit --no-ff FETCH_HEAD \
+            > merge-output.txt 2>&1
           status=$?
           set -e
           {
             echo "merge_status=$status"
+            echo
+            echo "merge_output"
+            cat merge-output.txt
             echo
             echo "conflicts"
             git diff --name-only --diff-filter=U
