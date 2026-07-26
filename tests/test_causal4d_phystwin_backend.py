@@ -6,6 +6,7 @@ from bayesian_phystwin.phystwin_graph import PhysTwinSpringGraph
 from causal4d.phystwin_backend import (
     BayesianPhysTwinParticles,
     OfficialPhysTwinBackend,
+    OfficialPhysTwinBackendConfig,
     PhysTwinActionProposal,
     PhysTwinContactState,
     PhysTwinHypothesisConfig,
@@ -42,6 +43,81 @@ def test_profile_loader_selects_and_renormalizes_high_mass_particles(
     assert coreset.represented_probability_mass == 1.0
     assert coreset.source_particle_count == 4
     assert np.isclose(np.sum(coreset.weights), 1.0)
+
+
+def test_profile_loader_preserves_staged_probability_mass(tmp_path: Path) -> None:
+    profile = tmp_path / "truncated_profile.npz"
+    source_weights = np.asarray([[0.5, 0.3], [0.1, 0.1]])
+    prediction_weights = np.asarray([[5 / 9, 3 / 9], [1 / 9, 0.0]])
+    np.savez(
+        profile,
+        object_log_scales=np.asarray([-0.2, 0.2]),
+        controller_log_scales=np.asarray([-0.1, 0.1]),
+        posterior_weights=np.full((2, 2), 0.25),
+        source_prediction_weights=source_weights,
+        prediction_weights=prediction_weights,
+    )
+
+    full = load_bayesian_phystwin_particles(profile, maximum_count=10)
+    assert len(full.weights) == 3
+    assert [1, 1] not in full.grid_indices.tolist()
+    assert full.profile_grid_cell_count == 4
+    assert full.source_particle_count == 3
+    assert np.isclose(full.bpt_retained_probability_mass, 0.9)
+    assert np.isclose(full.causal4d_retained_probability_mass, 1.0)
+    assert np.isclose(full.retained_probability_mass, 0.9)
+
+    reduced = load_bayesian_phystwin_particles(profile, maximum_count=2)
+    np.testing.assert_array_equal(reduced.grid_indices, [[0, 0], [0, 1]])
+    np.testing.assert_allclose(reduced.weights, [5 / 8, 3 / 8])
+    assert reduced.bpt_source_weight_key == "source_prediction_weights"
+    assert np.isclose(reduced.bpt_retained_probability_mass, 0.9)
+    assert np.isclose(reduced.causal4d_retained_probability_mass, 8 / 9)
+    assert np.isclose(reduced.retained_probability_mass, 0.8)
+
+    coreset = load_bayesian_phystwin_particles(
+        profile,
+        maximum_count=2,
+        support_method="weighted_coreset",
+    )
+    assert np.isclose(coreset.bpt_retained_probability_mass, 0.9)
+    assert np.isclose(coreset.causal4d_represented_probability_mass, 1.0)
+    assert np.isclose(coreset.represented_probability_mass, 0.9)
+    assert [1, 1] not in coreset.grid_indices.tolist()
+
+    accounting = reduced.probability_mass_accounting()
+    assert np.isclose(
+        accounting["bpt_truncation"]["retained_probability_mass"],
+        0.9,
+    )
+    assert np.isclose(
+        accounting["causal4d_support_reduction"][
+            "directly_retained_probability_mass"
+        ],
+        8 / 9,
+    )
+    assert np.isclose(
+        accounting["composed_relative_to_original_posterior"][
+            "directly_retained_probability_mass"
+        ],
+        0.8,
+    )
+
+    backend = object.__new__(OfficialPhysTwinBackend)
+    backend.case_name = "unit_case"
+    backend.train_end_frame = 3
+    backend.official_repo = tmp_path / "official"
+    backend.final_data_path = tmp_path / "final_data.pkl"
+    backend.optimal_params_path = tmp_path / "optimal_params.pkl"
+    backend.checkpoint_path = tmp_path / "checkpoint.pt"
+    backend.baseline_trajectory_path = tmp_path / "baseline.pkl"
+    backend.profile_path = profile
+    backend.particles = reduced
+    backend.controller_groups = np.asarray([0])
+    backend.config = OfficialPhysTwinBackendConfig()
+    manifest = backend.default_manifest()["parameter_particles"]
+    assert np.isclose(manifest["retained_probability_mass"], 0.8)
+    assert manifest["probability_mass_accounting"] == accounting
 
 
 def test_hidden_action_proposals_never_read_withheld_future() -> None:

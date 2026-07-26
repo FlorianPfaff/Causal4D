@@ -160,6 +160,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "represented_parameter_mass": (
                     backend.particles.represented_probability_mass
                 ),
+                "parameter_mass_accounting": (
+                    backend.particles.probability_mass_accounting()
+                ),
                 "parameter_support_method": support_method,
                 "twin_belief": str(twin_belief_path.resolve()),
                 "twin_belief_id": twin_belief.artifact_id,
