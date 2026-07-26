@@ -16,9 +16,7 @@ PROB4D_SOURCE_REPOSITORY = "FlorianPfaff/Prob4D"
 PROB4D_CAUSAL_STREAM_ID = "prob4d:causal-overlap-window-points"
 PROB4D_CAUSAL_LINEAGE_VERSION = 1
 
-PROB4D_LEGACY_GAUGE_FACTOR_NAMES = tuple(
-    f"gauge_latent_{index}" for index in range(7)
-)
+PROB4D_LEGACY_GAUGE_FACTOR_NAMES = tuple(f"gauge_latent_{index}" for index in range(7))
 PROB4D_GAUGE_FACTOR_NAMES = PROB4D_LEGACY_GAUGE_FACTOR_NAMES
 PROB4D_JOINT_GAUGE_FACTOR_PREFIX = "joint_gauge_latent_"
 PROB4D_JOINT_GAUGE_MODEL = "sequential_joint_spanning_tree_v1"
@@ -142,9 +140,8 @@ def _validate_factor_semantics(
     factor_groups = np.asarray(arrays["factor_group_ids"], dtype=np.int64)
     window_indices = np.asarray(arrays["window_indices"], dtype=np.int64)
 
-    if (
-        factor_names == PROB4D_LEGACY_GAUGE_FACTOR_NAMES
-        and np.array_equal(factor_groups, window_indices)
+    if factor_names == PROB4D_LEGACY_GAUGE_FACTOR_NAMES and np.array_equal(
+        factor_groups, window_indices
     ):
         return {
             "covariance_semantics": "legacy_per_window_sim3_marginals_v1",
@@ -243,8 +240,7 @@ def _validate_factor_semantics(
         "gauge-posterior cross-window flag must be Boolean",
     )
     _require(
-        metadata.get("joint_cross_window_gauge_covariance_represented")
-        is cross_window,
+        metadata.get("joint_cross_window_gauge_covariance_represented") is cross_window,
         "Prob4D top-level and gauge-posterior covariance flags differ",
     )
     parents = posterior.get("parent_window_ids")
@@ -378,8 +374,7 @@ def validate_prob4d_causal_observation_metadata(
         "unsupported MotionCrafter windowing model",
     )
     _require(
-        lineage.get("source_product")
-        == "independently_decoded_overlap_windows",
+        lineage.get("source_product") == "independently_decoded_overlap_windows",
         "Prob4D causal artifact uses an inadmissible source product",
     )
     _require(
