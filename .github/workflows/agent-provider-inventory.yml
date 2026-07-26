@@ -1,14 +1,16 @@
 name: Apply reviewed provider migration patch
 
 on:
-  push:
-    branches: [agent/bpt-provider-api-v1]
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
 
 permissions:
   contents: write
 
 jobs:
   apply:
+    if: github.head_ref == 'agent/bpt-provider-api-v1'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
