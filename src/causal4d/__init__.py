@@ -82,9 +82,15 @@ from causal4d.prefix_likelihood import (
 )
 from causal4d.provider_contract import (
     BASE_CAUSAL4D_PROVIDER_CAPABILITIES,
+    BAYESIAN_PHYSTWIN_ARTIFACT_SCHEMA_VERSIONS,
+    BAYESIAN_PHYSTWIN_COMPATIBILITY_RANGE,
+    BAYESIAN_PHYSTWIN_PROVIDER_CAPABILITIES,
     PHYSICAL_BELIEF_PROVIDER_SCHEMA_VERSION,
     PhysicalBeliefProviderManifest,
     ProviderCompatibilityResult,
+    load_bayesian_phystwin_provider_manifest,
+    require_bayesian_phystwin_provider,
+    validate_bayesian_phystwin_provider,
     validate_provider_compatibility,
 )
 from causal4d.rollout_bank import JointRolloutBank, SparseTrajectoryEvidence
@@ -120,6 +126,9 @@ __all__ = [
     "ActionConditionedPhysicalPosterior",
     "ActuatorEvidence",
     "BASE_CAUSAL4D_PROVIDER_CAPABILITIES",
+    "BAYESIAN_PHYSTWIN_ARTIFACT_SCHEMA_VERSIONS",
+    "BAYESIAN_PHYSTWIN_COMPATIBILITY_RANGE",
+    "BAYESIAN_PHYSTWIN_PROVIDER_CAPABILITIES",
     "CausalSufficiencyResult",
     "ContactWrenchEvidence",
     "CounterfactualBenchmarkConfig",
@@ -175,6 +184,7 @@ __all__ = [
     "graph_traction_field",
     "grouped_component_log_likelihoods",
     "integrate_contact_wrench",
+    "load_bayesian_phystwin_provider_manifest",
     "load_graph_discrepancy_belief",
     "load_independent_sensor_evidence",
     "load_observation_factor_lineage",
@@ -183,14 +193,16 @@ __all__ = [
     "prefix_component_log_likelihood",
     "preserve_prior_within_unidentified_subspace",
     "project_identifiable_intervention_update",
+    "require_bayesian_phystwin_provider",
     "reweight_factual_intervention_with_independent_sensors",
     "run_counterfactual_benchmark",
     "run_latent_contact_benchmark",
     "save_independent_sensor_evidence",
     "update_joint_weights_from_prefix",
+    "validate_bayesian_phystwin_provider",
     "validate_provider_compatibility",
     "validate_twin_belief_observation_factor_lineage",
     "write_graph_discrepancy_belief",
 ]
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
