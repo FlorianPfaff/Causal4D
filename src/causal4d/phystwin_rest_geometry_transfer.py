@@ -11,7 +11,7 @@ from typing import Any, Mapping
 import numpy as np
 
 from bayesian_phystwin.phystwin_comparison import official_metrics_by_frame
-from bayesian_phystwin.phystwin_graph import (
+from bayesian_phystwin.causal4d_graph_provider_v1 import (
     PhysTwinSpringGraphConfig,
     build_phystwin_spring_graph,
 )

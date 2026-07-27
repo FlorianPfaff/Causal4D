@@ -38,11 +38,11 @@ from bayesian_phystwin.phystwin_comparison import (
     phystwin_physical_object_cluster,
 )
 from bayesian_phystwin.phystwin_confirmatory import DEVELOPMENT_CASES
-from bayesian_phystwin.phystwin_graph import (
+from bayesian_phystwin.causal4d_graph_provider_v1 import (
     PhysTwinSpringGraphConfig,
     build_phystwin_spring_graph,
 )
-from bayesian_phystwin.phystwin_graph_discrepancy import (
+from bayesian_phystwin.causal4d_graph_provider_v1_discrepancy import (
     graph_discrepancy_diagnostics,
     normalized_spring_laplacian,
 )

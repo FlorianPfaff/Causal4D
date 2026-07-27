@@ -13,6 +13,7 @@ BPT_INTEGRATION_TESTS = (
     "tests/test_causal4d_molmo_acceptance.py",
     "tests/test_causal4d_molmo_adapter.py",
     "tests/test_causal4d_phystwin_backend.py",
+    "tests/test_bpt_graph_provider_integration.py",
     "tests/test_causal4d_real_calibration.py",
     "tests/test_causal4d_real_oracle_audit.py",
     "tests/test_causal4d_rest_geometry.py",

@@ -25,7 +25,7 @@ from .phystwin_discrepancy_localization import (
     _set_particle,
     _weighted_mean,
 )
-from bayesian_phystwin.phystwin_graph import (
+from bayesian_phystwin.causal4d_graph_provider_v1 import (
     PhysTwinSpringGraphConfig,
     build_phystwin_spring_graph,
 )

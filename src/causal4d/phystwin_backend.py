@@ -16,11 +16,11 @@ from bayesian_phystwin.causal4d_provider_v1 import (
     create_official_replay_provider,
     released_self_collision_for_case,
 )
-from bayesian_phystwin.phystwin_controller_sensitivity import (
+from bayesian_phystwin.causal4d_graph_provider_v1 import (
     controller_hand_count,
     infer_controller_groups,
 )
-from bayesian_phystwin.phystwin_graph import (
+from bayesian_phystwin.causal4d_graph_provider_v1 import (
     PhysTwinSpringGraph,
     PhysTwinSpringGraphConfig,
     build_phystwin_spring_graph,
@@ -33,7 +33,15 @@ from causal4d.contracts import (
     TwinBelief,
     array_sha256,
 )
+from causal4d.graph_provider_contract import require_bayesian_phystwin_graph_provider
 from causal4d.parameter_support import SupportMethod, reduce_parameter_support
+from causal4d.phystwin_rollout_cache import (
+    PHYSTWIN_ROLLOUT_CACHE_VERSION,
+    PhysTwinRolloutCache,
+    build_phystwin_rollout_cache_key,
+    file_sha256,
+    require_clean_git_revision,
+)
 from causal4d.provider_contract import require_bayesian_phystwin_provider
 from causal4d.rollout_bank import JointRolloutBank
 
@@ -802,6 +810,7 @@ class OfficialPhysTwinBackendConfig:
     device: str = "cuda:0"
     variance_floor_m2: float = 2.5e-5
     confidence_level: float = 0.90
+    rollout_cache_dir: str | None = None
 
     def __post_init__(self) -> None:
         if self.dt <= 0.0 or self.num_substeps < 1:
@@ -812,6 +821,17 @@ class OfficialPhysTwinBackendConfig:
             raise ValueError("variance_floor_m2 must be positive")
         if not 0.0 < self.confidence_level < 1.0:
             raise ValueError("confidence_level must lie in (0, 1)")
+        if self.rollout_cache_dir is not None and not str(
+            self.rollout_cache_dir
+        ).strip():
+            raise ValueError("rollout_cache_dir must be nonempty")
+        if (
+            self.rollout_cache_dir is not None
+            and not self.deterministic_spring_forces
+        ):
+            raise ValueError(
+                "rollout caching requires deterministic spring forces"
+            )
 
 
 class OfficialPhysTwinBackend:
@@ -832,6 +852,7 @@ class OfficialPhysTwinBackend:
         config: OfficialPhysTwinBackendConfig | None = None,
     ) -> None:
         self.provider_manifest = require_bayesian_phystwin_provider()
+        self.graph_provider_manifest = require_bayesian_phystwin_graph_provider()
         self.official_repo = Path(official_repo)
         self.final_data_path = Path(final_data_path)
         self.optimal_params_path = Path(optimal_params_path)
@@ -839,6 +860,27 @@ class OfficialPhysTwinBackend:
         self.baseline_trajectory_path = Path(baseline_trajectory_path)
         self.profile_path = Path(profile_path)
         self.config = config or OfficialPhysTwinBackendConfig()
+        self.rollout_cache = None
+        self.official_phystwin_revision = None
+        self.rollout_source_artifact_sha256: dict[str, str] = {}
+        if self.config.rollout_cache_dir is not None:
+            self.rollout_cache = PhysTwinRolloutCache(
+                Path(self.config.rollout_cache_dir)
+            )
+            self.official_phystwin_revision = require_clean_git_revision(
+                self.official_repo
+            )
+            self.rollout_source_artifact_sha256 = {
+                "baseline_trajectory": file_sha256(
+                    self.baseline_trajectory_path
+                ),
+                "checkpoint": file_sha256(self.checkpoint_path),
+                "final_data": file_sha256(self.final_data_path),
+                "optimal_params": file_sha256(
+                    self.optimal_params_path
+                ),
+                "parameter_profile": file_sha256(self.profile_path),
+            }
         self.data = _load_pickle(self.final_data_path)
         self.optimal = _load_pickle(self.optimal_params_path)
         self.baseline = np.asarray(
@@ -906,9 +948,22 @@ class OfficialPhysTwinBackend:
         )
 
     def default_manifest(self) -> dict[str, Any]:
+        graph_provider_manifest = getattr(
+            self,
+            "graph_provider_manifest",
+            require_bayesian_phystwin_graph_provider(),
+        )
+        rollout_cache = getattr(self, "rollout_cache", None)
+        official_revision = getattr(
+            self, "official_phystwin_revision", None
+        )
+        source_digests = dict(
+            getattr(self, "rollout_source_artifact_sha256", {})
+        )
         return {
             "backend": "official_phystwin_warp",
             "provider": self.provider_manifest.as_dict(),
+            "graph_provider": graph_provider_manifest.as_dict(),
             "case": self.case_name,
             "train_end_frame": self.train_end_frame,
             "source_paths": {
@@ -939,6 +994,16 @@ class OfficialPhysTwinBackend:
                 "weights": self.particles.weights.tolist(),
             },
             "controller_groups": self.controller_groups.tolist(),
+            "rollout_cache": {
+                "enabled": rollout_cache is not None,
+                "schema_version": (
+                    PHYSTWIN_ROLLOUT_CACHE_VERSION
+                    if rollout_cache is not None
+                    else None
+                ),
+                "official_phystwin_revision": official_revision,
+                "source_artifact_sha256": source_digests,
+            },
             "runtime": asdict(self.config),
         }
 
@@ -1078,6 +1143,10 @@ class OfficialPhysTwinBackend:
             else self.config.self_collision
         )
         shift_diagnostics: dict[str, Any] = {}
+        rollout_cache_hits = 0
+        rollout_cache_misses = 0
+        rollout_cache_writes = 0
+        rollout_cache_ids: list[str] = []
         unique_shifts = tuple(
             dict.fromkeys(
                 hypothesis.contact.attachment_shifts for hypothesis in hypotheses
@@ -1137,12 +1206,91 @@ class OfficialPhysTwinBackend:
                             dtype=np.float32,
                         )
                         replay_provider.set_group_log_scales(group_scales)
-                        future = replay_provider.replay_restart(
-                            twin_belief.endpoint_position_m[particle_index].copy(),
-                            twin_belief.endpoint_velocity_mps[particle_index].copy(),
-                            start_frame=self.train_end_frame,
-                            stop_frame=self.frame_count,
+                        endpoint_position = twin_belief.endpoint_position_m[
+                            particle_index
+                        ].copy()
+                        endpoint_velocity = twin_belief.endpoint_velocity_mps[
+                            particle_index
+                        ].copy()
+                        expected_future_shape = (
+                            self.frame_count - self.train_end_frame,
+                            self.baseline.shape[1],
+                            3,
                         )
+                        future = None
+                        cache_key = None
+                        if self.rollout_cache is not None:
+                            if self.official_phystwin_revision is None:
+                                raise RuntimeError(
+                                    "cache-enabled backend has no PhysTwin revision"
+                                )
+                            cache_key = build_phystwin_rollout_cache_key(
+                                replay_provider_manifest_id=(
+                                    self.provider_manifest.manifest_id
+                                ),
+                                graph_provider_manifest_id=(
+                                    self.graph_provider_manifest.manifest_id
+                                ),
+                                official_phystwin_revision=(
+                                    self.official_phystwin_revision
+                                ),
+                                source_artifact_sha256=(
+                                    self.rollout_source_artifact_sha256
+                                ),
+                                graph_vertices=variant.graph.vertices,
+                                graph_springs=variant.graph.springs,
+                                graph_rest_lengths=variant.graph.rest_lengths,
+                                graph_masses=variant.graph.masses,
+                                graph_num_object_springs=(
+                                    variant.graph.num_object_springs
+                                ),
+                                graph_num_object_points=(
+                                    variant.graph.num_object_points
+                                ),
+                                controller_points=controls,
+                                endpoint_position=endpoint_position,
+                                endpoint_velocity=endpoint_velocity,
+                                group_log_scales=group_scales,
+                                start_frame=self.train_end_frame,
+                                stop_frame=self.frame_count,
+                                runtime={
+                                    "deterministic_spring_forces": (
+                                        self.config.deterministic_spring_forces
+                                    ),
+                                    "device": self.config.device,
+                                    "dt": self.config.dt,
+                                    "num_substeps": self.config.num_substeps,
+                                    "self_collision": bool(self_collision),
+                                    "spring_parameterization": "grouped",
+                                },
+                            )
+                            rollout_cache_ids.append(cache_key.cache_id)
+                            future = self.rollout_cache.load(
+                                cache_key,
+                                expected_shape=expected_future_shape,
+                            )
+                            if future is None:
+                                rollout_cache_misses += 1
+                            else:
+                                rollout_cache_hits += 1
+                        if future is None:
+                            future = replay_provider.replay_restart(
+                                endpoint_position,
+                                endpoint_velocity,
+                                start_frame=self.train_end_frame,
+                                stop_frame=self.frame_count,
+                            )
+                            if self.rollout_cache is not None:
+                                if cache_key is None:
+                                    raise RuntimeError(
+                                        "cache key was not built for a cache miss"
+                                    )
+                                self.rollout_cache.store(
+                                    cache_key,
+                                    future,
+                                    expected_shape=expected_future_shape,
+                                )
+                                rollout_cache_writes += 1
                         trajectories[hypothesis_index, particle_index, 0] = (
                             twin_belief.endpoint_position_m[
                                 particle_index, : self.original_count
@@ -1192,6 +1340,24 @@ class OfficialPhysTwinBackend:
                 "discrepancy_injected_into_warp_state": False,
             }
         )
+        manifest["rollout_cache"] = {
+            "enabled": self.rollout_cache is not None,
+            "schema_version": (
+                PHYSTWIN_ROLLOUT_CACHE_VERSION
+                if self.rollout_cache is not None
+                else None
+            ),
+            "hits": rollout_cache_hits,
+            "misses": rollout_cache_misses,
+            "writes": rollout_cache_writes,
+            "cache_ids": sorted(set(rollout_cache_ids)),
+            "official_phystwin_revision": (
+                self.official_phystwin_revision
+            ),
+            "source_artifact_sha256": dict(
+                self.rollout_source_artifact_sha256
+            ),
+        }
         return bank, manifest
 
 

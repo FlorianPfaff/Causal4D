@@ -70,6 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dt", type=float, default=5e-5)
     parser.add_argument("--num-substeps", type=int, default=667)
     parser.add_argument("--device", default="cuda:0")
+    parser.add_argument("--rollout-cache-dir")
     parser.add_argument("--nondeterministic-spring-forces", action="store_true")
     return parser
 
@@ -137,6 +138,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             num_substeps=args.num_substeps,
             deterministic_spring_forces=not args.nondeterministic_spring_forces,
             device=args.device,
+            rollout_cache_dir=args.rollout_cache_dir,
         ),
     )
     proposals = _action_proposals(
