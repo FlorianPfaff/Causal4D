@@ -1,0 +1,168 @@
+Obtaining file:///home/runner/work/Causal4D/Causal4D
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Checking if build backend supports build_editable: started
+  Checking if build backend supports build_editable: finished with status 'done'
+  Getting requirements to build editable: started
+  Getting requirements to build editable: finished with status 'done'
+  Preparing editable metadata (pyproject.toml): started
+  Preparing editable metadata (pyproject.toml): finished with status 'done'
+Collecting numpy>=1.24 (from causal4d==0.4.1)
+  Downloading numpy-2.5.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (6.6 kB)
+Collecting packaging>=23 (from causal4d==0.4.1)
+  Using cached packaging-26.2-py3-none-any.whl.metadata (3.5 kB)
+Collecting scipy>=1.10 (from causal4d==0.4.1)
+  Downloading scipy-1.18.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (62 kB)
+Collecting build>=1.2 (from causal4d==0.4.1)
+  Downloading build-1.5.0-py3-none-any.whl.metadata (5.7 kB)
+Collecting mypy>=1.11 (from causal4d==0.4.1)
+  Downloading mypy-2.3.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (2.4 kB)
+Collecting pytest>=8 (from causal4d==0.4.1)
+  Downloading pytest-9.1.1-py3-none-any.whl.metadata (7.6 kB)
+Collecting ruff<0.17,>=0.15.22 (from causal4d==0.4.1)
+  Downloading ruff-0.16.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (26 kB)
+Collecting twine>=5 (from causal4d==0.4.1)
+  Downloading twine-6.2.0-py3-none-any.whl.metadata (3.6 kB)
+Collecting pyproject_hooks (from build>=1.2->causal4d==0.4.1)
+  Downloading pyproject_hooks-1.2.0-py3-none-any.whl.metadata (1.3 kB)
+Collecting typing_extensions>=4.6.0 (from mypy>=1.11->causal4d==0.4.1)
+  Downloading typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)
+Collecting mypy_extensions>=1.0.0 (from mypy>=1.11->causal4d==0.4.1)
+  Downloading mypy_extensions-1.1.0-py3-none-any.whl.metadata (1.1 kB)
+Collecting pathspec>=1.0.0 (from mypy>=1.11->causal4d==0.4.1)
+  Downloading pathspec-1.1.1-py3-none-any.whl.metadata (14 kB)
+Collecting librt>=0.13.0 (from mypy>=1.11->causal4d==0.4.1)
+  Downloading librt-0.13.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (1.3 kB)
+Collecting ast-serialize<1.0.0,>=0.6.0 (from mypy>=1.11->causal4d==0.4.1)
+  Downloading ast_serialize-0.6.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (1.3 kB)
+Collecting iniconfig>=1.0.1 (from pytest>=8->causal4d==0.4.1)
+  Downloading iniconfig-2.3.0-py3-none-any.whl.metadata (2.5 kB)
+Collecting pluggy<2,>=1.5 (from pytest>=8->causal4d==0.4.1)
+  Downloading pluggy-1.6.0-py3-none-any.whl.metadata (4.8 kB)
+Collecting pygments>=2.7.2 (from pytest>=8->causal4d==0.4.1)
+  Downloading pygments-2.20.0-py3-none-any.whl.metadata (2.5 kB)
+Collecting readme-renderer>=35.0 (from twine>=5->causal4d==0.4.1)
+  Downloading readme_renderer-45.0-py3-none-any.whl.metadata (3.0 kB)
+Collecting requests>=2.20 (from twine>=5->causal4d==0.4.1)
+  Downloading requests-2.34.2-py3-none-any.whl.metadata (4.8 kB)
+Collecting requests-toolbelt!=0.9.0,>=0.8.0 (from twine>=5->causal4d==0.4.1)
+  Downloading requests_toolbelt-1.0.0-py2.py3-none-any.whl.metadata (14 kB)
+Collecting urllib3>=1.26.0 (from twine>=5->causal4d==0.4.1)
+  Downloading urllib3-2.7.0-py3-none-any.whl.metadata (6.9 kB)
+Collecting keyring>=21.2.0 (from twine>=5->causal4d==0.4.1)
+  Downloading keyring-25.7.0-py3-none-any.whl.metadata (21 kB)
+Collecting rfc3986>=1.4.0 (from twine>=5->causal4d==0.4.1)
+  Downloading rfc3986-2.0.0-py2.py3-none-any.whl.metadata (6.6 kB)
+Collecting rich>=12.0.0 (from twine>=5->causal4d==0.4.1)
+  Downloading rich-15.0.0-py3-none-any.whl.metadata (18 kB)
+Collecting id (from twine>=5->causal4d==0.4.1)
+  Downloading id-1.6.1-py3-none-any.whl.metadata (5.1 kB)
+Collecting SecretStorage>=3.2 (from keyring>=21.2.0->twine>=5->causal4d==0.4.1)
+  Downloading secretstorage-3.5.0-py3-none-any.whl.metadata (4.0 kB)
+Collecting jeepney>=0.4.2 (from keyring>=21.2.0->twine>=5->causal4d==0.4.1)
+  Downloading jeepney-0.9.0-py3-none-any.whl.metadata (1.2 kB)
+Collecting jaraco.classes (from keyring>=21.2.0->twine>=5->causal4d==0.4.1)
+  Downloading jaraco.classes-3.4.0-py3-none-any.whl.metadata (2.6 kB)
+Collecting jaraco.functools (from keyring>=21.2.0->twine>=5->causal4d==0.4.1)
+  Downloading jaraco_functools-4.6.0-py3-none-any.whl.metadata (2.9 kB)
+Collecting jaraco.context (from keyring>=21.2.0->twine>=5->causal4d==0.4.1)
+  Downloading jaraco_context-6.1.2-py3-none-any.whl.metadata (4.2 kB)
+Collecting nh3>=0.2.14 (from readme-renderer>=35.0->twine>=5->causal4d==0.4.1)
+  Downloading nh3-0.3.6-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (2.0 kB)
+Collecting docutils>=0.21.2 (from readme-renderer>=35.0->twine>=5->causal4d==0.4.1)
+  Downloading docutils-0.23-py3-none-any.whl.metadata (15 kB)
+Collecting charset_normalizer<4,>=2 (from requests>=2.20->twine>=5->causal4d==0.4.1)
+  Downloading charset_normalizer-3.4.9-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (41 kB)
+Collecting idna<4,>=2.5 (from requests>=2.20->twine>=5->causal4d==0.4.1)
+  Downloading idna-3.18-py3-none-any.whl.metadata (6.1 kB)
+Collecting certifi>=2023.5.7 (from requests>=2.20->twine>=5->causal4d==0.4.1)
+  Downloading certifi-2026.7.22-py3-none-any.whl.metadata (2.5 kB)
+Collecting markdown-it-py>=2.2.0 (from rich>=12.0.0->twine>=5->causal4d==0.4.1)
+  Downloading markdown_it_py-4.2.0-py3-none-any.whl.metadata (7.4 kB)
+Collecting mdurl~=0.1 (from markdown-it-py>=2.2.0->rich>=12.0.0->twine>=5->causal4d==0.4.1)
+  Downloading mdurl-0.1.2-py3-none-any.whl.metadata (1.6 kB)
+Collecting cryptography>=2.0 (from SecretStorage>=3.2->keyring>=21.2.0->twine>=5->causal4d==0.4.1)
+  Downloading cryptography-49.0.0-cp311-abi3-manylinux_2_34_x86_64.whl.metadata (4.3 kB)
+Collecting cffi>=2.0.0 (from cryptography>=2.0->SecretStorage>=3.2->keyring>=21.2.0->twine>=5->causal4d==0.4.1)
+  Downloading cffi-2.1.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.5 kB)
+Collecting pycparser (from cffi>=2.0.0->cryptography>=2.0->SecretStorage>=3.2->keyring>=21.2.0->twine>=5->causal4d==0.4.1)
+  Downloading pycparser-3.0-py3-none-any.whl.metadata (8.2 kB)
+Collecting more-itertools (from jaraco.classes->keyring>=21.2.0->twine>=5->causal4d==0.4.1)
+  Downloading more_itertools-11.1.0-py3-none-any.whl.metadata (41 kB)
+Downloading ruff-0.16.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (11.4 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 11.4/11.4 MB 40.9 MB/s  0:00:00
+Downloading build-1.5.0-py3-none-any.whl (26 kB)
+Downloading mypy-2.3.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (15.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 15.3/15.3 MB 128.9 MB/s  0:00:00
+Downloading ast_serialize-0.6.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (1.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.3/1.3 MB 146.2 MB/s  0:00:00
+Downloading librt-0.13.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (531 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 531.8/531.8 kB 76.5 MB/s  0:00:00
+Downloading mypy_extensions-1.1.0-py3-none-any.whl (5.0 kB)
+Downloading numpy-2.5.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (16.7 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 16.7/16.7 MB 207.7 MB/s  0:00:00
+Using cached packaging-26.2-py3-none-any.whl (100 kB)
+Downloading pathspec-1.1.1-py3-none-any.whl (57 kB)
+Downloading pytest-9.1.1-py3-none-any.whl (386 kB)
+Downloading pluggy-1.6.0-py3-none-any.whl (20 kB)
+Downloading iniconfig-2.3.0-py3-none-any.whl (7.5 kB)
+Downloading pygments-2.20.0-py3-none-any.whl (1.2 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.2 MB 150.2 MB/s  0:00:00
+Downloading scipy-1.18.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (35.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 35.3/35.3 MB 170.6 MB/s  0:00:00
+Downloading twine-6.2.0-py3-none-any.whl (42 kB)
+Downloading keyring-25.7.0-py3-none-any.whl (39 kB)
+Downloading jeepney-0.9.0-py3-none-any.whl (49 kB)
+Downloading readme_renderer-45.0-py3-none-any.whl (14 kB)
+Downloading docutils-0.23-py3-none-any.whl (634 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 634.7/634.7 kB 93.3 MB/s  0:00:00
+Downloading nh3-0.3.6-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (806 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 806.7/806.7 kB 116.0 MB/s  0:00:00
+Downloading requests-2.34.2-py3-none-any.whl (73 kB)
+Downloading charset_normalizer-3.4.9-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (224 kB)
+Downloading idna-3.18-py3-none-any.whl (65 kB)
+Downloading urllib3-2.7.0-py3-none-any.whl (131 kB)
+Downloading certifi-2026.7.22-py3-none-any.whl (136 kB)
+Downloading requests_toolbelt-1.0.0-py2.py3-none-any.whl (54 kB)
+Downloading rfc3986-2.0.0-py2.py3-none-any.whl (31 kB)
+Downloading rich-15.0.0-py3-none-any.whl (310 kB)
+Downloading markdown_it_py-4.2.0-py3-none-any.whl (91 kB)
+Downloading mdurl-0.1.2-py3-none-any.whl (10.0 kB)
+Downloading secretstorage-3.5.0-py3-none-any.whl (15 kB)
+Downloading cryptography-49.0.0-cp311-abi3-manylinux_2_34_x86_64.whl (4.7 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.7/4.7 MB 214.2 MB/s  0:00:00
+Downloading cffi-2.1.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (221 kB)
+Downloading typing_extensions-4.16.0-py3-none-any.whl (45 kB)
+Downloading id-1.6.1-py3-none-any.whl (14 kB)
+Downloading jaraco.classes-3.4.0-py3-none-any.whl (6.8 kB)
+Downloading jaraco_context-6.1.2-py3-none-any.whl (7.9 kB)
+Downloading jaraco_functools-4.6.0-py3-none-any.whl (11 kB)
+Downloading more_itertools-11.1.0-py3-none-any.whl (72 kB)
+Downloading pycparser-3.0-py3-none-any.whl (48 kB)
+Downloading pyproject_hooks-1.2.0-py3-none-any.whl (10 kB)
+Building wheels for collected packages: causal4d
+  Building editable for causal4d (pyproject.toml): started
+  Building editable for causal4d (pyproject.toml): finished with status 'done'
+  Created wheel for causal4d: filename=causal4d-0.4.1-0.editable-py3-none-any.whl size=5438 sha256=b1c6cf4e1091e9f3a15aacddbe3b59920d59a97ad1ad3cfb68dbe8b0739c98d4
+  Stored in directory: /tmp/pip-ephem-wheel-cache-plhhi51d/wheels/4b/ee/4b/a4193c0b3fdd9359682eb749b185ccb2b201aeab925d544a9a
+Successfully built causal4d
+Installing collected packages: urllib3, typing_extensions, ruff, rfc3986, pyproject_hooks, pygments, pycparser, pluggy, pathspec, packaging, numpy, nh3, mypy_extensions, more-itertools, mdurl, librt, jeepney, jaraco.context, iniconfig, idna, docutils, charset_normalizer, certifi, ast-serialize, scipy, requests, readme-renderer, pytest, mypy, markdown-it-py, jaraco.functools, jaraco.classes, id, cffi, build, rich, requests-toolbelt, cryptography, causal4d, SecretStorage, keyring, twine
+
+Successfully installed SecretStorage-3.5.0 ast-serialize-0.6.0 build-1.5.0 causal4d-0.4.1 certifi-2026.7.22 cffi-2.1.0 charset_normalizer-3.4.9 cryptography-49.0.0 docutils-0.23 id-1.6.1 idna-3.18 iniconfig-2.3.0 jaraco.classes-3.4.0 jaraco.context-6.1.2 jaraco.functools-4.6.0 jeepney-0.9.0 keyring-25.7.0 librt-0.13.0 markdown-it-py-4.2.0 mdurl-0.1.2 more-itertools-11.1.0 mypy-2.3.0 mypy_extensions-1.1.0 nh3-0.3.6 numpy-2.5.1 packaging-26.2 pathspec-1.1.1 pluggy-1.6.0 pycparser-3.0 pygments-2.20.0 pyproject_hooks-1.2.0 pytest-9.1.1 readme-renderer-45.0 requests-2.34.2 requests-toolbelt-1.0.0 rfc3986-2.0.0 rich-15.0.0 ruff-0.16.0 scipy-1.18.0 twine-6.2.0 typing_extensions-4.16.0 urllib3-2.7.0
+All checks passed!
+
+==================================== ERRORS ====================================
+____________ ERROR collecting tests/test_causal4d_rest_geometry.py _____________
+ImportError while importing test module '/home/runner/work/Causal4D/Causal4D/tests/test_causal4d_rest_geometry.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.12.13/x64/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_causal4d_rest_geometry.py:4: in <module>
+    from bayesian_phystwin.phystwin_graph_discrepancy import (
+E   ModuleNotFoundError: No module named 'bayesian_phystwin'
+=========================== short test summary info ============================
+ERROR tests/test_causal4d_rest_geometry.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 1.09s
