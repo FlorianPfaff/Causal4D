@@ -46,10 +46,9 @@ prospective mechanism gates.
 the uncertain deformable-object twin: state and parameter particles, graph
 geometry, PhysTwin/Warp replay, and perception/discrepancy artifacts. Causal4D
 consumes those artifacts and owns the intervention and counterfactual
-inference. Production replay uses immutable typed requests from
-`bayesian_phystwin.causal4d_provider_v2`; provider v1 remains only as the
-versioned scientific and frozen-diagnostic compatibility facade. Causal4D
-validates both manifests and never imports BPT implementation modules directly.
+inference. The dependency points from Causal4D to Bayesian-PhysTwin through
+`bayesian_phystwin.causal4d_provider_v1`; execution uses the
+`PhysTwinReplayProvider` protocol rather than BPT internals.
 
 Install the `phystwin` extra for these adapters. Core controlled benchmarks do
 not require Warp or the PhysTwin checkout. See
@@ -141,6 +140,22 @@ causal4d-real-experiment-freeze seal \
   /data/causal4d-sloth-multi-action-v1/method_freeze.json \
   --frozen-by "<operator-or-principal-investigator>"
 ```
+
+Track acquisition progress without counting templates as evidence:
+
+```bash
+causal4d-real-protocol status \
+  configs/causal4d/sloth_multi_action_v1.json \
+  /data/causal4d-sloth-multi-action-v1 \
+  --output-json \
+  /data/causal4d-sloth-multi-action-v1/evidence-status.json
+```
+
+Before analysis, add `--verify-file-hashes --require-complete`. The command
+returns exit code 3 until all 36 executions and every registered artifact are
+claim-ready. See
+[docs/causal4d_real_evidence_status.md](docs/causal4d_real_evidence_status.md)
+for the exact accounting and exit-code contract.
 
 The experiment must report either successful transfer/calibration or a
 well-powered negative result without target-informed method selection. See
