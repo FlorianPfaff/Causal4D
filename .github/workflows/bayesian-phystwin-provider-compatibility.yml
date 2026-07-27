@@ -53,21 +53,42 @@ jobs:
     env:
       PRIVATE_REPOSITORY_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
     steps:
-      - name: Detect private-repository credential
+      - name: Classify private-repository access
         id: access
+        shell: bash
+        env:
+          IS_FORK_PULL_REQUEST: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: |
+          set -euo pipefail
           if [[ -n "${PRIVATE_REPOSITORY_READ_TOKEN}" ]]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "required=true" >> "$GITHUB_OUTPUT"
+          elif [[ "${IS_FORK_PULL_REQUEST}" == "true" ]]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "required=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Private compatibility unavailable on fork::The fork pull request cannot access BPT_READ_TOKEN, so it cannot admit three-repository evidence."
+            {
+              echo "### Three-repository compatibility unavailable on fork"
+              echo
+              echo "GitHub does not expose the private \`BPT_READ_TOKEN\` secret to fork pull requests."
+              echo "The installed-wheel gate is unavailable and no cross-repository evidence is admitted by this run."
+            } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::BPT_READ_TOKEN is not configured; the three-repository golden path was not exercised."
+            echo "required=true" >> "$GITHUB_OUTPUT"
+            echo "::error title=Required three-repository gate not executed::Configure BPT_READ_TOKEN with read access to Bayesian-PhysTwin and Prob4D."
             {
-              echo "### Three-repository installed-wheel compatibility"
+              echo "### Required three-repository compatibility gate not executed"
               echo
-              echo "Skipped because the repository secret \`BPT_READ_TOKEN\` is absent."
-              echo "The token must have read access to FlorianPfaff/Bayesian-PhysTwin and FlorianPfaff/Prob4D."
+              echo "The trusted event requires the repository secret \`BPT_READ_TOKEN\`."
+              echo "Missing credentials are a failing configuration error, not a successful compatibility result."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      - name: Require private credential on trusted events
+        if: steps.access.outputs.required == 'true' && steps.access.outputs.enabled != 'true'
+        shell: bash
+        run: exit 1
 
       - name: Check out Causal4D
         if: steps.access.outputs.enabled == 'true'
@@ -107,7 +128,9 @@ jobs:
       - name: Record exact clean repository revisions
         if: steps.access.outputs.enabled == 'true'
         id: revisions
+        shell: bash
         run: |
+          set -euo pipefail
           for repository in prob4d bayesian-phystwin causal4d; do
             test -z "$(git -C "$repository" status --porcelain=v1 --untracked-files=all)"
           done
@@ -124,7 +147,9 @@ jobs:
 
       - name: Build all three wheels
         if: steps.access.outputs.enabled == 'true'
+        shell: bash
         run: |
+          set -euo pipefail
           python -m pip install --upgrade build pip
           wheelhouse="$RUNNER_TEMP/three-repository-wheelhouse"
           mkdir -p "$wheelhouse"
@@ -135,7 +160,9 @@ jobs:
 
       - name: Install wheels in a clean virtual environment
         if: steps.access.outputs.enabled == 'true'
+        shell: bash
         run: |
+          set -euo pipefail
           venv="$RUNNER_TEMP/three-repository-venv"
           wheelhouse="$RUNNER_TEMP/three-repository-wheelhouse"
           python -m venv "$venv"
@@ -149,7 +176,9 @@ jobs:
 
       - name: Run the isolated three-repository golden path
         if: steps.access.outputs.enabled == 'true'
+        shell: bash
         run: |
+          set -euo pipefail
           run_dir="$RUNNER_TEMP/three-repository-run"
           mkdir -p "$run_dir"
           cp causal4d/ci/three_repository_*.py "$run_dir/"
@@ -172,7 +201,9 @@ jobs:
         if: steps.access.outputs.enabled == 'true'
         env:
           CAUSAL4D_REQUIRE_BPT_PROVIDER: "1"
+        shell: bash
         run: |
+          set -euo pipefail
           cd "$RUNNER_TEMP/three-repository-run"
           env -u PYTHONPATH \
             "$RUNNER_TEMP/three-repository-venv/bin/python" -m pytest -q \
@@ -190,8 +221,14 @@ jobs:
               "$GITHUB_WORKSPACE/causal4d/tests/test_prob4d_joint_contract_fixture.py" \
               "$GITHUB_WORKSPACE/causal4d/tests/test_prob4d_stream_contract_version.py"
 
+      - name: Mark installed-wheel gate executed
+        if: steps.access.outputs.enabled == 'true'
+        shell: bash
+        run: touch "$RUNNER_TEMP/three-repository-installed-wheel.executed"
+
       - name: Publish compatibility summary
         if: steps.access.outputs.enabled == 'true' && always()
+        shell: bash
         run: |
           if [[ -f "$RUNNER_TEMP/three-repository-summary.json" ]]; then
             {
@@ -213,3 +250,14 @@ jobs:
             ${{ runner.temp }}/three-repository-golden-path.log
           if-no-files-found: warn
           retention-days: 7
+
+      - name: Assert trusted gate execution
+        if: always() && steps.access.outputs.required == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ steps.access.outputs.enabled }}" != "true" ]]; then
+            echo "::error title=Three-repository gate unavailable::The required private credential was not configured."
+            exit 1
+          fi
+          test -f "$RUNNER_TEMP/three-repository-installed-wheel.executed"
