@@ -8,6 +8,8 @@ from typing import Mapping
 
 import numpy as np
 
+from causal4d.weighting import log_weights_from_probabilities
+
 from causal4d.observation_evidence import GroupedObservationEvidence, ObservationGroup
 
 
@@ -44,11 +46,7 @@ def _multivariate_student_t_log_density(
     normalization = (
         lgamma(0.5 * (degrees_of_freedom + dimension))
         - lgamma(0.5 * degrees_of_freedom)
-        - 0.5
-        * (
-            dimension * np.log(degrees_of_freedom * np.pi)
-            + log_determinant
-        )
+        - 0.5 * (dimension * np.log(degrees_of_freedom * np.pi) + log_determinant)
     )
     return normalization - 0.5 * (degrees_of_freedom + dimension) * np.log1p(
         mahalanobis / degrees_of_freedom
@@ -102,7 +100,9 @@ def group_log_likelihood(
 
     predictions = np.asarray(predicted_values_m, dtype=float)
     if predictions.shape[-1] != group.coordinate_count:
-        raise ValueError("predicted group coordinates do not match the observation group")
+        raise ValueError(
+            "predicted group coordinates do not match the observation group"
+        )
     residual = predictions - group.values_m
     covariance = group.covariance_m2
     if additive_variance_m2 is not None:
@@ -111,7 +111,9 @@ def group_log_likelihood(
             raise ValueError("additive_variance_m2 must match predicted group values")
         if np.any(~np.isfinite(additive)) or np.any(additive < 0.0):
             raise ValueError("additive variances must be finite and nonnegative")
-        covariance = covariance + additive[..., :, None] * np.eye(group.coordinate_count)
+        covariance = covariance + additive[..., :, None] * np.eye(
+            group.coordinate_count
+        )
     if additive_covariance_m2 is not None:
         covariance = covariance + _broadcast_additive_covariance(
             additive_covariance_m2,
@@ -173,7 +175,9 @@ def grouped_component_log_likelihoods(
     known_group_ids = {group.group_id for group in evidence.groups}
     unknown = set(covariance_by_group) - known_group_ids
     if unknown:
-        raise ValueError(f"component covariance references unknown groups: {sorted(unknown)}")
+        raise ValueError(
+            f"component covariance references unknown groups: {sorted(unknown)}"
+        )
     total = np.zeros(leading_shape, dtype=float)
     responsibilities = []
     effective_weights = evidence.effective_group_weights
@@ -226,7 +230,7 @@ def posterior_weights_from_grouped_evidence(
         component_variance_m2=component_variance_m2,
         component_group_covariance_m2=component_group_covariance_m2,
     )
-    log_posterior = np.log(np.maximum(prior, 1e-300)) + score
+    log_posterior = log_weights_from_probabilities(prior, name="prior_weights") + score
     maximum = float(np.max(log_posterior))
     posterior = np.exp(log_posterior - maximum)
     posterior /= np.sum(posterior)
