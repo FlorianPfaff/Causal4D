@@ -11,7 +11,7 @@ from typing import Any, Mapping
 import numpy as np
 
 from bayesian_phystwin.phystwin_comparison import official_metrics_by_frame
-from bayesian_phystwin.phystwin_graph import (
+from bayesian_phystwin.causal4d_graph_provider_v1 import (
     PhysTwinSpringGraphConfig,
     build_phystwin_spring_graph,
 )
@@ -97,9 +97,7 @@ def _metrics_by_frame(
         "future_chamfer_distance_m": np.asarray(
             official["chamfer_distance_m"], dtype=float
         ),
-        "future_track_error_m": np.asarray(
-            official["track_error_m"], dtype=float
-        ),
+        "future_track_error_m": np.asarray(official["track_error_m"], dtype=float),
     }
 
 
@@ -136,9 +134,7 @@ def evaluate_phystwin_rest_geometry_transfer_case(
         raise ValueError(
             "the pinned official simulator selects cuda:0; use CUDA_VISIBLE_DEVICES"
         )
-    source = load_source_rest_geometry_correction(
-        source_correction_manifest_path
-    )
+    source = load_source_rest_geometry_correction(source_correction_manifest_path)
     if expected_protocol_id is not None and source.protocol_id != expected_protocol_id:
         raise ValueError("source correction belongs to a different protocol")
     if (
@@ -196,9 +192,7 @@ def evaluate_phystwin_rest_geometry_transfer_case(
             config=graph_config,
         )
     else:
-        canonical_graph = load_canonical_material_graph(
-            canonical_material_graph_path
-        )
+        canonical_graph = load_canonical_material_graph(canonical_material_graph_path)
         if len(canonical_graph.vertices) != len(structure_points):
             raise ValueError("canonical graph and target object size disagree")
         graph = attach_target_controller_to_canonical_graph(
@@ -215,10 +209,7 @@ def evaluate_phystwin_rest_geometry_transfer_case(
     frame_dt = dt * num_substeps
     start_index = rollout_start_frame - 1
     target_velocity = estimate_endpoint_velocity_delta(
-        baseline[
-            rollout_start_frame
-            - velocity_history_frames : rollout_start_frame
-        ],
+        baseline[rollout_start_frame - velocity_history_frames : rollout_start_frame],
         frame_dt=frame_dt,
     )
     selected_configuration = prepare_target_rest_geometry_configuration(
@@ -239,9 +230,7 @@ def evaluate_phystwin_rest_geometry_transfer_case(
     )
     rotated_velocity = rotate_vectors(target_velocity, source.frame)
     preserve_rest = np.asarray(graph.rest_lengths, dtype=float).copy()
-    preserve_rest[: graph.num_object_springs] = (
-        source.corrected_object_rest_lengths
-    )
+    preserve_rest[: graph.num_object_springs] = source.corrected_object_rest_lengths
     reattached_rest, _, _ = reattach_controller_rest_lengths(
         source.corrected_reference_vertices,
         corrected_controller[0],
@@ -308,9 +297,10 @@ def evaluate_phystwin_rest_geometry_transfer_case(
         velocity=target_velocity,
     )
     output_candidate = baseline.copy()
-    output_candidate[start_index:] = apply_frame_correction(
-        baseline[start_index:], source.frame
-    ) + source.hyperparameters["rest_geometry_scale"] * source.nonrigid_field[None]
+    output_candidate[start_index:] = (
+        apply_frame_correction(baseline[start_index:], source.frame)
+        + source.hyperparameters["rest_geometry_scale"] * source.nonrigid_field[None]
+    )
     candidates["output_frame_graph"] = output_candidate
     add_rollout(
         "frame_state_original_rest",
@@ -407,9 +397,7 @@ def evaluate_phystwin_rest_geometry_transfer_case(
         "rollout_start_frame": rollout_start_frame,
         "evaluation_frames": [score_start, stop_frame],
         "information_boundary": {
-            "source_correction_evidence": plan_record[
-                "correction_evidence_policy"
-            ],
+            "source_correction_evidence": plan_record["correction_evidence_policy"],
             "target_response_prefix_used": bool(
                 plan_record["target_response_prefix_allowed"]
             ),
@@ -432,8 +420,7 @@ def evaluate_phystwin_rest_geometry_transfer_case(
         },
         "mean_metrics_by_method": {
             method: {
-                metric: float(np.mean(values))
-                for metric, values in metrics.items()
+                metric: float(np.mean(values)) for metric, values in metrics.items()
             }
             for method, metrics in metrics_by_method.items()
         },

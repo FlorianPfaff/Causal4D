@@ -28,7 +28,7 @@ from bayesian_phystwin.observation_model_audit import (
     released_observation_capability_audit,
 )
 from bayesian_phystwin.phystwin_comparison import official_metrics_by_frame
-from bayesian_phystwin.phystwin_graph import (
+from bayesian_phystwin.causal4d_graph_provider_v1 import (
     PhysTwinSpringGraphConfig,
     build_phystwin_spring_graph,
 )
@@ -380,7 +380,9 @@ def _coverage_summary(
     return {
         "coordinate_coverage_90": float(np.mean(coverage[coordinate_selected])),
         "coordinate_nees": float(
-            np.mean(np.square(residual[coordinate_selected]) / variance[coordinate_selected])
+            np.mean(
+                np.square(residual[coordinate_selected]) / variance[coordinate_selected]
+            )
         ),
         "mean_interval_width_m": float(
             np.mean((2.0 * z * np.sqrt(variance))[coordinate_selected])
@@ -400,9 +402,7 @@ def _field_energy(
     differences = values[edges[:, 0]] - values[edges[:, 1]]
     return {
         "unit": unit,
-        "node_vector_rms": float(
-            np.sqrt(np.mean(np.sum(np.square(values), axis=1)))
-        ),
+        "node_vector_rms": float(np.sqrt(np.mean(np.sum(np.square(values), axis=1)))),
         "node_vector_maximum": float(
             np.max(np.linalg.norm(values, axis=1), initial=0.0)
         ),
@@ -501,7 +501,9 @@ def evaluate_phystwin_discrepancy_localization_case(
     """Compare readout, state, force, and structure with one O-plus prefix."""
 
     if o_plus_prefix_frames != 6 or parameter_particle_count != 4:
-        raise ValueError("the frozen diagnostic requires six O-plus frames and four particles")
+        raise ValueError(
+            "the frozen diagnostic requires six O-plus frames and four particles"
+        )
     positive = (
         projection_ridge,
         dimensionless_ridge,
@@ -658,8 +660,7 @@ def evaluate_phystwin_discrepancy_localization_case(
         "maximum_absolute_difference_m": float(
             np.max(
                 np.abs(
-                    explicit_zero_positions
-                    - baseline_positions[reference_particle]
+                    explicit_zero_positions - baseline_positions[reference_particle]
                 ),
                 initial=0.0,
             )
@@ -697,9 +698,7 @@ def evaluate_phystwin_discrepancy_localization_case(
         maximum_node_norm=maximum_velocity_correction_mps,
     )
 
-    prefix_reference = baseline_positions[
-        reference_particle, :prefix_frame_count
-    ]
+    prefix_reference = baseline_positions[reference_particle, :prefix_frame_count]
     (
         force_response,
         structural_response,
@@ -730,20 +729,20 @@ def evaluate_phystwin_discrepancy_localization_case(
         force_response[1:, :original_count],
         ridge=dimensionless_ridge,
     )
-    structural_dimensionless, structural_fit = (
-        fit_dimensionless_linearized_correction(
-            prefix_residual[1:],
-            prefix_valid[1:],
-            structural_response[1:, :original_count],
-            ridge=dimensionless_ridge,
-        )
+    structural_dimensionless, structural_fit = fit_dimensionless_linearized_correction(
+        prefix_residual[1:],
+        prefix_valid[1:],
+        structural_response[1:, :original_count],
+        ridge=dimensionless_ridge,
     )
-    force_coefficients = force_dimensionless.reshape(
-        LOCALIZATION_GRAPH_RANK, 3
-    ) * force_coefficient_steps_n[:, None]
-    structural_coefficients = structural_dimensionless.reshape(
-        LOCALIZATION_GRAPH_RANK, 3
-    ) * structural_coefficient_steps_m[:, None]
+    force_coefficients = (
+        force_dimensionless.reshape(LOCALIZATION_GRAPH_RANK, 3)
+        * force_coefficient_steps_n[:, None]
+    )
+    structural_coefficients = (
+        structural_dimensionless.reshape(LOCALIZATION_GRAPH_RANK, 3)
+        * structural_coefficient_steps_m[:, None]
+    )
     force_coefficients, force_limit = scale_coefficients_to_field_limit(
         graph_basis,
         force_coefficients,
@@ -919,9 +918,9 @@ def evaluate_phystwin_discrepancy_localization_case(
                     graph.masses[: len(structure), None]
                     * (
                         2.0
-                        * _weighted_mean(
-                            baseline_velocities, particles.weights
-                        )[prefix_frame_count - 1]
+                        * _weighted_mean(baseline_velocities, particles.weights)[
+                            prefix_frame_count - 1
+                        ]
                         * velocity_field
                         + np.square(velocity_field)
                     )
@@ -1027,8 +1026,7 @@ def evaluate_phystwin_discrepancy_localization_case(
         "graph": {
             "object_vertex_count": len(structure),
             "object_spring_count": graph.num_object_springs,
-            "controller_spring_count": len(graph.springs)
-            - graph.num_object_springs,
+            "controller_spring_count": len(graph.springs) - graph.num_object_springs,
             "springs_sha256": _array_sha256(graph.springs),
             "basis_sha256": _array_sha256(graph_basis),
             "basis_eigenvalues": graph_eigenvalues.tolist(),

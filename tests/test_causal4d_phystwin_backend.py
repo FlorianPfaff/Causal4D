@@ -2,7 +2,9 @@ from pathlib import Path
 
 import numpy as np
 
-from bayesian_phystwin.phystwin_graph import PhysTwinSpringGraph
+from bayesian_phystwin.causal4d_graph_provider_v1 import PhysTwinSpringGraph
+from causal4d.contracts import TwinBelief, array_sha256
+from causal4d.graph_provider_contract import require_bayesian_phystwin_graph_provider
 from causal4d.phystwin_backend import (
     BayesianPhysTwinParticles,
     OfficialPhysTwinBackend,
@@ -16,7 +18,6 @@ from causal4d.phystwin_backend import (
     shift_phystwin_attachment_graph,
     transform_controller_trajectory,
 )
-from causal4d.contracts import TwinBelief, array_sha256
 from causal4d.provider_contract import require_bayesian_phystwin_provider
 
 
@@ -92,9 +93,7 @@ def test_profile_loader_preserves_staged_probability_mass(tmp_path: Path) -> Non
         0.9,
     )
     assert np.isclose(
-        accounting["causal4d_support_reduction"][
-            "directly_retained_probability_mass"
-        ],
+        accounting["causal4d_support_reduction"]["directly_retained_probability_mass"],
         8 / 9,
     )
     assert np.isclose(
@@ -106,6 +105,7 @@ def test_profile_loader_preserves_staged_probability_mass(tmp_path: Path) -> Non
 
     backend = object.__new__(OfficialPhysTwinBackend)
     backend.provider_manifest = require_bayesian_phystwin_provider()
+    backend.graph_provider_manifest = require_bayesian_phystwin_graph_provider()
     backend.case_name = "unit_case"
     backend.train_end_frame = 3
     backend.official_repo = tmp_path / "official"

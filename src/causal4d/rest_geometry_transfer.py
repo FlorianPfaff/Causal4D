@@ -10,7 +10,7 @@ from typing import Any, Mapping
 
 import numpy as np
 
-from bayesian_phystwin.phystwin_graph import (
+from bayesian_phystwin.causal4d_graph_provider_v1 import (
     PhysTwinSpringGraph,
     PhysTwinSpringGraphConfig,
     build_phystwin_spring_graph,
@@ -119,8 +119,10 @@ def canonical_material_graph_sha256(
     vertices = np.asarray(reference_vertices, dtype=np.float32)
     edges = np.asarray(springs, dtype=np.int32)
     lengths = np.asarray(rest_lengths, dtype=np.float32)
-    if vertices.ndim != 2 or vertices.shape[1] != 3 or not np.all(
-        np.isfinite(vertices)
+    if (
+        vertices.ndim != 2
+        or vertices.shape[1] != 3
+        or not np.all(np.isfinite(vertices))
     ):
         raise ValueError("reference_vertices must have finite shape (N, 3)")
     if edges.ndim != 2 or edges.shape[1] != 2 or len(edges) != len(lengths):
@@ -213,7 +215,9 @@ def load_canonical_material_graph(path: str | Path) -> CanonicalMaterialGraph:
         springs = np.asarray(archive["springs"], dtype=np.int32)
         rest_lengths = np.asarray(archive["rest_lengths"], dtype=np.float32)
         masses = np.asarray(archive["masses"], dtype=np.float32)
-        stored_digest = str(np.asarray(archive["canonical_material_graph_sha256"]).item())
+        stored_digest = str(
+            np.asarray(archive["canonical_material_graph_sha256"]).item()
+        )
     if masses.shape != (len(vertices),) or np.any(masses <= 0.0):
         raise ValueError("canonical material graph masses are invalid")
     digest = canonical_material_graph_sha256(
@@ -303,13 +307,9 @@ def _summary_hyperparameters(summary: Mapping[str, Any]) -> dict[str, Any]:
             "frame_mode": config["frame_mode"],
             "frame_scale": selection["selected_frame_scale"],
             "rest_geometry_scale": selection["selected_rest_geometry_scale"],
-            "controller_rest_mode": selection[
-                "selected_controller_rest_mode"
-            ],
+            "controller_rest_mode": selection["selected_controller_rest_mode"],
             "graph_prior_strength": config["graph_prior_strength"],
-            "rest_length_ratio_bound": float(
-                np.exp(config["maximum_rest_log_ratio"])
-            ),
+            "rest_length_ratio_bound": float(np.exp(config["maximum_rest_log_ratio"])),
         }
     )
 
@@ -324,9 +324,7 @@ def write_source_rest_geometry_correction(
     """Export only the persistent, pre-holdout correction needed for transfer."""
 
     validate_protocol(protocol)
-    execution_ids = {
-        execution["execution_id"] for execution in protocol["executions"]
-    }
+    execution_ids = {execution["execution_id"] for execution in protocol["executions"]}
     if source_execution_id not in execution_ids:
         raise ValueError("source correction execution is not preregistered")
     summary_source = Path(summary_path)
@@ -335,8 +333,7 @@ def write_source_rest_geometry_correction(
     boundary = summary.get("information_boundary", {})
     if (
         boundary.get("holdout_frames_used_for_inference") is not False
-        or boundary.get("holdout_frames_used_for_hyperparameter_selection")
-        is not False
+        or boundary.get("holdout_frames_used_for_hyperparameter_selection") is not False
         or boundary.get("manual_gt_track_used_for_hyperparameter_selection")
         is not False
     ):
@@ -440,9 +437,7 @@ def load_source_rest_geometry_correction(
         raise ValueError("unsupported source correction schema")
     if manifest.get("artifact_kind") != "source_rest_geometry_correction":
         raise ValueError("unexpected source correction artifact kind")
-    if manifest.get("manifest_sha256") != source_correction_manifest_sha256(
-        manifest
-    ):
+    if manifest.get("manifest_sha256") != source_correction_manifest_sha256(manifest):
         raise ValueError("source correction manifest SHA-256 mismatch")
     if manifest.get("information_boundary") != {
         "source_evidence_frames": "pre_holdout_only",
@@ -479,9 +474,7 @@ def load_source_rest_geometry_correction(
         corrected_reference = np.asarray(
             archive["corrected_reference_vertices"], dtype=float
         )
-        object_rest = np.asarray(
-            archive["corrected_object_rest_lengths"], dtype=float
-        )
+        object_rest = np.asarray(archive["corrected_object_rest_lengths"], dtype=float)
     vertex_count = int(manifest["object_vertex_count"])
     spring_count = int(manifest["object_spring_count"])
     if linear.shape != (3, 3) or translation.shape != (3,):
@@ -519,9 +512,7 @@ def load_source_rest_geometry_correction(
         nonrigid_field=nonrigid,
         corrected_reference_vertices=corrected_reference,
         corrected_object_rest_lengths=object_rest,
-        canonical_material_graph_sha256=manifest[
-            "canonical_material_graph_sha256"
-        ],
+        canonical_material_graph_sha256=manifest["canonical_material_graph_sha256"],
         source_manifest_sha256=manifest["manifest_sha256"],
     )
 

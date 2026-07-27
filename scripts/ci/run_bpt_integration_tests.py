@@ -9,6 +9,7 @@ import pytest
 
 
 BPT_INTEGRATION_TESTS = (
+    "tests/test_bpt_graph_provider_integration.py",
     "tests/test_causal4d_bpt_belief.py",
     "tests/test_causal4d_molmo_acceptance.py",
     "tests/test_causal4d_molmo_adapter.py",

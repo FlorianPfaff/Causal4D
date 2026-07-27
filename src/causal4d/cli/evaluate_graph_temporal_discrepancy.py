@@ -27,7 +27,7 @@ def _load_runtime_dependencies() -> None:
     global RealCalibrationCase
     global evaluate_real_prediction_case
 
-    from bayesian_phystwin.phystwin_graph import (
+    from bayesian_phystwin.causal4d_graph_provider_v1 import (
         PhysTwinSpringGraphConfig,
         build_phystwin_spring_graph,
     )
