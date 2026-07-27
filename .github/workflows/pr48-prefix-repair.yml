@@ -1,0 +1,75 @@
+name: PR 48 graph import prefix repair
+
+on:
+  push:
+    branches: ["agent/bpt-graph-provider-boundary"]
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr48-prefix-repair
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    if: github.head_ref == 'agent/bpt-graph-provider-boundary' || github.ref_name == 'agent/bpt-graph-provider-boundary'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/bpt-graph-provider-boundary
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Restore non-provider graph-discrepancy imports
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          wrong = "bayesian_phystwin.causal4d_graph_provider_v1_discrepancy"
+          correct = "bayesian_phystwin.phystwin_graph_discrepancy"
+          changed = []
+          for root in (Path("src"), Path("scripts")):
+              for path in sorted(root.rglob("*.py")):
+                  text = path.read_text(encoding="utf-8")
+                  if wrong in text:
+                      path.write_text(text.replace(wrong, correct), encoding="utf-8")
+                      changed.append(str(path))
+          if not changed:
+              raise SystemExit("expected accidental graph-discrepancy imports were absent")
+          print("repaired:")
+          print("\n".join(changed))
+          PY
+          if grep -R "causal4d_graph_provider_v1_" src scripts --include='*.py'; then
+            echo "unexpected provider-prefix derivative remains" >&2
+            exit 1
+          fi
+      - name: Validate repaired imports and boundary
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m ruff check \
+            src/causal4d/rest_geometry.py \
+            src/causal4d/phystwin_rest_geometry.py \
+            src/causal4d/graph_provider_contract.py \
+            tests/test_graph_provider_contract.py \
+            tests/test_bpt_graph_provider_import_boundary.py
+          python -m pytest -q \
+            tests/test_graph_provider_contract.py \
+            tests/test_bpt_graph_provider_import_boundary.py \
+            tests/test_causal4d_rest_geometry.py
+          python -m compileall -q src scripts
+      - name: Remove temporary workflow and commit
+        run: |
+          rm .github/workflows/pr48-prefix-repair.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Repair graph-discrepancy imports"
+          git push origin HEAD:agent/bpt-graph-provider-boundary
