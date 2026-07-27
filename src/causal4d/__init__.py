@@ -16,6 +16,10 @@ from causal4d.causal_sufficiency import (
     CausalSufficiencyResult,
     assess_command_residual_sufficiency,
 )
+from causal4d.claim_bearing_observation_lineage import (
+    load_claim_bearing_prob4d_observation_lineage,
+    require_claim_bearing_prob4d_lineage,
+)
 from causal4d.contact_evaluation import run_latent_contact_benchmark
 from causal4d.contact_inference import LatentContactConfig
 from causal4d.contact_traction import graph_traction_field, integrate_contact_wrench
@@ -79,6 +83,10 @@ from causal4d.prefix_likelihood import (
     PrefixLikelihoodConfig,
     prefix_component_log_likelihood,
     update_joint_weights_from_prefix,
+)
+from causal4d.prob4d_observation_lineage import (
+    validate_claim_bearing_prob4d_observation_metadata,
+    validate_prob4d_causal_observation_metadata,
 )
 from causal4d.provider_contract import (
     BASE_CAUSAL4D_PROVIDER_CAPABILITIES,
@@ -185,6 +193,7 @@ __all__ = [
     "grouped_component_log_likelihoods",
     "integrate_contact_wrench",
     "load_bayesian_phystwin_provider_manifest",
+    "load_claim_bearing_prob4d_observation_lineage",
     "load_graph_discrepancy_belief",
     "load_independent_sensor_evidence",
     "load_observation_factor_lineage",
@@ -194,12 +203,15 @@ __all__ = [
     "preserve_prior_within_unidentified_subspace",
     "project_identifiable_intervention_update",
     "require_bayesian_phystwin_provider",
+    "require_claim_bearing_prob4d_lineage",
     "reweight_factual_intervention_with_independent_sensors",
     "run_counterfactual_benchmark",
     "run_latent_contact_benchmark",
     "save_independent_sensor_evidence",
     "update_joint_weights_from_prefix",
     "validate_bayesian_phystwin_provider",
+    "validate_claim_bearing_prob4d_observation_metadata",
+    "validate_prob4d_causal_observation_metadata",
     "validate_provider_compatibility",
     "validate_twin_belief_observation_factor_lineage",
     "write_graph_discrepancy_belief",
