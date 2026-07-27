@@ -38,10 +38,16 @@ access to both private repositories:
 - `FlorianPfaff/Prob4D`.
 
 The historical secret name is retained so existing repository configuration
-does not need to change. Pinned, scheduled-main, BPT-vision, and Warp jobs report
-an explicit skipped-coverage warning when the secret is absent; they do not
-pretend provider compatibility was tested or silently substitute editable or
-public packages.
+does not need to change. Trusted same-repository pull requests, pushes,
+scheduled runs, and manual dispatches now **fail** when the secret is absent.
+The three-repository workflow is not allowed to report success after skipping
+its checkouts, wheel builds, and compatibility tests.
+
+GitHub does not expose repository secrets to pull requests from external forks.
+Those events receive a dedicated `External PR cannot access private providers`
+result explaining that private coverage is unavailable. A maintainer must
+reproduce the proposed head on a trusted same-repository branch and obtain a
+passing installed-wheel golden path before merge.
 
 ## Three-repository installed-wheel golden path
 
@@ -51,7 +57,12 @@ same-repository pull requests and pushes, can be dispatched with explicit BPT
 and Prob4D revisions, and runs weekly against both private repositories' `main`
 branches.
 
-The workflow:
+The workflow begins with a separate credential gate. For trusted events, a
+missing `BPT_READ_TOKEN` is a hard configuration failure and prevents a false
+green result. Only an external-fork pull request can use the explicitly labelled
+unavailable path, because GitHub withholds repository secrets by design.
+
+The installed-wheel job then:
 
 1. records the exact clean revision of every checkout;
 2. builds one wheel for each repository and installs only those wheels plus
