@@ -99,7 +99,7 @@ def run_evidence_manifest_checks(
             "observation_artifact_id": observation_artifact_id,
             "provider_manifest_id": provider_manifest_id,
             "prob4d_causal_stream_contract_version": 2,
-            "replay_provider": "deterministic-cpu-fake-v1",
+            "replay_provider": "deterministic-cpu-fake-v2",
         },
         inputs=(
             _artifact(
@@ -130,7 +130,7 @@ def run_evidence_manifest_checks(
         method_freeze_id="three-repository-golden-path-v1",
         protocol_id="prob4d-bpt-causal4d-installed-wheel-v1",
         split_id="deterministic-contract-fixture-v1",
-        baseline_id="fake-replay-provider-v1",
+        baseline_id="fake-replay-provider-v2",
         created_utc="2026-07-27T00:00:00+00:00",
         notes="No empirical performance claim; this is an interoperability check.",
     )

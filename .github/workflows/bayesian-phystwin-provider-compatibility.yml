@@ -7,24 +7,40 @@ on:
       - ".github/workflows/bayesian-phystwin-provider-compatibility.yml"
       - "ci/three_repository_*.py"
       - "docs/ci.md"
+      - "src/causal4d/bpt_belief.py"
       - "src/causal4d/observation_lineage.py"
       - "src/causal4d/phystwin_backend.py"
+      - "src/causal4d/phystwin_resumable.py"
       - "src/causal4d/prob4d_observation_contract.py"
       - "src/causal4d/provider_contract.py"
+      - "src/causal4d/replay_provider_contract.py"
+      - "src/causal4d/rollout_cache.py"
       - "tests/test_bpt_provider_integration.py"
+      - "tests/test_causal4d_bpt_belief.py"
       - "tests/test_causal4d_phystwin_backend.py"
+      - "tests/test_phystwin_resumable.py"
+      - "tests/test_replay_provider_contract.py"
+      - "tests/test_rollout_cache.py"
   push:
     branches: [main]
     paths:
       - ".github/workflows/bayesian-phystwin-provider-compatibility.yml"
       - "ci/three_repository_*.py"
       - "docs/ci.md"
+      - "src/causal4d/bpt_belief.py"
       - "src/causal4d/observation_lineage.py"
       - "src/causal4d/phystwin_backend.py"
+      - "src/causal4d/phystwin_resumable.py"
       - "src/causal4d/prob4d_observation_contract.py"
       - "src/causal4d/provider_contract.py"
+      - "src/causal4d/replay_provider_contract.py"
+      - "src/causal4d/rollout_cache.py"
       - "tests/test_bpt_provider_integration.py"
+      - "tests/test_causal4d_bpt_belief.py"
       - "tests/test_causal4d_phystwin_backend.py"
+      - "tests/test_phystwin_resumable.py"
+      - "tests/test_replay_provider_contract.py"
+      - "tests/test_rollout_cache.py"
   workflow_dispatch:
     inputs:
       bpt_ref:
@@ -203,6 +219,7 @@ jobs:
               --import-mode=importlib \
               "$GITHUB_WORKSPACE/prob4d/tests/test_joint_observation_contract_fixture.py" \
               "$GITHUB_WORKSPACE/bayesian-phystwin/tests/test_causal4d_provider_v1.py" \
+              "$GITHUB_WORKSPACE/bayesian-phystwin/tests/test_causal4d_provider_v2.py" \
               "$GITHUB_WORKSPACE/bayesian-phystwin/tests/test_observation_belief_gauge_adapter.py" \
               "$GITHUB_WORKSPACE/bayesian-phystwin/tests/test_run_manifest_v2.py" \
               "$GITHUB_WORKSPACE/causal4d/tests/test_bpt_provider_import_boundary.py" \
@@ -210,6 +227,9 @@ jobs:
               "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_provider_contract.py" \
               "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_phystwin_backend.py" \
               "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_bpt_belief.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_phystwin_resumable.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_replay_provider_contract.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_rollout_cache.py" \
               "$GITHUB_WORKSPACE/causal4d/tests/test_observation_lineage.py" \
               "$GITHUB_WORKSPACE/causal4d/tests/test_prob4d_joint_contract_fixture.py" \
               "$GITHUB_WORKSPACE/causal4d/tests/test_prob4d_stream_contract_version.py"

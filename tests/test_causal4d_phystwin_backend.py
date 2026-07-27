@@ -1,6 +1,14 @@
 from pathlib import Path
+from typing import Any
 
 import numpy as np
+import pytest
+
+import causal4d.phystwin_backend as backend_module
+from bayesian_phystwin.causal4d_provider_v2 import (
+    ReplayTrajectoryV1,
+    RestartReplayRequestV1,
+)
 
 from bayesian_phystwin.causal4d_graph_provider_v1 import PhysTwinSpringGraph
 from causal4d.contracts import TwinBelief, array_sha256
@@ -19,6 +27,9 @@ from causal4d.phystwin_backend import (
     transform_controller_trajectory,
 )
 from causal4d.provider_contract import require_bayesian_phystwin_provider
+from causal4d.replay_provider_contract import (
+    require_bayesian_phystwin_replay_provider,
+)
 
 
 def test_profile_loader_selects_and_renormalizes_high_mass_particles(
@@ -105,6 +116,7 @@ def test_profile_loader_preserves_staged_probability_mass(tmp_path: Path) -> Non
 
     backend = object.__new__(OfficialPhysTwinBackend)
     backend.provider_manifest = require_bayesian_phystwin_provider()
+    backend.replay_provider_manifest = require_bayesian_phystwin_replay_provider()
     backend.graph_provider_manifest = require_bayesian_phystwin_graph_provider()
     backend.case_name = "unit_case"
     backend.train_end_frame = 3
@@ -117,6 +129,11 @@ def test_profile_loader_preserves_staged_probability_mass(tmp_path: Path) -> Non
     backend.particles = reduced
     backend.controller_groups = np.asarray([0])
     backend.config = OfficialPhysTwinBackendConfig()
+    backend.baseline = np.zeros((4, 2, 3), dtype=np.float32)
+    backend.controller_points = np.zeros((4, 1, 3), dtype=np.float32)
+    backend.base_simulator_configuration_id = "base-configuration-v1"
+    backend.released_initial_state_id = "released-state-v1"
+    backend.source_artifacts_sha256 = {}
     manifest = backend.default_manifest()["parameter_particles"]
     assert np.isclose(manifest["retained_probability_mass"], 0.8)
     assert manifest["probability_mass_accounting"] == accounting
@@ -274,3 +291,152 @@ def test_backend_reuses_factual_belief_for_a_new_counterfactual_query() -> None:
         provenance="unit",
     )
     backend._validate_twin_belief(belief, (changed,))
+
+
+def test_rollout_bank_uses_explicit_replay_v2_requests(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vertices = np.asarray(
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        dtype=np.float32,
+    )
+    springs = np.asarray([[0, 1], [2, 1]], dtype=np.int32)
+    graph = PhysTwinSpringGraph(
+        vertices=vertices,
+        springs=springs,
+        rest_lengths=np.linalg.norm(
+            vertices[springs[:, 0]] - vertices[springs[:, 1]], axis=1
+        ).astype(np.float32),
+        masses=np.ones(3, dtype=np.float32),
+        num_object_springs=1,
+        num_object_points=2,
+    )
+    backend = object.__new__(OfficialPhysTwinBackend)
+    backend.provider_manifest = require_bayesian_phystwin_provider()
+    backend.replay_provider_manifest = require_bayesian_phystwin_replay_provider()
+    backend.graph_provider_manifest = require_bayesian_phystwin_graph_provider()
+    backend.case_name = "unit_case"
+    backend.train_end_frame = 2
+    backend.frame_count = 4
+    backend.original_count = 2
+    backend.hand_count = 1
+    backend.object_points = np.zeros((4, 2, 3), dtype=np.float32)
+    backend.visible = np.ones((4, 2), dtype=bool)
+    backend.motion_valid = np.ones((4, 2), dtype=bool)
+    backend.controller_points = np.zeros((4, 1, 3), dtype=np.float32)
+    backend.controller_points[2:, 0, 0] = [0.1, 0.2]
+    backend.baseline = np.zeros((4, 3, 3), dtype=np.float32)
+    backend.surface_points = np.zeros((0, 3), dtype=np.float32)
+    backend.graph = graph
+    backend.controller_groups = np.asarray([0])
+    backend.particles = BayesianPhysTwinParticles(
+        log_scales=np.asarray([[0.1, -0.2]]),
+        weights=np.asarray([1.0]),
+        grid_indices=np.asarray([[0, 0]]),
+        source_weight_key="posterior_weights",
+        retained_probability_mass=1.0,
+    )
+    backend.config = OfficialPhysTwinBackendConfig(
+        dt=0.01,
+        num_substeps=2,
+        self_collision=False,
+        device="cpu",
+    )
+    backend.official_repo = tmp_path / "official"
+    backend.final_data_path = tmp_path / "final.pkl"
+    backend.optimal_params_path = tmp_path / "optimal.pkl"
+    backend.checkpoint_path = tmp_path / "checkpoint.pt"
+    backend.baseline_trajectory_path = tmp_path / "baseline.pkl"
+    backend.profile_path = tmp_path / "profile.npz"
+    backend.data = {}
+    backend.optimal = {}
+    backend.source_artifacts_sha256 = {}
+    backend.base_simulator_configuration_id = "base-configuration-v1"
+    backend.released_initial_state_id = "released-state-v1"
+
+    proposal = PhysTwinActionProposal(
+        proposal_id="future",
+        controller_points_m=backend.controller_points,
+        prior_weight=1.0,
+        future_action_observed=False,
+        provenance="unit",
+    )
+    context = backend.causal_context((proposal,), protocol_id="unit")
+    endpoint = vertices[None].astype(float)
+    belief = TwinBelief(
+        context=context,
+        endpoint_frame=1,
+        particle_ids=("particle-0",),
+        theta_names=("object", "controller"),
+        endpoint_position_m=endpoint,
+        endpoint_velocity_mps=np.ones_like(endpoint) * 0.05,
+        theta=backend.particles.log_scales,
+        discrepancy_mean_m=np.zeros_like(endpoint),
+        discrepancy_variance_m2=np.ones_like(endpoint) * 1e-5,
+        weights=backend.particles.weights,
+    )
+    requests: list[RestartReplayRequestV1] = []
+    closed = False
+
+    class FakeProvider:
+        device = "cpu"
+
+        def __init__(self, **kwargs: Any) -> None:
+            self.frame_dt_s = kwargs["dt"] * kwargs["num_substeps"]
+            self.simulator_configuration_id = kwargs["simulator_configuration_id"]
+            self.released_initial_state_id = kwargs["released_initial_state_id"]
+
+        def replay(self, request: RestartReplayRequestV1) -> ReplayTrajectoryV1:
+            requests.append(request)
+            frames = request.stop_frame - request.start_frame
+            positions = np.repeat(request.position_m[None], frames, axis=0)
+            velocities = np.repeat(request.velocity_mps[None], frames, axis=0)
+            return ReplayTrajectoryV1(
+                positions_m=positions,
+                velocities_mps=velocities,
+                frame_ids=np.arange(request.start_frame, request.stop_frame),
+                dt_s=self.frame_dt_s,
+                request_id=request.request_id,
+                simulator_configuration_id=request.simulator_configuration_id,
+                initial_state_id=request.initial_state_id,
+            )
+
+        def close(self) -> None:
+            nonlocal closed
+            closed = True
+
+    def factory(*args: Any, **kwargs: Any) -> FakeProvider:
+        del args
+        return FakeProvider(**kwargs)
+
+    monkeypatch.setattr(backend_module, "create_official_replay_provider", factory)
+    bank, manifest = backend.build_rollout_bank(
+        (proposal,),
+        twin_belief=belief,
+        hypothesis_config=PhysTwinHypothesisConfig(
+            attachment_shift_values=(0,),
+            gain_values=(1.0,),
+            delay_values=(0,),
+            slip_values=(0.0,),
+            rotation_values_degrees=(0.0,),
+            maximum_contact_states=1,
+        ),
+    )
+
+    assert closed
+    assert len(requests) == 1
+    request = requests[0]
+    assert isinstance(request, RestartReplayRequestV1)
+    np.testing.assert_allclose(request.group_log_scales, [0.1, -0.2])
+    np.testing.assert_array_equal(
+        request.controller_points_m,
+        backend.controller_points,
+    )
+    np.testing.assert_array_equal(request.position_m, belief.endpoint_position_m[0])
+    np.testing.assert_allclose(request.velocity_mps, belief.endpoint_velocity_mps[0])
+    np.testing.assert_array_equal(bank.trajectories[0, 0, 0], vertices[:2])
+    assert manifest["replay_provider_api_version"] == 2
+    assert manifest["replay_request_count"] == 1
+    assert manifest["replay_requests"][0]["request_id"] == request.request_id
+    assert manifest["replay_requests"][0]["velocities_sha256"]

@@ -15,6 +15,11 @@ from causal4d.provider_contract import (
     require_bayesian_phystwin_provider,
     validate_bayesian_phystwin_provider,
 )
+from causal4d.replay_provider_contract import (
+    load_bayesian_phystwin_replay_provider_manifest,
+    require_bayesian_phystwin_replay_provider,
+    validate_bayesian_phystwin_replay_provider,
+)
 
 
 def _provider_api():
@@ -26,7 +31,12 @@ def _provider_api():
         pytest.skip("Bayesian-PhysTwin provider is an optional integration")
 
 
-def _provider_import_names() -> set[str]:
+def _replay_provider_api():
+    _provider_api()
+    return import_module("bayesian_phystwin.causal4d_provider_v2")
+
+
+def _provider_import_names(module_name: str) -> set[str]:
     repository_root = Path(__file__).resolve().parents[1]
     names: set[str] = set()
     for directory in (repository_root / "src", repository_root / "scripts"):
@@ -35,11 +45,7 @@ def _provider_import_names() -> set[str]:
         for path in directory.rglob("*.py"):
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             for node in ast.walk(tree):
-                if (
-                    isinstance(node, ast.ImportFrom)
-                    and node.module
-                    == "bayesian_phystwin.causal4d_provider_v1"
-                ):
+                if isinstance(node, ast.ImportFrom) and node.module == module_name:
                     names.update(alias.name for alias in node.names)
     return names
 
@@ -51,16 +57,21 @@ def test_installed_provider_manifest_matches_supported_range() -> None:
     )
     result = validate_bayesian_phystwin_provider(manifest)
     assert result.compatible, result.as_dict()
-    assert require_bayesian_phystwin_provider(
-        provider_revision="cross-repository-test"
-    ).manifest_id == manifest.manifest_id
+    assert (
+        require_bayesian_phystwin_provider(
+            provider_revision="cross-repository-test"
+        ).manifest_id
+        == manifest.manifest_id
+    )
     assert result.supported_provider_versions == BAYESIAN_PHYSTWIN_COMPATIBILITY_RANGE
 
 
 def test_provider_exports_every_name_consumed_by_causal4d() -> None:
     provider_api = _provider_api()
     missing = sorted(
-        name for name in _provider_import_names() if not hasattr(provider_api, name)
+        name
+        for name in _provider_import_names("bayesian_phystwin.causal4d_provider_v1")
+        if not hasattr(provider_api, name)
     )
     assert not missing, f"provider API is missing Causal4D imports: {missing}"
 
@@ -96,3 +107,47 @@ def test_replay_protocol_is_runtime_checkable() -> None:
             return None
 
     assert isinstance(MinimalProvider(), provider_api.PhysTwinReplayProvider)
+
+
+def test_installed_replay_provider_manifest_matches_supported_range() -> None:
+    _replay_provider_api()
+    manifest = load_bayesian_phystwin_replay_provider_manifest(
+        provider_revision="cross-repository-replay-test"
+    )
+    result = validate_bayesian_phystwin_replay_provider(manifest)
+    assert result.compatible, result.as_dict()
+    assert (
+        require_bayesian_phystwin_replay_provider(
+            provider_revision="cross-repository-replay-test"
+        ).manifest_id
+        == manifest.manifest_id
+    )
+    assert result.supported_provider_versions == BAYESIAN_PHYSTWIN_COMPATIBILITY_RANGE
+
+
+def test_replay_provider_exports_every_v2_name_consumed_by_causal4d() -> None:
+    provider_api = _replay_provider_api()
+    missing = sorted(
+        name
+        for name in _provider_import_names("bayesian_phystwin.causal4d_provider_v2")
+        if not hasattr(provider_api, name)
+    )
+    assert not missing, f"replay provider API is missing Causal4D imports: {missing}"
+
+
+def test_replay_v2_protocol_is_runtime_checkable() -> None:
+    provider_api = _replay_provider_api()
+
+    class MinimalProviderV2:
+        device = "cpu"
+        frame_dt_s = 0.03
+        simulator_configuration_id = "configuration-v2"
+        released_initial_state_id = "released-state-v1"
+
+        def replay(self, request):
+            return request
+
+        def close(self):
+            return None
+
+    assert isinstance(MinimalProviderV2(), provider_api.PhysTwinReplayProvider)
