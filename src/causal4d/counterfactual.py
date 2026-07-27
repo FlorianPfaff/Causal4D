@@ -39,9 +39,7 @@ def _contact_patch_from_metadata(
 
 def _kappa_from_metadata(metadata: Mapping[str, Any]) -> tuple[float, ...]:
     contact = metadata["contact"]
-    return _contact_patch_from_metadata(metadata) + (
-        float(contact["slip_fraction"]),
-    )
+    return _contact_patch_from_metadata(metadata) + (float(contact["slip_fraction"]),)
 
 
 def _conditional_hypothesis_prior_weights(
@@ -102,8 +100,7 @@ def _validate_query_bank(
     if bank_context != query.context:
         raise ValueError("rollout bank context does not match do(u_cf)")
     action_ids = {
-        str(metadata["action"]["proposal_id"])
-        for metadata in bank.hypothesis_metadata
+        str(metadata["action"]["proposal_id"]) for metadata in bank.hypothesis_metadata
     }
     if action_ids != {query.context.u_cf.action_id}:
         raise ValueError("rollout bank does not contain exactly the queried action")
@@ -123,9 +120,7 @@ def _new_contact_weights(
         )
         phi_theta[key] += float(weight)
 
-    query_phi = [
-        _phi_from_metadata(metadata) for metadata in bank.hypothesis_metadata
-    ]
+    query_phi = [_phi_from_metadata(metadata) for metadata in bank.hypothesis_metadata]
     conditional_kappa = _conditional_hypothesis_prior_weights(
         bank.hypothesis_prior_weights,
         query_phi,
@@ -134,8 +129,7 @@ def _new_contact_weights(
     for hypothesis_index, phi in enumerate(query_phi):
         for particle_index in range(len(bank.parameter_weights)):
             weights[hypothesis_index, particle_index] = (
-                phi_theta[(particle_index, phi)]
-                * conditional_kappa[hypothesis_index]
+                phi_theta[(particle_index, phi)] * conditional_kappa[hypothesis_index]
             )
     retained_mass = float(np.sum(weights))
     if retained_mass <= 0.0:
@@ -257,9 +251,7 @@ def apply_counterfactual_operator(
         query.metadata.get("same_grasp_semantics", "fixed_kappa")
     )
     if same_grasp_semantics not in SAME_GRASP_SEMANTICS:
-        raise ValueError(
-            "same_grasp_semantics must be fixed_kappa or evolve_slip"
-        )
+        raise ValueError("same_grasp_semantics must be fixed_kappa or evolve_slip")
     if query.contact_policy == "new_contact":
         joint_weights, retained_mass = _new_contact_weights(bank, factual)
         reused_factual_kappa = False
@@ -362,8 +354,6 @@ def physical_posterior_mean(
     """Return the weighted state or discrepancy-aware readout trajectory."""
 
     values = (
-        posterior.readout_trajectories_m
-        if readout
-        else posterior.state_trajectories_m
+        posterior.readout_trajectories_m if readout else posterior.state_trajectories_m
     )
     return np.einsum("k,ktnc->tnc", posterior.weights, values)
