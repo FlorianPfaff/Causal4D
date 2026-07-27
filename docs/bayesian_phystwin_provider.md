@@ -80,6 +80,8 @@ Torch, Warp, OpenCV, or SciPy.
 The official rollout manifest records both the current replay-provider manifest
 and the graph-provider manifest. Frozen evidence can thus identify the exact
 replay implementation and the exact graph/controller contract independently.
+This provenance separation improves upgrade auditability; it is not an
+empirical accuracy, calibration, or causal-prediction claim.
 
 ## Development installation
 
