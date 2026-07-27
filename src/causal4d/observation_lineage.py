@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -11,6 +10,11 @@ from typing import Any, Mapping
 import numpy as np
 
 from .contracts import TwinBelief
+from .observation_contract_bundle import (
+    observation_contract_array_sha256,
+    observation_contract_artifact_id,
+    observation_contract_schema,
+)
 from .prob4d_observation_lineage import (
     is_prob4d_causal_observation_descriptor,
     validate_prob4d_causal_observation_metadata,
@@ -18,34 +22,17 @@ from .prob4d_observation_lineage import (
 
 OBSERVATION_BELIEF_SCHEMA = "phys4d.observation_belief"
 OBSERVATION_BELIEF_VERSION = 1
-_REQUIRED_ARRAYS = {
-    "declared_frame_ids",
-    "mean_xyz_m",
-    "frame_ids",
-    "entity_ids",
-    "view_indices",
-    "window_indices",
-    "correlation_group_ids",
-    "factor_group_ids",
-    "prior_reliability",
-    "association_probability",
-    "local_covariance_m2",
-    "low_rank_factor_m",
-    "group_ids",
-    "group_prior_nominal_probability",
-    "group_composite_weight",
+_SCHEMA = observation_contract_schema()
+_REQUIRED_ARRAYS = frozenset(_SCHEMA["arrays"]["fields"])
+_REQUIRED_DESCRIPTOR_FIELDS = frozenset(_SCHEMA["descriptor"]["fields"])
+_ARRAY_DTYPES = {
+    name: np.dtype(str(specification["dtype"]))
+    for name, specification in _SCHEMA["arrays"]["fields"].items()
 }
 
 
 def array_sha256(values: np.ndarray) -> str:
-    array = np.ascontiguousarray(np.asarray(values))
-    digest = hashlib.sha256()
-    digest.update(array.dtype.str.encode("ascii"))
-    digest.update(
-        json.dumps(array.shape, separators=(",", ":")).encode("ascii")
-    )
-    digest.update(array.view(np.uint8))
-    return digest.hexdigest()
+    return observation_contract_array_sha256(values)
 
 
 def compute_observation_artifact_id(
@@ -54,21 +41,7 @@ def compute_observation_artifact_id(
 ) -> str:
     """Compute the cross-repository observation contract content address."""
 
-    payload = dict(descriptor)
-    payload.pop("artifact_id", None)
-    digest = hashlib.sha256()
-    digest.update(
-        json.dumps(
-            payload,
-            sort_keys=True,
-            separators=(",", ":"),
-            allow_nan=False,
-        ).encode("utf-8")
-    )
-    for name, values in sorted(arrays.items()):
-        digest.update(name.encode("utf-8"))
-        digest.update(array_sha256(values).encode("ascii"))
-    return digest.hexdigest()
+    return observation_contract_artifact_id(descriptor, arrays)
 
 
 def _validate_sha256(value: str, *, name: str) -> None:
@@ -84,9 +57,7 @@ def _bounded_probability(
     name: str,
 ) -> np.ndarray:
     result = np.asarray(values, dtype=np.float64)
-    if not np.all(np.isfinite(result)) or np.any(
-        (result < 0.0) | (result > 1.0)
-    ):
+    if not np.all(np.isfinite(result)) or np.any((result < 0.0) | (result > 1.0)):
         raise ValueError(f"{name} must lie in [0, 1]")
     return result
 
@@ -137,19 +108,13 @@ class ObservationLineage:
         if not self.source_repository or not self.source_revision:
             raise ValueError("lineage source must be nonempty")
         if self.causal_frame_stop < 1:
-            raise ValueError(
-                "lineage causal frame stop must be positive"
-            )
+            raise ValueError("lineage causal frame stop must be positive")
         if not 0 <= self.minimum_frame_id <= self.maximum_frame_id:
             raise ValueError("lineage frame range is invalid")
         if self.maximum_frame_id >= self.causal_frame_stop:
-            raise ValueError(
-                "lineage crosses its causal frame boundary"
-            )
+            raise ValueError("lineage crosses its causal frame boundary")
         if self.observation_count < 1 or self.group_count < 1:
-            raise ValueError(
-                "lineage must describe observations and groups"
-            )
+            raise ValueError("lineage must describe observations and groups")
         if self.factor_rank < 0:
             raise ValueError("lineage factor rank must be nonnegative")
         object.__setattr__(
@@ -165,19 +130,13 @@ class ObservationLineage:
         metadata: dict[str, Any] = {
             "source_observation_belief_id": self.artifact_id,
             "source_observation_schema": OBSERVATION_BELIEF_SCHEMA,
-            "source_observation_schema_version": (
-                OBSERVATION_BELIEF_VERSION
-            ),
+            "source_observation_schema_version": (OBSERVATION_BELIEF_VERSION),
             "source_observation_case_id": self.case_id,
             "source_observation_stream_id": self.stream_id,
-            "source_observation_causal_frame_stop": (
-                self.causal_frame_stop
-            ),
+            "source_observation_causal_frame_stop": (self.causal_frame_stop),
             "source_observation_repository": self.source_repository,
             "source_observation_revision": self.source_revision,
-            "source_observation_artifact_sha256": (
-                self.source_artifact_sha256
-            ),
+            "source_observation_artifact_sha256": (self.source_artifact_sha256),
         }
         if self.provider_validation:
             metadata["source_observation_provider_validation"] = dict(
@@ -191,21 +150,26 @@ def load_observation_lineage(path: str | Path) -> ObservationLineage:
 
     with np.load(path, allow_pickle=False) as archive:
         if "descriptor_json" not in archive:
-            raise ValueError(
-                "observation artifact has no descriptor_json"
-            )
+            raise ValueError("observation artifact has no descriptor_json")
         descriptor = json.loads(str(archive["descriptor_json"]))
         arrays = {
             name: np.asarray(archive[name])
             for name in archive.files
             if name != "descriptor_json"
         }
+    if not isinstance(descriptor, dict):
+        raise ValueError("observation artifact descriptor must be a JSON object")
+    missing_descriptor = _REQUIRED_DESCRIPTOR_FIELDS - descriptor.keys()
+    extra_descriptor = descriptor.keys() - _REQUIRED_DESCRIPTOR_FIELDS
+    if missing_descriptor or extra_descriptor:
+        raise ValueError(
+            "observation artifact descriptor changed; "
+            f"missing={sorted(missing_descriptor)}, "
+            f"extra={sorted(extra_descriptor)}"
+        )
     if descriptor.get("schema_name") != OBSERVATION_BELIEF_SCHEMA:
         raise ValueError("unsupported observation-belief schema")
-    if (
-        int(descriptor.get("schema_version", -1))
-        != OBSERVATION_BELIEF_VERSION
-    ):
+    if int(descriptor.get("schema_version", -1)) != OBSERVATION_BELIEF_VERSION:
         raise ValueError("unsupported observation-belief version")
     missing = _REQUIRED_ARRAYS - arrays.keys()
     extra = arrays.keys() - _REQUIRED_ARRAYS
@@ -214,23 +178,21 @@ def load_observation_lineage(path: str | Path) -> ObservationLineage:
             "observation artifact arrays changed; "
             f"missing={sorted(missing)}, extra={sorted(extra)}"
         )
-    expected = str(descriptor.get("artifact_id", ""))
+    for name, expected_dtype in _ARRAY_DTYPES.items():
+        if arrays[name].dtype != expected_dtype:
+            raise ValueError(
+                f"observation artifact array {name!r} has dtype "
+                f"{arrays[name].dtype}, expected {expected_dtype}"
+            )
+    expected = str(descriptor["artifact_id"])
     _validate_sha256(expected, name="artifact_id")
     actual = compute_observation_artifact_id(descriptor, arrays)
     if actual != expected:
-        raise ValueError(
-            "observation artifact digest does not match its payload"
-        )
+        raise ValueError("observation artifact digest does not match its payload")
 
-    view_names = tuple(
-        map(str, descriptor.get("view_names", ()))
-    )
-    window_names = tuple(
-        map(str, descriptor.get("window_names", ()))
-    )
-    factor_names = tuple(
-        map(str, descriptor.get("factor_names", ()))
-    )
+    view_names = tuple(map(str, descriptor.get("view_names", ())))
+    window_names = tuple(map(str, descriptor.get("window_names", ())))
+    factor_names = tuple(map(str, descriptor.get("factor_names", ())))
     if (
         not view_names
         or any(not name for name in view_names)
@@ -238,9 +200,7 @@ def load_observation_lineage(path: str | Path) -> ObservationLineage:
         or any(not name for name in window_names)
         or any(not name for name in factor_names)
     ):
-        raise ValueError(
-            "observation view, window, or factor names are invalid"
-        )
+        raise ValueError("observation view, window, or factor names are invalid")
     _validate_sha256(
         str(descriptor.get("source_artifact_sha256", "")),
         name="source_artifact_sha256",
@@ -302,9 +262,7 @@ def load_observation_lineage(path: str | Path) -> ObservationLineage:
         or np.any(declared_frames < 0)
         or np.any(declared_frames >= causal_stop)
     ):
-        raise ValueError(
-            "declared observation frames violate the causal boundary"
-        )
+        raise ValueError("declared observation frames violate the causal boundary")
     if mean.ndim != 2 or mean.shape[1] != 3 or len(mean) == 0:
         raise ValueError("observation means must have shape (N, 3)")
     count = len(mean)
@@ -319,37 +277,20 @@ def load_observation_lineage(path: str | Path) -> ObservationLineage:
         ("association_probability", association),
     ):
         if values.shape != (count,):
-            raise ValueError(
-                f"{name} must identify every observation row"
-            )
+            raise ValueError(f"{name} must identify every observation row")
     if not np.all(np.isin(frame_ids, declared_frames)):
-        raise ValueError(
-            "observation frame identities are inconsistent"
-        )
+        raise ValueError("observation frame identities are inconsistent")
     if np.any(entity_ids < 0):
-        raise ValueError(
-            "observation entity identities must be nonnegative"
-        )
-    if np.any(view_indices < 0) or np.any(
-        view_indices >= len(view_names)
-    ):
+        raise ValueError("observation entity identities must be nonnegative")
+    if np.any(view_indices < 0) or np.any(view_indices >= len(view_names)):
         raise ValueError("observation view indices are invalid")
-    if np.any(window_indices < 0) or np.any(
-        window_indices >= len(window_names)
-    ):
+    if np.any(window_indices < 0) or np.any(window_indices >= len(window_names)):
         raise ValueError("observation window indices are invalid")
     if np.any(correlation_groups < 0) or np.any(factor_groups < 0):
-        raise ValueError(
-            "observation group identities must be nonnegative"
-        )
+        raise ValueError("observation group identities must be nonnegative")
     if local_covariance.shape != (count, 3, 3):
-        raise ValueError(
-            "observation local covariance shape changed"
-        )
-    symmetric = 0.5 * (
-        local_covariance
-        + np.swapaxes(local_covariance, 1, 2)
-    )
+        raise ValueError("observation local covariance shape changed")
+    symmetric = 0.5 * (local_covariance + np.swapaxes(local_covariance, 1, 2))
     if (
         not np.all(np.isfinite(local_covariance))
         or not np.allclose(
@@ -358,39 +299,24 @@ def load_observation_lineage(path: str | Path) -> ObservationLineage:
             atol=1e-12,
             rtol=1e-10,
         )
-        or np.any(
-            np.min(np.linalg.eigvalsh(symmetric), axis=1) <= 0.0
-        )
+        or np.any(np.min(np.linalg.eigvalsh(symmetric), axis=1) <= 0.0)
     ):
-        raise ValueError(
-            "observation local covariance is not positive definite"
-        )
+        raise ValueError("observation local covariance is not positive definite")
     if factors.shape != (count, 3, len(factor_names)) or not np.all(
         np.isfinite(factors)
     ):
-        raise ValueError(
-            "observation low-rank factor shape changed"
-        )
+        raise ValueError("observation low-rank factor shape changed")
     if not np.array_equal(
         group_ids,
         np.unique(correlation_groups),
     ):
-        raise ValueError(
-            "observation group IDs do not match row assignments"
-        )
-    if (
-        group_prior.shape != group_ids.shape
-        or group_weight.shape != group_ids.shape
-    ):
-        raise ValueError(
-            "observation group metadata shape changed"
-        )
+        raise ValueError("observation group IDs do not match row assignments")
+    if group_prior.shape != group_ids.shape or group_weight.shape != group_ids.shape:
+        raise ValueError("observation group metadata shape changed")
     if not np.all(np.isfinite(group_weight)) or np.any(
         (group_weight <= 0.0) | (group_weight > 1.0)
     ):
-        raise ValueError(
-            "observation group weights must lie in (0, 1]"
-        )
+        raise ValueError("observation group weights must lie in (0, 1]")
     if not np.all(np.isfinite(mean)):
         raise ValueError("observation means must be finite")
 
@@ -410,18 +336,14 @@ def load_observation_lineage(path: str | Path) -> ObservationLineage:
             window_indices[order],
         )
     )
-    if len(keys) > 1 and np.any(
-        np.all(keys[1:] == keys[:-1], axis=1)
-    ):
+    if len(keys) > 1 and np.any(np.all(keys[1:] == keys[:-1], axis=1)):
         raise ValueError("observation row identity is not unique")
 
     provider_validation: dict[str, object] = {}
     if is_prob4d_causal_observation_descriptor(descriptor):
-        provider_validation = (
-            validate_prob4d_causal_observation_metadata(
-                descriptor,
-                arrays,
-            )
+        provider_validation = validate_prob4d_causal_observation_metadata(
+            descriptor,
+            arrays,
         )
 
     return ObservationLineage(
@@ -436,9 +358,7 @@ def load_observation_lineage(path: str | Path) -> ObservationLineage:
         factor_rank=factors.shape[2],
         source_repository=str(descriptor["source_repository"]),
         source_revision=str(descriptor["source_revision"]),
-        source_artifact_sha256=str(
-            descriptor["source_artifact_sha256"]
-        ),
+        source_artifact_sha256=str(descriptor["source_artifact_sha256"]),
         provider_validation=provider_validation,
     )
 
@@ -452,34 +372,16 @@ def validate_twin_belief_observation_lineage(
     """Check case, O-minus containment, and content-addressed binding."""
 
     if twin_belief.context.case_id != lineage.case_id:
-        raise ValueError(
-            "observation and twin belief identify different cases"
-        )
-    if (
-        lineage.minimum_frame_id
-        < twin_belief.context.o_minus.frame_start
-    ):
-        raise ValueError(
-            "observation begins before the TwinBelief O- boundary"
-        )
-    if (
-        lineage.causal_frame_stop
-        > twin_belief.context.o_minus.frame_stop
-    ):
-        raise ValueError(
-            "observation uses frames beyond the TwinBelief O- boundary"
-        )
-    bound_id = twin_belief.metadata.get(
-        "source_observation_belief_id"
-    )
+        raise ValueError("observation and twin belief identify different cases")
+    if lineage.minimum_frame_id < twin_belief.context.o_minus.frame_start:
+        raise ValueError("observation begins before the TwinBelief O- boundary")
+    if lineage.causal_frame_stop > twin_belief.context.o_minus.frame_stop:
+        raise ValueError("observation uses frames beyond the TwinBelief O- boundary")
+    bound_id = twin_belief.metadata.get("source_observation_belief_id")
     if bound_id is not None and bound_id != lineage.artifact_id:
-        raise ValueError(
-            "TwinBelief is bound to a different observation artifact"
-        )
+        raise ValueError("TwinBelief is bound to a different observation artifact")
     if require_bound and bound_id is None:
-        raise ValueError(
-            "TwinBelief has no source observation binding"
-        )
+        raise ValueError("TwinBelief has no source observation binding")
     return {
         "status": "valid",
         "twin_belief_id": twin_belief.artifact_id,
@@ -490,9 +392,7 @@ def validate_twin_belief_observation_lineage(
             lineage.minimum_frame_id,
             lineage.maximum_frame_id,
         ],
-        "observation_causal_frame_stop": (
-            lineage.causal_frame_stop
-        ),
+        "observation_causal_frame_stop": (lineage.causal_frame_stop),
         "twin_o_minus_frame_range": [
             twin_belief.context.o_minus.frame_start,
             twin_belief.context.o_minus.frame_stop,
@@ -523,9 +423,7 @@ def bind_twin_belief_observation_lineage(
     metadata = dict(twin_belief.metadata)
     existing = metadata.get("source_observation_belief_id")
     if existing is not None and existing != lineage.artifact_id:
-        raise ValueError(
-            "TwinBelief already has incompatible observation lineage"
-        )
+        raise ValueError("TwinBelief already has incompatible observation lineage")
     metadata.update(lineage.metadata())
     return replace(twin_belief, metadata=metadata)
 
