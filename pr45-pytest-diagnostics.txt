@@ -17,4 +17,4 @@ E   ModuleNotFoundError: No module named 'bayesian_phystwin'
 =========================== short test summary info ============================
 ERROR tests/test_phystwin_resumable.py
 !!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
-1 error in 0.80s
+1 error in 0.92s
