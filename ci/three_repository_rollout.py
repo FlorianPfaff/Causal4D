@@ -371,8 +371,7 @@ def run_causal4d_rollout(
     accounting = particles.probability_mass_accounting()
     invalid_mass_rejection = _invalid_composed_mass_rejection()
     require(
-        manifest["parameter_particles"]["probability_mass_accounting"]
-        == accounting,
+        manifest["parameter_particles"]["probability_mass_accounting"] == accounting,
         "rollout manifest lost staged posterior-mass accounting",
     )
 

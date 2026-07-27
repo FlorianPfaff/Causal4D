@@ -60,9 +60,7 @@ def roundtrip_prob4d_artifact(
     )
     require(PROVIDER_API_VERSION == 1, "Prob4D provider API version changed")
     require(
-        provider_manifest["artifact_schema_versions"][
-            "Prob4DCausalObservationStream"
-        ]
+        provider_manifest["artifact_schema_versions"]["Prob4DCausalObservationStream"]
         == 2,
         "Prob4D provider no longer declares causal stream contract v2",
     )
