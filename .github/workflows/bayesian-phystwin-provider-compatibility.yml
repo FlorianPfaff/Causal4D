@@ -46,37 +46,69 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  credential-gate:
+    name: Require private-repository read access
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PRIVATE_REPOSITORY_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
+    steps:
+      - name: Enforce private-repository credential
+        run: |
+          if [[ -z "${PRIVATE_REPOSITORY_READ_TOKEN}" ]]; then
+            echo "::error::BPT_READ_TOKEN is not configured; the required three-repository golden path cannot run."
+            {
+              echo "### Three-repository installed-wheel compatibility"
+              echo
+              echo "**Failed:** the repository secret \`BPT_READ_TOKEN\` is absent."
+              echo
+              echo "This check is not allowed to pass by skipping its private repositories."
+              echo "Configure a least-privilege token with read access to:"
+              echo
+              echo "- \`FlorianPfaff/Bayesian-PhysTwin\`;"
+              echo "- \`FlorianPfaff/Prob4D\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "Private-repository credential is configured."
+
+  external-pull-request:
+    name: External PR cannot access private providers
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Report unavailable private coverage
+        run: |
+          echo "::warning::Repository secrets are unavailable to pull requests from forks; maintainers must run the installed-wheel golden path on a trusted branch before merge."
+          {
+            echo "### Three-repository installed-wheel compatibility"
+            echo
+            echo "This pull request originates from an external fork, so GitHub does not expose private-repository credentials."
+            echo "The private golden path is intentionally marked unavailable rather than simulated with editable or public substitutes."
+            echo "A maintainer must reproduce the head on a trusted same-repository branch before merging."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   installed-wheel-golden-path:
     name: Prob4D -> BPT -> Causal4D installed wheels
+    needs: credential-gate
+    if: needs.credential-gate.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       PRIVATE_REPOSITORY_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
     steps:
-      - name: Detect private-repository credential
-        id: access
-        run: |
-          if [[ -n "${PRIVATE_REPOSITORY_READ_TOKEN}" ]]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::BPT_READ_TOKEN is not configured; the three-repository golden path was not exercised."
-            {
-              echo "### Three-repository installed-wheel compatibility"
-              echo
-              echo "Skipped because the repository secret \`BPT_READ_TOKEN\` is absent."
-              echo "The token must have read access to FlorianPfaff/Bayesian-PhysTwin and FlorianPfaff/Prob4D."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-
       - name: Check out Causal4D
-        if: steps.access.outputs.enabled == 'true'
         uses: actions/checkout@v6
         with:
           path: causal4d
 
       - name: Check out Bayesian-PhysTwin
-        if: steps.access.outputs.enabled == 'true'
         uses: actions/checkout@v6
         with:
           repository: FlorianPfaff/Bayesian-PhysTwin
@@ -85,7 +117,6 @@ jobs:
           path: bayesian-phystwin
 
       - name: Check out Prob4D
-        if: steps.access.outputs.enabled == 'true'
         uses: actions/checkout@v6
         with:
           repository: FlorianPfaff/Prob4D
@@ -94,7 +125,6 @@ jobs:
           path: prob4d
 
       - name: Set up Python
-        if: steps.access.outputs.enabled == 'true'
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -105,7 +135,6 @@ jobs:
             prob4d/pyproject.toml
 
       - name: Record exact clean repository revisions
-        if: steps.access.outputs.enabled == 'true'
         id: revisions
         run: |
           for repository in prob4d bayesian-phystwin causal4d; do
@@ -116,14 +145,12 @@ jobs:
           echo "causal4d=$(git -C causal4d rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Check golden-path script quality
-        if: steps.access.outputs.enabled == 'true'
         run: |
           python -m pip install "ruff>=0.15.22,<0.17"
           python -m ruff check causal4d/ci/three_repository_*.py
           python -m ruff format --check --diff causal4d/ci/three_repository_*.py
 
       - name: Build all three wheels
-        if: steps.access.outputs.enabled == 'true'
         run: |
           python -m pip install --upgrade build pip
           wheelhouse="$RUNNER_TEMP/three-repository-wheelhouse"
@@ -134,7 +161,6 @@ jobs:
           test "$(find "$wheelhouse" -maxdepth 1 -name '*.whl' | wc -l)" -eq 3
 
       - name: Install wheels in a clean virtual environment
-        if: steps.access.outputs.enabled == 'true'
         run: |
           venv="$RUNNER_TEMP/three-repository-venv"
           wheelhouse="$RUNNER_TEMP/three-repository-wheelhouse"
@@ -148,7 +174,6 @@ jobs:
           "$venv/bin/python" -m pip check
 
       - name: Run the isolated three-repository golden path
-        if: steps.access.outputs.enabled == 'true'
         run: |
           run_dir="$RUNNER_TEMP/three-repository-run"
           mkdir -p "$run_dir"
@@ -169,7 +194,6 @@ jobs:
             | tee "$RUNNER_TEMP/three-repository-golden-path.log"
 
       - name: Run cross-repository contract tests against installed wheels
-        if: steps.access.outputs.enabled == 'true'
         env:
           CAUSAL4D_REQUIRE_BPT_PROVIDER: "1"
         run: |
@@ -191,7 +215,7 @@ jobs:
               "$GITHUB_WORKSPACE/causal4d/tests/test_prob4d_stream_contract_version.py"
 
       - name: Publish compatibility summary
-        if: steps.access.outputs.enabled == 'true' && always()
+        if: always()
         run: |
           if [[ -f "$RUNNER_TEMP/three-repository-summary.json" ]]; then
             {
@@ -204,7 +228,7 @@ jobs:
           fi
 
       - name: Upload golden-path diagnostics
-        if: steps.access.outputs.enabled == 'true' && always()
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: three-repository-installed-wheel-golden-path
