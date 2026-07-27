@@ -17,7 +17,7 @@ concurrency:
 jobs:
   repair:
     if: github.head_ref == 'agent/bpt-graph-provider-boundary' || github.ref_name == 'agent/bpt-graph-provider-boundary'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
