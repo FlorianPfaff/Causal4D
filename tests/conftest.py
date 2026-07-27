@@ -6,9 +6,7 @@ import importlib.util
 from pathlib import Path
 
 
-_BAYESIAN_PHYSTWIN_AVAILABLE = (
-    importlib.util.find_spec("bayesian_phystwin") is not None
-)
+_BAYESIAN_PHYSTWIN_AVAILABLE = importlib.util.find_spec("bayesian_phystwin") is not None
 _BAYESIAN_PHYSTWIN_TEST_MODULES = frozenset(
     {
         "test_causal4d_bpt_belief.py",
@@ -22,6 +20,7 @@ _BAYESIAN_PHYSTWIN_TEST_MODULES = frozenset(
         "test_causal4d_rest_geometry_transfer.py",
         "test_discrepancy_localization_aggregate.py",
         "test_phystwin_propagated_state.py",
+        "test_phystwin_resumable.py",
     }
 )
 
@@ -40,6 +39,6 @@ def pytest_report_header(config) -> str | None:
     if _BAYESIAN_PHYSTWIN_AVAILABLE:
         return None
     return (
-        "bayesian_phystwin is unavailable; excluding 11 private integration "
+        "bayesian_phystwin is unavailable; excluding 12 private integration "
         "test modules"
     )

@@ -18,6 +18,7 @@ def _load_runtime_dependencies() -> None:
     global OfficialPhysTwinBackendConfig
     global PhysTwinActionProposal
     global PhysTwinHypothesisConfig
+    global build_resumable_rollout_bank
     global hidden_action_proposals
     global known_action_proposal
     global save_rollout_bank
@@ -33,6 +34,7 @@ def _load_runtime_dependencies() -> None:
         known_action_proposal,
         save_rollout_bank,
     )
+    from causal4d.phystwin_resumable import build_resumable_rollout_bank
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -71,6 +73,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--num-substeps", type=int, default=667)
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--nondeterministic-spring-forces", action="store_true")
+    cache_group = parser.add_mutually_exclusive_group()
+    cache_group.add_argument(
+        "--rollout-cache-dir",
+        help=(
+            "Content-addressed per-rollout cache. Defaults to a sibling directory "
+            "named after output_npz."
+        ),
+    )
+    cache_group.add_argument(
+        "--no-rollout-cache",
+        action="store_true",
+        help="Disable resumable per-rollout caching.",
+    )
     return parser
 
 
@@ -106,10 +121,36 @@ def _action_proposals(
     return (ambiguous_known, *hidden)
 
 
+def _cache_directory(args: argparse.Namespace, output_path: Path) -> Path | None:
+    if args.no_rollout_cache:
+        return None
+    if args.rollout_cache_dir:
+        return Path(args.rollout_cache_dir)
+    return output_path.with_name(output_path.stem + ".rollout-cache")
+
+
+def _cache_summary(manifest: dict) -> dict:
+    cache = manifest["rollout_cache"]
+    return {
+        key: cache[key]
+        for key in (
+            "enabled",
+            "root",
+            "record_count",
+            "hit_count",
+            "miss_count",
+            "repaired_count",
+            "provider_instance_count",
+        )
+        if key in cache
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     _load_runtime_dependencies()
     case_dir = Path(args.case_dir)
+    output_path = Path(args.output_npz)
     train_end = _train_end(case_dir, args.train_end_frame)
     loaded_belief = None
     if args.twin_belief:
@@ -153,25 +194,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             backend,
             context=context,
         )
-        output_path = Path(args.output_npz)
         twin_belief_path = output_path.with_name(output_path.stem + ".twin_belief.npz")
         save_contract(twin_belief_path, twin_belief)
-    bank, manifest = backend.build_rollout_bank(
+    bank, manifest = build_resumable_rollout_bank(
+        backend,
         proposals,
         twin_belief=twin_belief,
         hypothesis_config=PhysTwinHypothesisConfig(
             maximum_contact_states=args.maximum_contact_states
         ),
+        rollout_cache_dir=_cache_directory(args, output_path),
     )
     manifest["action_setting"] = args.action_setting
-    save_rollout_bank(args.output_npz, bank, manifest)
+    save_rollout_bank(output_path, bank, manifest)
     print(
         json.dumps(
             {
-                "output": str(Path(args.output_npz).resolve()),
+                "output": str(output_path.resolve()),
                 "case": backend.case_name,
                 "action_setting": args.action_setting,
                 "rollout_shape": list(bank.trajectories.shape),
+                "rollout_cache": _cache_summary(manifest),
                 "bpt_retained_parameter_mass": (
                     backend.particles.bpt_retained_probability_mass
                 ),
