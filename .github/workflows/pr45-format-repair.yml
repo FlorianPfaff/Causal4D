@@ -3,6 +3,9 @@ name: PR 45 format repair
 on:
   push:
     branches: ["agent/resumable-phystwin-rollout-cache"]
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
 
 permissions:
   contents: write
@@ -13,6 +16,7 @@ concurrency:
 
 jobs:
   repair:
+    if: github.head_ref == 'agent/resumable-phystwin-rollout-cache' || github.ref_name == 'agent/resumable-phystwin-rollout-cache'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
