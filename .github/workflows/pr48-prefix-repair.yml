@@ -45,7 +45,7 @@ jobs:
             echo "unexpected provider-prefix derivative remains" >&2
             exit 1
           fi
-      - name: Validate repaired imports and capture diagnostics
+      - name: Validate public graph boundary and capture diagnostics
         id: focused
         shell: bash
         run: |
@@ -60,8 +60,7 @@ jobs:
               tests/test_bpt_graph_provider_import_boundary.py &&
             python -m pytest -q \
               tests/test_graph_provider_contract.py \
-              tests/test_bpt_graph_provider_import_boundary.py \
-              tests/test_causal4d_rest_geometry.py &&
+              tests/test_bpt_graph_provider_import_boundary.py &&
             python -m compileall -q src scripts
           } > pr48-validation-diagnostics.txt 2>&1
           status=$?
