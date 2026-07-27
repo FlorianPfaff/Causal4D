@@ -365,7 +365,9 @@ def build_pokeflex_warp_case(
     _require(frames == tuple(sorted(robot_by_frame)), "source mesh/robot frames differ")
     _require(len(frames) > cfg.prefix_frame_count, "source take has no forecast future")
 
-    prefix_surfaces = [_obj_vertices(path) for path in mesh_paths[: cfg.prefix_frame_count]]
+    prefix_surfaces = [
+        _obj_vertices(path) for path in mesh_paths[: cfg.prefix_frame_count]
+    ]
     rest_surface = prefix_surfaces[0]
     node_indices = _farthest_point_indices(rest_surface, cfg.graph_node_count)
     rest_positions = rest_surface[node_indices]
@@ -471,7 +473,8 @@ def score_geometry_rollout(
     case: PokeFlexWarpCase, trajectory: np.ndarray
 ) -> dict[str, float]:
     _require(
-        trajectory.shape == (len(case.target_surfaces_m), len(case.initial_positions_m), 3),
+        trajectory.shape
+        == (len(case.target_surfaces_m), len(case.initial_positions_m), 3),
         "trajectory shape does not match the PokeFlex case",
     )
     values = np.asarray(
@@ -502,12 +505,16 @@ class _OfficialWarpSurfaceRunner:
             import torch
             import warp as wp
         except ImportError as error:  # pragma: no cover - GPU integration
-            raise RuntimeError("official PokeFlex-Warp backend requires torch and warp") from error
+            raise RuntimeError(
+                "official PokeFlex-Warp backend requires torch and warp"
+            ) from error
         from bayesian_phystwin.causal4d_provider_v1 import (
             load_official_spring_mass_module,
             make_reliability_simulator_class,
         )
-        from bayesian_phystwin.phystwin_refit import build_phystwin_track_objective
+        from bayesian_phystwin.causal4d_public_provider_v1 import (
+            build_phystwin_track_objective,
+        )
 
         self.torch = torch
         self.wp = wp
@@ -531,7 +538,9 @@ class _OfficialWarpSurfaceRunner:
         node_count = len(case.initial_positions_m)
         visible = np.ones((frame_count, node_count), dtype=bool)
         motion_valid = np.ones((frame_count - 1, node_count), dtype=bool)
-        objective = build_phystwin_track_objective(visible, motion_valid, variant="hard")
+        objective = build_phystwin_track_objective(
+            visible, motion_valid, variant="hard"
+        )
 
         def tensor(values: np.ndarray, dtype):
             return torch.as_tensor(values, dtype=dtype, device=device).contiguous()
@@ -585,9 +594,7 @@ class _OfficialWarpSurfaceRunner:
         )
         wp.synchronize()
 
-    def _spring_log_y(
-        self, candidate: PokeFlexWarpCandidate, active: Sequence[bool]
-    ):
+    def _spring_log_y(self, candidate: PokeFlexWarpCandidate, active: Sequence[bool]):
         values = np.empty(len(self.case.springs), dtype=np.float32)
         values[: self.case.object_spring_count] = candidate.object_spring_y
         for controller, enabled in enumerate(active):
@@ -597,9 +604,7 @@ class _OfficialWarpSurfaceRunner:
                 else self.config.inactive_controller_spring_y
             )
         return self.torch.log(
-            self.torch.as_tensor(
-                values, dtype=self.torch.float32, device=self.device
-            )
+            self.torch.as_tensor(values, dtype=self.torch.float32, device=self.device)
         ).contiguous()
 
     def rollout(self, candidate: PokeFlexWarpCandidate) -> tuple[np.ndarray, float]:
@@ -636,8 +641,7 @@ class _OfficialWarpSurfaceRunner:
                 .detach()
                 .cpu()
                 .numpy()
-                .copy()
-                [: len(self.case.initial_positions_m)]
+                .copy()[: len(self.case.initial_positions_m)]
                 .astype(np.float64)
             )
             trajectory.append(positions)
@@ -683,7 +687,8 @@ def summarize_pooling_controls(
             min(
                 valid_indices,
                 key=lambda index: (
-                    float(np.mean(scores[index, list(columns)])), int(index)
+                    float(np.mean(scores[index, list(columns)])),
+                    int(index),
                 ),
             )
         )
@@ -783,7 +788,10 @@ def run_pokeflex_warp_source_backend(
         _sha256_file(simulator_source) == cfg.official_simulator_sha256,
         "official simulator source changed",
     )
-    cases = [build_pokeflex_warp_case(root / object_id / take_id, cfg) for take_id in take_ids]
+    cases = [
+        build_pokeflex_warp_case(root / object_id / take_id, cfg)
+        for take_id in take_ids
+    ]
     candidates = warp_candidates(cfg)
     scores = np.full((len(candidates), len(cases)), np.inf, dtype=np.float64)
     endpoints = np.full_like(scores, np.inf)
@@ -793,9 +801,9 @@ def run_pokeflex_warp_source_backend(
         persistence = np.repeat(
             case.initial_positions_m[None, :, :], len(case.target_surfaces_m), axis=0
         )
-        persistence_scores[case_index] = score_geometry_rollout(
-            case, persistence
-        )["future_chamfer_m"]
+        persistence_scores[case_index] = score_geometry_rollout(case, persistence)[
+            "future_chamfer_m"
+        ]
         runner = _OfficialWarpSurfaceRunner(official, case, cfg, device=device)
         for candidate_index, candidate in enumerate(candidates):
             trajectory, p99_strain = runner.rollout(candidate)
@@ -804,7 +812,9 @@ def run_pokeflex_warp_source_backend(
                 scores[candidate_index, case_index] = score["future_chamfer_m"]
                 endpoints[candidate_index, case_index] = score["endpoint_chamfer_m"]
                 strains[candidate_index, case_index] = p99_strain
-    pooling = summarize_pooling_controls(candidates, take_ids, scores, persistence_scores)
+    pooling = summarize_pooling_controls(
+        candidates, take_ids, scores, persistence_scores
+    )
     selected_index = int(pooling["pooled_candidate_index"])
     selected = candidates[selected_index]
     repeat_records = []
@@ -824,9 +834,7 @@ def run_pokeflex_warp_source_backend(
             "leave_one_out_persistence_win_fraction"
         ]
         >= cfg.minimum_leave_one_out_persistence_win_fraction,
-        "pooling_beats_single_source": pooling[
-            "pooled_vs_single_source_win_fraction"
-        ]
+        "pooling_beats_single_source": pooling["pooled_vs_single_source_win_fraction"]
         >= cfg.minimum_pooled_vs_single_source_win_fraction,
     }
     result: dict[str, Any] = {

@@ -14,7 +14,7 @@ from causal4d.contracts import TwinBelief, load_contract
 from causal4d.graph_temporal_discrepancy import graph_laplacian_basis
 from causal4d.phystwin_backend import load_bayesian_phystwin_particles
 
-from bayesian_phystwin.dynamic_discrepancy import (
+from bayesian_phystwin.causal4d_provider_v1 import (
     LOCALIZATION_GRAPH_RANK,
     DynamicDiscrepancyCorrection,
     fit_dimensionless_linearized_correction,
@@ -22,12 +22,12 @@ from bayesian_phystwin.dynamic_discrepancy import (
     scale_coefficients_to_field_limit,
     write_dynamic_discrepancy_correction,
 )
-from bayesian_phystwin.observation_model_audit import (
+from bayesian_phystwin.causal4d_provider_v1 import (
     cross_view_residual_audit,
     metric_agreement_audit,
     released_observation_capability_audit,
 )
-from bayesian_phystwin.phystwin_comparison import official_metrics_by_frame
+from bayesian_phystwin.causal4d_provider_v1 import official_metrics_by_frame
 from bayesian_phystwin.causal4d_graph_provider_v1 import (
     PhysTwinSpringGraphConfig,
     build_phystwin_spring_graph,

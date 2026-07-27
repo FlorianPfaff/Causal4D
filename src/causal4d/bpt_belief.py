@@ -7,14 +7,14 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from bayesian_phystwin.phystwin_additional_bayesian_confirmation import (
+from bayesian_phystwin.causal4d_provider_v1 import (
     FIXED_INITIAL_STD_M,
     FIXED_INLIER_PRIOR,
     FIXED_OBSERVATION_STD_M,
     FIXED_OUTLIER_VARIANCE_MULTIPLIER,
     FIXED_PROCESS_STD_M,
 )
-from bayesian_phystwin.phystwin_bayesian_anchor import robust_random_walk_endpoint
+from bayesian_phystwin.causal4d_provider_v1 import robust_random_walk_endpoint
 from bayesian_phystwin.causal4d_provider_v1 import (
     PhysTwinReplayProvider,
     build_lift_map,

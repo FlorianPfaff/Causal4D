@@ -22,27 +22,27 @@ from bayesian_phystwin.causal4d_provider_v1 import (
     measurement_target_audit,
     sha256_file,
 )
-from bayesian_phystwin.deform360_raw_camera_observation import (
+from bayesian_phystwin.causal4d_public_provider_v1 import (
     MANIFEST_FILENAME,
     MEASUREMENT_FILENAME,
 )
-from bayesian_phystwin.deform360_selective_virtual_sensing_artifacts import (
+from bayesian_phystwin.causal4d_public_provider_v1 import (
     VIRTUAL_SENSING_ARCHIVE_FILENAME,
     VIRTUAL_SENSING_REPORT_FILENAME,
     VIRTUAL_SENSING_SEAL_FILENAME,
     selective_case_records,
     validate_selective_prediction_seal,
 )
-from bayesian_phystwin.deform360_selective_virtual_sensing_evaluation import (
+from bayesian_phystwin.causal4d_public_provider_v1 import (
     ARM_TO_ARCHIVE_KEY,
     SCORED_FRAMES,
     score_selective_virtual_sensing_arrays,
 )
-from bayesian_phystwin.deform360_selective_virtual_sensing_protocol import (
+from bayesian_phystwin.causal4d_public_provider_v1 import (
     PROTOCOL_ID,
     load_selective_virtual_sensing_protocol,
 )
-from bayesian_phystwin.deform360_selective_virtual_sensing_staging import (
+from bayesian_phystwin.causal4d_public_provider_v1 import (
     dynamic_window_source_case,
 )
 from deform360.robot import RobotState, load_robot_state, save_robot_state
@@ -377,7 +377,9 @@ def _stage_source_future(
                 "prediction_archive": sha256_file(prediction_archive),
                 "prediction_prefix_manifest": sha256_file(prefix_manifest_path),
                 "source_preparation_manifest": sha256_file(source_manifest_path),
-                "frame_zero_reconstruction_manifest": sha256_file(frame_zero_manifest_path),
+                "frame_zero_reconstruction_manifest": sha256_file(
+                    frame_zero_manifest_path
+                ),
                 "generic_selector_source": sha256_file(generic_selector_source),
                 "sam2_checkpoint": sha256_file(sam2_checkpoint),
             },
@@ -680,8 +682,12 @@ def main() -> int:
                 "prediction_seal": sha256_file(prediction_seal_path),
                 "prediction_archive": sha256_file(prediction_archive),
                 "prediction_report": sha256_file(prediction_report_path),
-                "measurement_manifest": sha256_file(measurement_dir / MANIFEST_FILENAME),
-                "measurement_archive": sha256_file(measurement_dir / MEASUREMENT_FILENAME),
+                "measurement_manifest": sha256_file(
+                    measurement_dir / MANIFEST_FILENAME
+                ),
+                "measurement_archive": sha256_file(
+                    measurement_dir / MEASUREMENT_FILENAME
+                ),
                 "source_future_manifest": sha256_file(
                     work_case / SOURCE_FUTURE_MANIFEST_FILENAME
                 ),

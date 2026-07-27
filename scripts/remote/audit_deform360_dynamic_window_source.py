@@ -11,7 +11,7 @@ from typing import Any
 
 import numpy as np
 
-from bayesian_phystwin.deform360_selective_virtual_sensing_staging import (
+from bayesian_phystwin.causal4d_public_provider_v1 import (
     closure_confidence,
     end_effector_origins,
     select_action_only_window,

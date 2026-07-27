@@ -12,7 +12,7 @@ from types import ModuleType
 from typing import Any
 
 from bayesian_phystwin.causal4d_provider_v1 import sha256_file
-from bayesian_phystwin.deform360_selective_virtual_sensing_staging import (
+from bayesian_phystwin.causal4d_public_provider_v1 import (
     dynamic_window_source_case,
 )
 

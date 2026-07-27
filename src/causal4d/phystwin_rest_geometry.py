@@ -24,29 +24,29 @@ from bayesian_phystwin.causal4d_provider_v1 import (
     simulator_runtime,
     target_validity,
 )
-from bayesian_phystwin.phystwin_additional_bayesian_confirmation import (
+from bayesian_phystwin.causal4d_provider_v1 import (
     FIXED_INITIAL_STD_M,
     FIXED_INLIER_PRIOR,
     FIXED_OBSERVATION_STD_M,
     FIXED_OUTLIER_VARIANCE_MULTIPLIER,
     FIXED_PROCESS_STD_M,
 )
-from bayesian_phystwin.phystwin_bayesian_anchor import robust_random_walk_endpoint
-from bayesian_phystwin.phystwin_comparison import (
+from bayesian_phystwin.causal4d_provider_v1 import robust_random_walk_endpoint
+from bayesian_phystwin.causal4d_provider_v1 import (
     official_metrics_by_frame,
     paired_block_bootstrap,
     phystwin_physical_object_cluster,
 )
-from bayesian_phystwin.phystwin_confirmatory import DEVELOPMENT_CASES
+from bayesian_phystwin.causal4d_provider_v1 import DEVELOPMENT_CASES
 from bayesian_phystwin.causal4d_graph_provider_v1 import (
     PhysTwinSpringGraphConfig,
     build_phystwin_spring_graph,
 )
-from bayesian_phystwin.phystwin_graph_discrepancy import (
+from bayesian_phystwin.causal4d_provider_v1 import (
     graph_discrepancy_diagnostics,
     normalized_spring_laplacian,
 )
-from bayesian_phystwin.phystwin_state_injection import estimate_endpoint_velocity_delta
+from bayesian_phystwin.causal4d_provider_v1 import estimate_endpoint_velocity_delta
 
 from causal4d.rest_geometry import (
     GraphRestGeometryCorrection,

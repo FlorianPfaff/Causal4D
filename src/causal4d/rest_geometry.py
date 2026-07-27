@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from bayesian_phystwin.phystwin_graph_discrepancy import (
+from bayesian_phystwin.causal4d_provider_v1 import (
     graph_smoothed_discrepancy_posterior,
 )
 
@@ -254,14 +254,17 @@ def corrected_spring_rest_lengths(
     corrected_vertices = vertices + correction_scale * field
     object_edges = edges[:num_object_springs]
     geometric = np.linalg.norm(
-        corrected_vertices[object_edges[:, 0]]
-        - corrected_vertices[object_edges[:, 1]],
+        corrected_vertices[object_edges[:, 0]] - corrected_vertices[object_edges[:, 1]],
         axis=1,
     )
     released_object = released[:num_object_springs]
     unclipped_ratio = geometric / released_object
     ratio = np.exp(
-        np.clip(np.log(np.maximum(unclipped_ratio, 1e-12)), -maximum_log_ratio, maximum_log_ratio)
+        np.clip(
+            np.log(np.maximum(unclipped_ratio, 1e-12)),
+            -maximum_log_ratio,
+            maximum_log_ratio,
+        )
     )
     corrected = released.copy()
     corrected[:num_object_springs] = released_object * ratio
@@ -309,7 +312,9 @@ def reattach_controller_rest_lengths(
     released_tail = released[num_object_springs:]
     raw_ratio = geometric / released_tail
     ratio = np.exp(
-        np.clip(np.log(np.maximum(raw_ratio, 1e-12)), -maximum_log_ratio, maximum_log_ratio)
+        np.clip(
+            np.log(np.maximum(raw_ratio, 1e-12)), -maximum_log_ratio, maximum_log_ratio
+        )
     )
     corrected = released.copy()
     corrected[num_object_springs:] = released_tail * ratio
