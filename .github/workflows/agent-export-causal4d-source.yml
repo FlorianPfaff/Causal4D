@@ -1,0 +1,38 @@
+name: Agent Causal4D source export
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/bootstrap-causal4d-audit-repair-20260727'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Build source snapshot
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/causal4d-source
+          git archive --format=tar HEAD | tar -xf - -C /tmp/causal4d-source
+          rm -f /tmp/causal4d-source/.github/workflows/agent-export-causal4d-source.yml
+          tar -C /tmp -czf causal4d-source.tar.gz causal4d-source
+
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v7
+        with:
+          name: causal4d-source
+          path: causal4d-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
