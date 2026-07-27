@@ -6,6 +6,9 @@ import numpy as np
 import pytest
 
 from causal4d.graph_provider_contract import (
+    BAYESIAN_PHYSTWIN_GRAPH_PARENT_PROVIDER_API,
+    BAYESIAN_PHYSTWIN_GRAPH_PARENT_PROVIDER_API_VERSION,
+    BAYESIAN_PHYSTWIN_GRAPH_PROVIDER_API,
     require_bayesian_phystwin_graph_provider,
 )
 
@@ -25,8 +28,12 @@ def test_installed_graph_provider_builds_and_groups() -> None:
     )
 
     manifest = require_bayesian_phystwin_graph_provider(provider_revision="b" * 40)
-    assert manifest.metadata["provider_api"] == (
-        "bayesian_phystwin.causal4d_graph_provider_v1"
+    assert manifest.metadata["provider_api"] == BAYESIAN_PHYSTWIN_GRAPH_PROVIDER_API
+    assert manifest.metadata["parent_provider_api"] == (
+        BAYESIAN_PHYSTWIN_GRAPH_PARENT_PROVIDER_API
+    )
+    assert manifest.metadata["parent_provider_api_version"] == (
+        BAYESIAN_PHYSTWIN_GRAPH_PARENT_PROVIDER_API_VERSION
     )
 
     controls = np.asarray(
