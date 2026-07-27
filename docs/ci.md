@@ -38,10 +38,20 @@ access to both private repositories:
 - `FlorianPfaff/Prob4D`.
 
 The historical secret name is retained so existing repository configuration
-does not need to change. Pinned, scheduled-main, BPT-vision, and Warp jobs report
-an explicit skipped-coverage warning when the secret is absent; they do not
-pretend provider compatibility was tested or silently substitute editable or
-public packages.
+does not need to change. For trusted events—same-repository pull requests,
+pushes to `main`, scheduled runs, and manual dispatches—the credential is
+mandatory. The three-repository installed-wheel job fails when it is absent;
+missing private access can no longer produce a green compatibility-by-skip
+result.
+
+GitHub does not expose repository secrets to pull requests from forks. Those
+runs receive an explicit unavailable warning and cannot admit
+cross-repository evidence. Core, distribution, quality, and public contract
+checks continue to run independently.
+
+Large optional BPT-vision and Warp jobs may still report explicit skipped
+coverage when their optional runtime or hardware prerequisites are absent.
+Those skips are not provider-compatibility results.
 
 ## Three-repository installed-wheel golden path
 
@@ -81,7 +91,10 @@ The workflow:
     versions, fixed-lag covariance falsely labelled as strict v2, incomplete
     evidence manifests, and dirty promotable evidence;
 11. runs the existing producer, provider, lineage, belief, manifest, and backend
-    tests with `--import-mode=importlib` against the installed wheels.
+    tests with `--import-mode=importlib` against the installed wheels;
+12. writes an execution sentinel only after the complete installed-wheel path
+    and contract suite pass, then fails the trusted job unless that sentinel is
+    present.
 
 The workflow uploads `three-repository-summary.json` and the complete runner log
 as the `three-repository-installed-wheel-golden-path` artifact. The JSON summary
