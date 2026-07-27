@@ -7,6 +7,8 @@ from typing import Sequence
 
 import numpy as np
 
+from causal4d.weighting import log_weights_from_probabilities
+
 from causal4d.rollout_bank import JointRolloutBank
 
 
@@ -85,7 +87,9 @@ def _student_t_mean_log_score(
         standardized = values / scale
         log_scale = np.broadcast_to(np.log(scale), values.shape)
     except ValueError as error:
-        raise ValueError("likelihood scale is not broadcastable to residuals") from error
+        raise ValueError(
+            "likelihood scale is not broadcastable to residuals"
+        ) from error
     terms = -log_scale - 0.5 * (degrees_of_freedom + 1.0) * np.log1p(
         np.square(standardized) / degrees_of_freedom
     )
@@ -95,10 +99,13 @@ def _student_t_mean_log_score(
     count = np.sum(valid_float, axis=reduction_axes)
     if np.any(count <= 0.0):
         raise ValueError("likelihood update has no valid coordinates")
-    return np.sum(
-        np.where(valid_float > 0.0, terms, 0.0),
-        axis=reduction_axes,
-    ) / count
+    return (
+        np.sum(
+            np.where(valid_float > 0.0, terms, 0.0),
+            axis=reduction_axes,
+        )
+        / count
+    )
 
 
 def _normalized_joint_weights(log_weights: np.ndarray) -> np.ndarray:
@@ -141,7 +148,9 @@ def prefix_component_log_likelihood(
     if not 2 <= prefix_frame_count < bank.frame_count:
         raise ValueError("prefix_frame_count must leave at least one future frame")
     nodes = np.asarray(
-        tuple(range(bank.node_count)) if observed_nodes is None else tuple(observed_nodes),
+        tuple(range(bank.node_count))
+        if observed_nodes is None
+        else tuple(observed_nodes),
         dtype=int,
     )
     if (
@@ -151,14 +160,14 @@ def prefix_component_log_likelihood(
         or np.any(nodes >= bank.node_count)
         or len(np.unique(nodes)) != len(nodes)
     ):
-        raise ValueError("observed_nodes must uniquely identify available rollout nodes")
+        raise ValueError(
+            "observed_nodes must uniquely identify available rollout nodes"
+        )
 
     coordinate_valid = _coordinate_mask(observations, mask)
     observed_prefix = observations[:prefix_frame_count, nodes]
     valid_prefix = coordinate_valid[:prefix_frame_count, nodes]
-    predicted_prefix = bank.trajectories[:, :, :prefix_frame_count, nodes].astype(
-        float
-    )
+    predicted_prefix = bank.trajectories[:, :, :prefix_frame_count, nodes].astype(float)
 
     position_scale: np.ndarray | float = settings.observation_scale_m
     if particle_discrepancy_m is not None:
@@ -169,9 +178,7 @@ def prefix_component_log_likelihood(
             bank.coordinate_count,
         )
         if discrepancy.shape != expected_shape:
-            raise ValueError(
-                "particle_discrepancy_m must have shape " f"{expected_shape}"
-            )
+            raise ValueError(f"particle_discrepancy_m must have shape {expected_shape}")
         if not np.all(np.isfinite(discrepancy)):
             raise ValueError("particle discrepancy must be finite")
         predicted_prefix = predicted_prefix + discrepancy[None, :, None, nodes]
@@ -188,16 +195,14 @@ def prefix_component_log_likelihood(
         )
         if discrepancy_variance.shape != expected_shape:
             raise ValueError(
-                "particle_discrepancy_variance_m2 must have shape "
-                f"{expected_shape}"
+                f"particle_discrepancy_variance_m2 must have shape {expected_shape}"
             )
         if not np.all(np.isfinite(discrepancy_variance)) or np.any(
             discrepancy_variance < 0.0
         ):
             raise ValueError("particle discrepancy variance must be nonnegative")
         position_scale = np.sqrt(
-            settings.observation_scale_m**2
-            + discrepancy_variance[None, :, None, nodes]
+            settings.observation_scale_m**2 + discrepancy_variance[None, :, None, nodes]
         )
 
     result = np.zeros(
@@ -271,5 +276,5 @@ def update_joint_weights_from_prefix(
         particle_discrepancy_variance_m2=particle_discrepancy_variance_m2,
     )
     return _normalized_joint_weights(
-        np.log(np.maximum(weights, 1e-300)) + log_likelihood
+        log_weights_from_probabilities(weights, name="base_weights") + log_likelihood
     )

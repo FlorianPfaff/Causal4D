@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from causal4d.weighting import log_weights_from_probabilities
+
 from causal4d.contracts import PhysicalPosterior, TaskPosterior, array_sha256
 
 if TYPE_CHECKING:
@@ -37,7 +39,9 @@ class SparseSemanticEvidence:
         if nodes.shape != (positions.shape[1],):
             raise ValueError("node_indices must identify every semantic point")
         if frames.shape != (positions.shape[0],):
-            raise ValueError("physical_frame_indices must identify every forecast frame")
+            raise ValueError(
+                "physical_frame_indices must identify every forecast frame"
+            )
         if np.any(nodes < 0) or not np.all(np.isfinite(frames)):
             raise ValueError("semantic node and frame indices must be valid")
         if self.scale_m <= 0.0 or self.degrees_of_freedom <= 0.0:
@@ -50,7 +54,9 @@ class SparseSemanticEvidence:
             if supplied.shape == positions.shape[:2]:
                 supplied = np.repeat(supplied[:, :, None], 3, axis=2)
             if supplied.shape != positions.shape:
-                raise ValueError("semantic valid mask must have shape (F, Q) or (F, Q, 3)")
+                raise ValueError(
+                    "semantic valid mask must have shape (F, Q) or (F, Q, 3)"
+                )
             valid &= supplied
         if not np.any(valid):
             raise ValueError("semantic evidence has no valid coordinates")
@@ -116,13 +122,19 @@ def query_point_readout(
     nodes = np.asarray(node_indices, dtype=np.int64)
     frames = np.asarray(frame_indices, dtype=float)
     trajectory = posterior.readout_trajectories_m
-    if nodes.ndim != 1 or not len(nodes) or np.any(nodes < 0) or np.any(
-        nodes >= trajectory.shape[2]
+    if (
+        nodes.ndim != 1
+        or not len(nodes)
+        or np.any(nodes < 0)
+        or np.any(nodes >= trajectory.shape[2])
     ):
         raise ValueError("node_indices exceed the physical posterior")
-    if frames.ndim != 1 or not len(frames) or np.min(frames) < 0.0 or np.max(
-        frames
-    ) > trajectory.shape[1] - 1:
+    if (
+        frames.ndim != 1
+        or not len(frames)
+        or np.min(frames) < 0.0
+        or np.max(frames) > trajectory.shape[1] - 1
+    ):
         raise ValueError("frame_indices exceed the physical posterior")
     lower = np.floor(frames).astype(int)
     upper = np.ceil(frames).astype(int)
@@ -153,8 +165,10 @@ def semantic_component_log_scores(
     valid = np.asarray(evidence.valid, dtype=bool)
     residual = predicted - target[None]
     standardized = residual / evidence.scale_m
-    terms = -0.5 * (evidence.degrees_of_freedom + 1.0) * np.log1p(
-        np.square(standardized) / evidence.degrees_of_freedom
+    terms = (
+        -0.5
+        * (evidence.degrees_of_freedom + 1.0)
+        * np.log1p(np.square(standardized) / evidence.degrees_of_freedom)
     )
     valid_count = int(np.sum(valid))
     return np.sum(np.where(valid[None], terms, 0.0), axis=(1, 2, 3)) / valid_count
@@ -174,7 +188,13 @@ def build_task_posterior(
     if beta == 0.0:
         task_weights = physical.weights.copy()
     else:
-        log_weights = np.log(np.maximum(physical.weights, 1e-300)) + beta * scores
+        log_weights = (
+            log_weights_from_probabilities(
+                physical.weights,
+                name="physical_weights",
+            )
+            + beta * scores
+        )
         maximum = float(np.max(log_weights))
         task_weights = np.exp(log_weights - maximum)
         task_weights /= np.sum(task_weights)
