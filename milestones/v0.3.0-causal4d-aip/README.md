@@ -3,6 +3,15 @@
 `v0.3.0-causal4d-aip` freezes the implementation and evidence boundary for the
 abduction-intervention-prediction architecture on 2026-07-12.
 
+## Verifier correction
+
+The immutable original tag omitted the two `scripts/release` utilities invoked
+and advertised below. Use corrective tag `v0.3.0-causal4d-aip-verifier1` when
+running the reproduction or archive-verification commands. It is based directly
+on the original tag and adds only the missing verification utilities plus this
+notice; the frozen implementation, manifests, results, gates, and scientific
+claims are unchanged.
+
 The milestone preserves two distinct findings:
 
 - In the registered controlled benchmark, latent intervention inference reduces
@@ -15,7 +24,8 @@ The milestone preserves two distinct findings:
 
 ## Authoritative boundary
 
-- Git tag: `v0.3.0-causal4d-aip`
+- Scientific baseline tag: `v0.3.0-causal4d-aip`
+- Corrective verification tag: `v0.3.0-causal4d-aip-verifier1`
 - Large-artifact vault:
   `/mnt/corsair/florianpfaff/research-milestones/v0.3.0-causal4d-aip`
 - File inventory and SHA-256 values: `artifact-manifest.json`
@@ -32,7 +42,7 @@ banks referenced by `artifact-manifest.json`.
 
 ## Reproduce controlled results
 
-Run this from a checkout of the tag on `gpuserver6000`:
+Run this from a checkout of the corrective verification tag on `gpuserver6000`:
 
 ```bash
 ./milestones/v0.3.0-causal4d-aip/reproduce_controlled.sh
@@ -45,7 +55,7 @@ drift. Strings, keys, row structure, and nonnumeric fields must match exactly.
 
 ## Reproduce real chain
 
-Run this from the same tagged checkout:
+Run this from the same corrective verification tag:
 
 ```bash
 ./milestones/v0.3.0-causal4d-aip/reproduce_real.sh
