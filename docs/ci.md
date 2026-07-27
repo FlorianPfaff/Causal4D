@@ -77,9 +77,9 @@ The installed-wheel job then:
    shared low-rank gauge root remains an explicit nuisance, preventing
    covariance double counting;
 7. lets Causal4D independently recompute observation lineage, bind a
-   content-addressed `TwinBelief`, validate the installed BPT provider manifest,
-   and execute a CPU-only counterfactual rollout through a fake implementation
-   of `PhysTwinReplayProvider`;
+   content-addressed `TwinBelief`, validate separate scientific-provider-v1 and
+   replay-provider-v2 manifests, and execute a CPU-only counterfactual rollout
+   through a typed fake provider-v2 implementation;
 8. verifies staged BPT truncation, Causal4D support reduction, composed posterior
    mass, rejection of inconsistent composition, and exclusion of exact-zero
    support cells from replay;
@@ -91,8 +91,10 @@ The installed-wheel job then:
     mismatch, insufficient retained gauge covariance, contradictory stream
     versions, fixed-lag covariance falsely labelled as strict v2, incomplete
     evidence manifests, and dirty promotable evidence;
-11. runs the existing producer, provider, lineage, belief, manifest, and backend
-    tests with `--import-mode=importlib` against the installed wheels.
+11. validates immutable replay request IDs, frame provenance, position and
+    velocity histories, and complete resumable-cache reconstruction; and
+12. runs the existing producer, provider, lineage, belief, manifest, cache, and
+    backend tests with `--import-mode=importlib` against the installed wheels.
 
 The workflow uploads `three-repository-summary.json` and the complete runner log
 as the `three-repository-installed-wheel-golden-path` artifact. The JSON summary

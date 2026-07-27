@@ -10,6 +10,7 @@ import pytest
 
 BPT_INTEGRATION_TESTS = (
     "tests/test_bpt_graph_provider_integration.py",
+    "tests/test_bpt_provider_integration.py",
     "tests/test_causal4d_bpt_belief.py",
     "tests/test_causal4d_molmo_acceptance.py",
     "tests/test_causal4d_molmo_adapter.py",
@@ -22,6 +23,8 @@ BPT_INTEGRATION_TESTS = (
     "tests/test_discrepancy_localization_aggregate.py",
     "tests/test_phystwin_propagated_state.py",
     "tests/test_phystwin_resumable.py",
+    "tests/test_replay_provider_contract.py",
+    "tests/test_rollout_cache.py",
 )
 
 

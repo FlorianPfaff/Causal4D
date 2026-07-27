@@ -55,7 +55,8 @@ The Python packages remain `causal4d` and `causal4d_public`. Existing
 | `bpt-aggregate-phystwin-propagated-state` | `causal4d-aggregate-phystwin-propagated-state` |
 
 Frozen tags continue to reproduce their historical tree. New development uses
-`bayesian_phystwin.causal4d_provider_v1`, the `PhysTwinReplayProvider`
-execution protocol, and the BPT compatibility range `>=0.4,<0.5`. See
+`bayesian_phystwin.causal4d_provider_v2` for immutable replay requests,
+`bayesian_phystwin.causal4d_provider_v1` only for frozen scientific compatibility,
+and the BPT compatibility range `>=0.4,<0.5`. See
 [bayesian_phystwin_provider.md](bayesian_phystwin_provider.md) for the
 development and frozen-install policies.
