@@ -8,7 +8,7 @@ from typing import Any
 
 import numpy as np
 
-from bayesian_phystwin.phystwin_graph import (
+from bayesian_phystwin.causal4d_graph_provider_v1 import (
     PhysTwinSpringGraphConfig,
     build_phystwin_spring_graph,
 )

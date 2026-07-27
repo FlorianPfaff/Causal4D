@@ -16,11 +16,11 @@ from bayesian_phystwin.causal4d_provider_v1 import (
     create_official_replay_provider,
     released_self_collision_for_case,
 )
-from bayesian_phystwin.phystwin_controller_sensitivity import (
+from bayesian_phystwin.causal4d_graph_provider_v1 import (
     controller_hand_count,
     infer_controller_groups,
 )
-from bayesian_phystwin.phystwin_graph import (
+from bayesian_phystwin.causal4d_graph_provider_v1 import (
     PhysTwinSpringGraph,
     PhysTwinSpringGraphConfig,
     build_phystwin_spring_graph,
@@ -33,6 +33,7 @@ from causal4d.contracts import (
     TwinBelief,
     array_sha256,
 )
+from causal4d.graph_provider_contract import require_bayesian_phystwin_graph_provider
 from causal4d.parameter_support import SupportMethod, reduce_parameter_support
 from causal4d.provider_contract import require_bayesian_phystwin_provider
 from causal4d.rollout_bank import JointRolloutBank
@@ -832,6 +833,7 @@ class OfficialPhysTwinBackend:
         config: OfficialPhysTwinBackendConfig | None = None,
     ) -> None:
         self.provider_manifest = require_bayesian_phystwin_provider()
+        self.graph_provider_manifest = require_bayesian_phystwin_graph_provider()
         self.official_repo = Path(official_repo)
         self.final_data_path = Path(final_data_path)
         self.optimal_params_path = Path(optimal_params_path)
@@ -909,6 +911,7 @@ class OfficialPhysTwinBackend:
         return {
             "backend": "official_phystwin_warp",
             "provider": self.provider_manifest.as_dict(),
+            "graph_provider": self.graph_provider_manifest.as_dict(),
             "case": self.case_name,
             "train_end_frame": self.train_end_frame,
             "source_paths": {

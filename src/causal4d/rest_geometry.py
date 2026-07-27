@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from bayesian_phystwin.phystwin_graph_discrepancy import (
+from bayesian_phystwin.causal4d_graph_provider_v1_discrepancy import (
     graph_smoothed_discrepancy_posterior,
 )
 
