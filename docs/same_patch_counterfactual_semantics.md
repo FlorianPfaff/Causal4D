@@ -52,6 +52,14 @@ normalizing the preregistered query-hypothesis prior within each `(phi, patch)`
 group. Therefore the bank must contain the intended slip support and its weights
 must be frozen without target-future outcomes.
 
+The same conditioning rule applies to every transport policy. When multiple
+query hypotheses share the retained semantic key—`phi` for `new_contact`,
+`(phi, kappa)` for fixed `same_grasp`, or `(phi, patch)` for `evolve_slip`—their
+relative mass follows the frozen query-hypothesis prior rather than an arbitrary
+uniform split. Exact-zero prior hypotheses remain exact-zero. A semantic group
+with zero total prior is unavailable; if no represented factual mass remains,
+the operator fails closed instead of returning a malformed posterior.
+
 ## Metadata
 
 The returned `PhysicalPosterior` records:

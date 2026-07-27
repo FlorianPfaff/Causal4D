@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Hashable, Sequence
 from typing import Any, Mapping
 
 import numpy as np
@@ -38,9 +39,36 @@ def _contact_patch_from_metadata(
 
 def _kappa_from_metadata(metadata: Mapping[str, Any]) -> tuple[float, ...]:
     contact = metadata["contact"]
-    return _contact_patch_from_metadata(metadata) + (
-        float(contact["slip_fraction"]),
-    )
+    return _contact_patch_from_metadata(metadata) + (float(contact["slip_fraction"]),)
+
+
+def _conditional_hypothesis_prior_weights(
+    prior_weights: np.ndarray,
+    equivalence_keys: Sequence[Hashable],
+) -> np.ndarray:
+    """Normalize query priors inside each semantic equivalence class.
+
+    Exact-zero prior hypotheses stay outside the finite support. An equivalence
+    class with zero total prior receives zero conditional mass and is therefore
+    unavailable to the caller.
+    """
+
+    priors = np.asarray(prior_weights, dtype=float)
+    if priors.shape != (len(equivalence_keys),):
+        raise ValueError("equivalence keys must identify every hypothesis")
+    if not np.all(np.isfinite(priors)) or np.any(priors < 0.0):
+        raise ValueError("hypothesis priors must be finite and nonnegative")
+
+    denominators: defaultdict[Hashable, float] = defaultdict(float)
+    for key, prior in zip(equivalence_keys, priors, strict=True):
+        denominators[key] += float(prior)
+
+    conditional = np.zeros_like(priors)
+    for index, key in enumerate(equivalence_keys):
+        denominator = denominators[key]
+        if denominator > 0.0:
+            conditional[index] = priors[index] / denominator
+    return conditional
 
 
 def _validate_factual_context(
@@ -72,8 +100,7 @@ def _validate_query_bank(
     if bank_context != query.context:
         raise ValueError("rollout bank context does not match do(u_cf)")
     action_ids = {
-        str(metadata["action"]["proposal_id"])
-        for metadata in bank.hypothesis_metadata
+        str(metadata["action"]["proposal_id"]) for metadata in bank.hypothesis_metadata
     }
     if action_ids != {query.context.u_cf.action_id}:
         raise ValueError("rollout bank does not contain exactly the queried action")
@@ -93,23 +120,16 @@ def _new_contact_weights(
         )
         phi_theta[key] += float(weight)
 
-    conditional_denominator: defaultdict[tuple[float, ...], float] = defaultdict(float)
-    query_phi = []
-    for hypothesis_index, metadata in enumerate(bank.hypothesis_metadata):
-        phi = _phi_from_metadata(metadata)
-        query_phi.append(phi)
-        conditional_denominator[phi] += float(
-            bank.hypothesis_prior_weights[hypothesis_index]
-        )
+    query_phi = [_phi_from_metadata(metadata) for metadata in bank.hypothesis_metadata]
+    conditional_kappa = _conditional_hypothesis_prior_weights(
+        bank.hypothesis_prior_weights,
+        query_phi,
+    )
     weights = np.zeros_like(bank.prior_joint_weights)
     for hypothesis_index, phi in enumerate(query_phi):
-        denominator = conditional_denominator[phi]
-        conditional_kappa = (
-            float(bank.hypothesis_prior_weights[hypothesis_index]) / denominator
-        )
         for particle_index in range(len(bank.parameter_weights)):
             weights[hypothesis_index, particle_index] = (
-                phi_theta[(particle_index, phi)] * conditional_kappa
+                phi_theta[(particle_index, phi)] * conditional_kappa[hypothesis_index]
             )
     retained_mass = float(np.sum(weights))
     if retained_mass <= 0.0:
@@ -123,13 +143,20 @@ def _same_grasp_weights(
 ) -> tuple[np.ndarray, float]:
     """Carry the complete factual ``(theta, phi, kappa_obs)`` joint posterior."""
 
+    query_keys = [
+        (_phi_from_metadata(metadata), _kappa_from_metadata(metadata))
+        for metadata in bank.hypothesis_metadata
+    ]
+    conditional_hypothesis = _conditional_hypothesis_prior_weights(
+        bank.hypothesis_prior_weights,
+        query_keys,
+    )
     query_lookup: defaultdict[
         tuple[tuple[float, ...], tuple[float, ...]], list[int]
     ] = defaultdict(list)
-    for hypothesis_index, metadata in enumerate(bank.hypothesis_metadata):
-        query_lookup[
-            (_phi_from_metadata(metadata), _kappa_from_metadata(metadata))
-        ].append(hypothesis_index)
+    for hypothesis_index, key in enumerate(query_keys):
+        query_lookup[key].append(hypothesis_index)
+
     weights = np.zeros_like(bank.prior_joint_weights)
     for component_index, weight in enumerate(factual.weights):
         key = (
@@ -137,12 +164,11 @@ def _same_grasp_weights(
             tuple(map(float, factual.kappa_obs[component_index])),
         )
         matches = query_lookup.get(key, [])
-        if not matches:
-            continue
-        share = float(weight) / len(matches)
         particle = int(factual.twin_particle_indices[component_index])
         for hypothesis_index in matches:
-            weights[hypothesis_index, particle] += share
+            weights[hypothesis_index, particle] += (
+                float(weight) * conditional_hypothesis[hypothesis_index]
+            )
     retained_mass = float(np.sum(weights))
     if retained_mass <= 0.0:
         raise ValueError("query contact beam cannot represent the factual grasp")
@@ -168,27 +194,24 @@ def _same_patch_weights(
         )
         patch_theta_phi[key] += float(weight)
 
-    query_keys: list[tuple[tuple[float, ...], tuple[float, ...]]] = []
-    denominator: defaultdict[
-        tuple[tuple[float, ...], tuple[float, ...]], float
-    ] = defaultdict(float)
-    for hypothesis_index, metadata in enumerate(bank.hypothesis_metadata):
-        key = (
+    query_keys = [
+        (
             _phi_from_metadata(metadata),
             _contact_patch_from_metadata(metadata),
         )
-        query_keys.append(key)
-        denominator[key] += float(bank.hypothesis_prior_weights[hypothesis_index])
+        for metadata in bank.hypothesis_metadata
+    ]
+    conditional_slip = _conditional_hypothesis_prior_weights(
+        bank.hypothesis_prior_weights,
+        query_keys,
+    )
 
     weights = np.zeros_like(bank.prior_joint_weights)
     for hypothesis_index, (phi, patch) in enumerate(query_keys):
-        conditional_mass = (
-            float(bank.hypothesis_prior_weights[hypothesis_index])
-            / denominator[(phi, patch)]
-        )
         for particle_index in range(len(bank.parameter_weights)):
             weights[hypothesis_index, particle_index] = (
-                patch_theta_phi[(particle_index, phi, patch)] * conditional_mass
+                patch_theta_phi[(particle_index, phi, patch)]
+                * conditional_slip[hypothesis_index]
             )
     retained_mass = float(np.sum(weights))
     if retained_mass <= 0.0:
@@ -228,9 +251,7 @@ def apply_counterfactual_operator(
         query.metadata.get("same_grasp_semantics", "fixed_kappa")
     )
     if same_grasp_semantics not in SAME_GRASP_SEMANTICS:
-        raise ValueError(
-            "same_grasp_semantics must be fixed_kappa or evolve_slip"
-        )
+        raise ValueError("same_grasp_semantics must be fixed_kappa or evolve_slip")
     if query.contact_policy == "new_contact":
         joint_weights, retained_mass = _new_contact_weights(bank, factual)
         reused_factual_kappa = False
@@ -333,8 +354,6 @@ def physical_posterior_mean(
     """Return the weighted state or discrepancy-aware readout trajectory."""
 
     values = (
-        posterior.readout_trajectories_m
-        if readout
-        else posterior.state_trajectories_m
+        posterior.readout_trajectories_m if readout else posterior.state_trajectories_m
     )
     return np.einsum("k,ktnc->tnc", posterior.weights, values)
