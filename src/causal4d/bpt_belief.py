@@ -15,15 +15,20 @@ from bayesian_phystwin.causal4d_provider_v1 import (
     FIXED_PROCESS_STD_M,
 )
 from bayesian_phystwin.causal4d_provider_v1 import robust_random_walk_endpoint
-from bayesian_phystwin.causal4d_provider_v1 import (
+from bayesian_phystwin.causal4d_provider_v1 import released_self_collision_for_case
+from bayesian_phystwin.causal4d_provider_v2 import (
+    InitialReplayRequestV1,
     PhysTwinReplayProvider,
     build_lift_map,
     create_official_replay_provider,
     lift_residual,
-    released_self_collision_for_case,
     target_validity,
 )
-from causal4d.contracts import CausalContext, TwinBelief
+from causal4d.contracts import CausalContext, TwinBelief, array_sha256
+from causal4d.replay_provider_contract import (
+    stable_replay_identifier,
+    validate_replay_trajectory,
+)
 
 if TYPE_CHECKING:
     from causal4d.phystwin_backend import OfficialPhysTwinBackend
@@ -243,6 +248,10 @@ def export_official_phystwin_twin_belief(
         if backend.config.self_collision is None
         else backend.config.self_collision
     )
+    simulator_configuration_id = backend.replay_simulator_configuration_id(
+        backend.graph
+    )
+    released_initial_state_id = backend.replay_released_initial_state_id()
     replay_provider: PhysTwinReplayProvider = create_official_replay_provider(
         backend.official_repo,
         backend.data,
@@ -254,20 +263,58 @@ def export_official_phystwin_twin_belief(
         dt=backend.config.dt,
         num_substeps=backend.config.num_substeps,
         self_collision=bool(self_collision),
+        simulator_configuration_id=simulator_configuration_id,
+        released_initial_state_id=released_initial_state_id,
         deterministic_spring_forces=backend.config.deterministic_spring_forces,
         spring_parameterization="grouped",
         device=backend.config.device,
     )
     replay_positions = []
     replay_velocities = []
+    replay_records: list[dict[str, Any]] = []
     try:
-        for particle in backend.particles.log_scales:
-            replay_provider.set_group_log_scales(particle)
-            positions, velocities = replay_provider.replay_initial(
-                frame_count=backend.train_end_frame
+        for particle_index, particle in enumerate(backend.particles.log_scales):
+            request_id = stable_replay_identifier(
+                "causal4d-initial-replay-request-v1",
+                {
+                    "simulator_configuration_id": simulator_configuration_id,
+                    "initial_state_id": released_initial_state_id,
+                    "particle_index": particle_index,
+                    "group_log_scales_sha256": array_sha256(particle),
+                    "controller_points_sha256": array_sha256(
+                        backend.controller_points
+                    ),
+                    "frame_count": backend.train_end_frame,
+                },
             )
-            replay_positions.append(positions)
-            replay_velocities.append(velocities)
+            request = InitialReplayRequestV1(
+                request_id=request_id,
+                simulator_configuration_id=simulator_configuration_id,
+                initial_state_id=released_initial_state_id,
+                group_log_scales=particle,
+                controller_points_m=backend.controller_points,
+                frame_count=backend.train_end_frame,
+            )
+            replay = replay_provider.replay(request)
+            validate_replay_trajectory(
+                request,
+                replay,
+                expected_dt_s=backend.frame_dt_s,
+            )
+            replay_positions.append(replay.positions_m)
+            replay_velocities.append(replay.velocities_mps)
+            replay_records.append(
+                {
+                    "request_id": request_id,
+                    "simulator_configuration_id": simulator_configuration_id,
+                    "initial_state_id": released_initial_state_id,
+                    "particle_index": particle_index,
+                    "frame_ids": replay.frame_ids.tolist(),
+                    "dt_s": float(replay.dt_s),
+                    "positions_sha256": array_sha256(replay.positions_m),
+                    "velocities_sha256": array_sha256(replay.velocities_mps),
+                }
+            )
     finally:
         replay_provider.close()
 
@@ -295,6 +342,8 @@ def export_official_phystwin_twin_belief(
                 backend.particles.represented_probability_mass
             ),
             "official_backend": backend.default_manifest(),
+            "replay_provider_api_version": 2,
+            "initial_replay_requests": replay_records,
         },
         config=config,
     )

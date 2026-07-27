@@ -8,6 +8,13 @@ from typing import Any
 
 import numpy as np
 
+from bayesian_phystwin.causal4d_provider_v2 import (
+    PhysTwinReplayProvider,
+    ReplayRequestV1,
+    ReplayTrajectoryV1,
+    RestartReplayRequestV1,
+)
+
 from three_repository_common import (
     EXPECTED_OBSERVATION_ARTIFACT_ID,
     array_digest,
@@ -16,70 +23,52 @@ from three_repository_common import (
 
 
 class _FakeReplayProvider:
-    device = "cpu"
-
-    def __init__(self) -> None:
-        self.group_log_scales = np.zeros(2, dtype=np.float32)
-        self.controller_points: np.ndarray | None = None
-        self.group_scale_calls: list[np.ndarray] = []
+    def __init__(self, **kwargs: Any) -> None:
+        self.device = str(kwargs["device"])
+        self.frame_dt_s = float(kwargs["dt"]) * int(kwargs["num_substeps"])
+        self.simulator_configuration_id = str(
+            kwargs["simulator_configuration_id"]
+        )
+        self.released_initial_state_id = str(kwargs["released_initial_state_id"])
+        self.requests: list[RestartReplayRequestV1] = []
         self.restart_calls = 0
         self.closed = False
 
-    def set_group_log_scales(self, values: np.ndarray) -> None:
-        scales = np.asarray(values, dtype=np.float32).copy()
-        require(
-            scales.shape == (2,),
-            "fake provider received invalid group scales",
-        )
-        self.group_log_scales = scales
-        self.group_scale_calls.append(scales)
-
-    def set_controller_points(self, values: np.ndarray) -> None:
-        controls = np.asarray(values, dtype=np.float32).copy()
-        require(
-            controls.ndim == 3 and controls.shape[2] == 3,
-            "fake provider received invalid controller points",
-        )
-        self.controller_points = controls
-
-    def replay_initial(
-        self,
-        *,
-        frame_count: int,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        require(frame_count > 0, "frame_count must be positive")
-        positions = np.zeros((frame_count, 3, 3), dtype=np.float32)
-        velocities = np.zeros_like(positions)
-        return positions, velocities
-
-    def replay_restart(
-        self,
-        position_m: np.ndarray,
-        velocity_mps: np.ndarray,
-        *,
-        start_frame: int,
-        stop_frame: int,
-    ) -> np.ndarray:
+    def replay(self, request: ReplayRequestV1) -> ReplayTrajectoryV1:
         require(not self.closed, "fake provider is closed")
         require(
-            self.controller_points is not None,
-            "controller points were not set",
+            isinstance(request, RestartReplayRequestV1),
+            "golden rollout did not use a restart replay-v2 request",
         )
-        position = np.asarray(position_m, dtype=np.float32).copy()
-        velocity = np.asarray(velocity_mps, dtype=np.float32)
+        position = np.asarray(request.position_m, dtype=np.float32).copy()
+        velocity = np.asarray(request.velocity_mps, dtype=np.float32).copy()
         require(position.shape == velocity.shape, "restart state shapes differ")
-        frame_count = stop_frame - start_frame
+        frame_count = request.stop_frame - request.start_frame
         require(frame_count > 0, "restart interval is empty")
-        result = np.empty((frame_count, *position.shape), dtype=np.float32)
-        scale = float(np.sum(np.exp(self.group_log_scales)))
+        positions = np.empty((frame_count, *position.shape), dtype=np.float32)
+        velocities = np.empty_like(positions)
+        scale = float(np.sum(np.exp(request.group_log_scales)))
         for offset in range(frame_count):
             position = position + 0.01 * velocity
             position[:, 0] += np.float32(0.0005 * scale)
             position[:, 1] += np.float32(0.0001 * (offset + 1))
-            position[-1] = self.controller_points[start_frame + offset, 0]
-            result[offset] = position
+            position[-1] = request.controller_points_m[
+                request.start_frame + offset, 0
+            ]
+            velocity[:, 0] += np.float32(0.00001 * (offset + 1))
+            positions[offset] = position
+            velocities[offset] = velocity
+        self.requests.append(request)
         self.restart_calls += 1
-        return result
+        return ReplayTrajectoryV1(
+            positions_m=positions,
+            velocities_mps=velocities,
+            frame_ids=np.arange(request.start_frame, request.stop_frame),
+            dt_s=self.frame_dt_s,
+            request_id=request.request_id,
+            simulator_configuration_id=request.simulator_configuration_id,
+            initial_state_id=request.initial_state_id,
+        )
 
     def close(self) -> None:
         self.closed = True
@@ -147,6 +136,8 @@ def _minimal_backend(
     particles: Any,
     profile_path: Path,
     provider_manifest: Any,
+    replay_provider_manifest: Any,
+    graph_provider_manifest: Any,
     workdir: Path,
 ) -> tuple[Any, np.ndarray, np.ndarray]:
     from causal4d.phystwin_backend import (
@@ -156,6 +147,8 @@ def _minimal_backend(
 
     backend = object.__new__(OfficialPhysTwinBackend)
     backend.provider_manifest = provider_manifest
+    backend.replay_provider_manifest = replay_provider_manifest
+    backend.graph_provider_manifest = graph_provider_manifest
     backend.official_repo = workdir / "official-phystwin"
     backend.final_data_path = workdir / "final-data.pkl"
     backend.optimal_params_path = workdir / "optimal.pkl"
@@ -185,6 +178,9 @@ def _minimal_backend(
         self_collision=False,
         device="cpu",
     )
+    backend.source_artifacts_sha256 = {}
+    backend.base_simulator_configuration_id = "golden-base-configuration-v1"
+    backend.released_initial_state_id = "golden-released-state-v1"
 
     vertices = np.asarray(
         [
@@ -218,7 +214,6 @@ def run_causal4d_rollout(
     """Validate lineage and execute one deterministic fake-provider query."""
 
     import causal4d.phystwin_backend as backend_module
-    from bayesian_phystwin.causal4d_provider_v1 import PhysTwinReplayProvider
     from causal4d.contracts import TwinBelief, load_contract, save_contract
     from causal4d.observation_lineage import (
         bind_twin_belief_observation_lineage,
@@ -231,9 +226,16 @@ def run_causal4d_rollout(
         load_rollout_bank,
         save_rollout_bank,
     )
+    from causal4d.graph_provider_contract import (
+        require_bayesian_phystwin_graph_provider,
+    )
     from causal4d.provider_contract import (
         require_bayesian_phystwin_provider,
         validate_bayesian_phystwin_provider,
+    )
+    from causal4d.replay_provider_contract import (
+        require_bayesian_phystwin_replay_provider,
+        validate_bayesian_phystwin_replay_provider,
     )
 
     provider_manifest = require_bayesian_phystwin_provider(
@@ -241,6 +243,19 @@ def run_causal4d_rollout(
     )
     compatibility = validate_bayesian_phystwin_provider(provider_manifest)
     require(compatibility.compatible, "installed BPT provider is incompatible")
+    replay_provider_manifest = require_bayesian_phystwin_replay_provider(
+        provider_revision="installed-wheel-golden-path"
+    )
+    replay_compatibility = validate_bayesian_phystwin_replay_provider(
+        replay_provider_manifest
+    )
+    require(
+        replay_compatibility.compatible,
+        "installed BPT replay-v2 provider is incompatible",
+    )
+    graph_provider_manifest = require_bayesian_phystwin_graph_provider(
+        provider_revision="installed-wheel-golden-path"
+    )
 
     lineage = load_observation_lineage(observation_path)
     require(
@@ -256,6 +271,8 @@ def run_causal4d_rollout(
         particles=particles,
         profile_path=profile_path,
         provider_manifest=provider_manifest,
+        replay_provider_manifest=replay_provider_manifest,
+        graph_provider_manifest=graph_provider_manifest,
         workdir=workdir,
     )
 
@@ -323,10 +340,10 @@ def run_causal4d_rollout(
             kwargs.get("device") == "cpu",
             "golden provider was not CPU-only",
         )
-        provider = _FakeReplayProvider()
+        provider = _FakeReplayProvider(**kwargs)
         require(
             isinstance(provider, PhysTwinReplayProvider),
-            "fake provider does not satisfy the public replay protocol",
+            "fake provider does not satisfy the public replay-v2 protocol",
         )
         providers.append(provider)
         return provider
@@ -352,9 +369,21 @@ def run_causal4d_rollout(
     require(len(providers) == 1, "golden rollout created unexpected providers")
     require(providers[0].closed, "fake provider was not closed")
     require(providers[0].restart_calls == 2, "unexpected replay count")
+    require(len(providers[0].requests) == 2, "zero-mass support was replayed")
     require(
-        len(providers[0].group_scale_calls) == 2,
-        "zero-mass support was replayed",
+        all(
+            request.simulator_configuration_id
+            == providers[0].simulator_configuration_id
+            for request in providers[0].requests
+        ),
+        "replay request configuration identity changed",
+    )
+    require(
+        all(
+            request.velocity_mps.shape == request.position_m.shape
+            for request in providers[0].requests
+        ),
+        "restart request lost velocity history",
     )
     require(
         bank.trajectories.shape == (1, 2, 4, 2, 3),
@@ -383,6 +412,8 @@ def run_causal4d_rollout(
     return {
         "provider_manifest_id": provider_manifest.manifest_id,
         "provider_compatibility": compatibility.as_dict(),
+        "replay_provider_manifest_id": replay_provider_manifest.manifest_id,
+        "replay_provider_compatibility": replay_compatibility.as_dict(),
         "observation_lineage": validation,
         "twin_belief_id": restored_twin.artifact_id,
         "twin_belief_path": str(twin_path),
@@ -390,6 +421,13 @@ def run_causal4d_rollout(
         "rollout_digest": array_digest(restored_bank.trajectories),
         "rollout_shape": list(restored_bank.trajectories.shape),
         "restart_calls": providers[0].restart_calls,
+        "replay_request_ids": [
+            request.request_id for request in providers[0].requests
+        ],
+        "replay_frame_ids": [
+            list(range(request.start_frame, request.stop_frame))
+            for request in providers[0].requests
+        ],
         "probability_mass_accounting": accounting,
         "invalid_mass_rejection": invalid_mass_rejection,
         "zero_mass_cells_replayed": False,

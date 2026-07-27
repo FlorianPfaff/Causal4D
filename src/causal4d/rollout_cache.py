@@ -464,3 +464,468 @@ class ContentAddressedRolloutCache:
             trajectory_sha256=loaded_sha256,
             status=status,
         )
+
+
+REPLAY_CACHE_SCHEMA_NAME = "causal4d.phystwin-replay-cache"
+REPLAY_CACHE_SCHEMA_VERSION = 1
+
+
+def _nonempty_identifier(value: Any, *, name: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"{name} must be a string")
+    identifier = value.strip()
+    if not identifier:
+        raise ValueError(f"{name} must be a nonempty identifier")
+    return identifier
+
+
+@dataclass(frozen=True)
+class CachedReplayTrajectory:
+    """Provider-neutral immutable representation of one replay-v2 response."""
+
+    positions_m: np.ndarray
+    velocities_mps: np.ndarray
+    frame_ids: np.ndarray
+    dt_s: float
+    request_id: str
+    simulator_configuration_id: str
+    initial_state_id: str
+
+    def __post_init__(self) -> None:
+        raw_positions = np.asarray(self.positions_m)
+        if raw_positions.ndim != 3:
+            raise ValueError("cached replay positions must have shape (T, N, 3)")
+        positions = _validated_trajectory(
+            raw_positions,
+            expected_frame_count=raw_positions.shape[0],
+            minimum_node_count=1,
+        )
+        velocities = _validated_trajectory(
+            self.velocities_mps,
+            expected_frame_count=len(positions),
+            minimum_node_count=positions.shape[1],
+        )
+        if velocities.shape != positions.shape:
+            raise ValueError("cached replay positions and velocities must match")
+        frame_ids = np.asarray(self.frame_ids, dtype=np.int64).copy()
+        if frame_ids.shape != (len(positions),):
+            raise ValueError("cached replay frame_ids must identify every frame")
+        if np.any(frame_ids < 0) or (
+            len(frame_ids) > 1 and np.any(np.diff(frame_ids) <= 0)
+        ):
+            raise ValueError(
+                "cached replay frame_ids must be increasing and nonnegative"
+            )
+        frame_ids.setflags(write=False)
+        dt_s = float(self.dt_s)
+        if not np.isfinite(dt_s) or dt_s <= 0.0:
+            raise ValueError("cached replay dt_s must be positive and finite")
+        object.__setattr__(self, "positions_m", positions)
+        object.__setattr__(self, "velocities_mps", velocities)
+        object.__setattr__(self, "frame_ids", frame_ids)
+        object.__setattr__(self, "dt_s", dt_s)
+        object.__setattr__(
+            self,
+            "request_id",
+            _nonempty_identifier(self.request_id, name="request_id"),
+        )
+        object.__setattr__(
+            self,
+            "simulator_configuration_id",
+            _nonempty_identifier(
+                self.simulator_configuration_id,
+                name="simulator_configuration_id",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "initial_state_id",
+            _nonempty_identifier(self.initial_state_id, name="initial_state_id"),
+        )
+
+    @classmethod
+    def from_object(cls, values: Any) -> CachedReplayTrajectory:
+        """Copy a BPT ReplayTrajectoryV1 without importing the optional provider."""
+
+        return cls(
+            positions_m=np.asarray(values.positions_m),
+            velocities_mps=np.asarray(values.velocities_mps),
+            frame_ids=np.asarray(values.frame_ids),
+            dt_s=float(values.dt_s),
+            request_id=str(values.request_id),
+            simulator_configuration_id=str(values.simulator_configuration_id),
+            initial_state_id=str(values.initial_state_id),
+        )
+
+
+@dataclass(frozen=True)
+class ReplayCacheResult:
+    """One validated replay-v2 cache lookup or newly published record."""
+
+    replay: CachedReplayTrajectory
+    cache_key: str
+    record_path: Path
+    relative_path: str
+    positions_sha256: str
+    velocities_sha256: str
+    status: CacheStatus
+
+    @property
+    def cache_hit(self) -> bool:
+        return self.status in {"hit", "race_hit"}
+
+
+class ContentAddressedReplayCache:
+    """Atomically cache complete replay-v2 positions, velocities, and provenance."""
+
+    def __init__(self, root: str | Path) -> None:
+        self.root = Path(root).resolve()
+        self.root.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def descriptor_json(descriptor: Mapping[str, Any]) -> str:
+        return _canonical_json(
+            {
+                "schema_name": REPLAY_CACHE_SCHEMA_NAME,
+                "schema_version": REPLAY_CACHE_SCHEMA_VERSION,
+                "descriptor": dict(descriptor),
+            }
+        )
+
+    @classmethod
+    def cache_key_for(cls, descriptor: Mapping[str, Any]) -> str:
+        return hashlib.sha256(
+            cls.descriptor_json(descriptor).encode("utf-8")
+        ).hexdigest()
+
+    def _record_path(self, cache_key: str) -> Path:
+        return self.root / cache_key[:2] / f"{cache_key}.npz"
+
+    @staticmethod
+    def _validate_expected(
+        replay: CachedReplayTrajectory,
+        *,
+        expected_frame_ids: np.ndarray,
+        minimum_node_count: int,
+        expected_dt_s: float,
+        request_id: str,
+        simulator_configuration_id: str,
+        initial_state_id: str,
+    ) -> None:
+        frames = np.asarray(expected_frame_ids, dtype=np.int64)
+        if replay.positions_m.shape[1] < minimum_node_count:
+            raise ValueError("cached replay contains fewer nodes than requested")
+        if not np.array_equal(replay.frame_ids, frames):
+            raise ValueError("cached replay frame_ids do not match the request")
+        if not np.isclose(replay.dt_s, expected_dt_s, rtol=0.0, atol=1e-15):
+            raise ValueError("cached replay dt_s does not match the provider")
+        if replay.request_id != request_id:
+            raise ValueError("cached replay request_id does not match the request")
+        if replay.simulator_configuration_id != simulator_configuration_id:
+            raise ValueError("cached replay configuration identity changed")
+        if replay.initial_state_id != initial_state_id:
+            raise ValueError("cached replay initial-state identity changed")
+
+    def _load_record(
+        self,
+        path: Path,
+        *,
+        cache_key: str,
+        descriptor_json: str,
+        expected_frame_ids: np.ndarray,
+        minimum_node_count: int,
+        expected_dt_s: float,
+        request_id: str,
+        simulator_configuration_id: str,
+        initial_state_id: str,
+    ) -> tuple[CachedReplayTrajectory, str, str]:
+        try:
+            with np.load(path, allow_pickle=False) as archive:
+                required = {
+                    "schema_name",
+                    "schema_version",
+                    "cache_key",
+                    "descriptor_json",
+                    "positions_m",
+                    "velocities_mps",
+                    "frame_ids",
+                    "dt_s",
+                    "request_id",
+                    "simulator_configuration_id",
+                    "initial_state_id",
+                    "positions_sha256",
+                    "velocities_sha256",
+                }
+                missing = required - set(archive.files)
+                if missing:
+                    raise RolloutCacheValidationError(
+                        "replay cache record is missing: "
+                        + ", ".join(sorted(missing))
+                    )
+                if str(np.asarray(archive["schema_name"]).item()) != (
+                    REPLAY_CACHE_SCHEMA_NAME
+                ):
+                    raise RolloutCacheValidationError(
+                        "replay cache schema name changed"
+                    )
+                if int(np.asarray(archive["schema_version"]).item()) != (
+                    REPLAY_CACHE_SCHEMA_VERSION
+                ):
+                    raise RolloutCacheValidationError(
+                        "replay cache schema version changed"
+                    )
+                if str(np.asarray(archive["cache_key"]).item()) != cache_key:
+                    raise RolloutCacheValidationError(
+                        "replay cache key does not match its path"
+                    )
+                if (
+                    str(np.asarray(archive["descriptor_json"]).item())
+                    != descriptor_json
+                ):
+                    raise RolloutCacheValidationError(
+                        "replay cache descriptor does not match the request"
+                    )
+                replay = CachedReplayTrajectory(
+                    positions_m=archive["positions_m"],
+                    velocities_mps=archive["velocities_mps"],
+                    frame_ids=archive["frame_ids"],
+                    dt_s=float(np.asarray(archive["dt_s"]).item()),
+                    request_id=str(np.asarray(archive["request_id"]).item()),
+                    simulator_configuration_id=str(
+                        np.asarray(archive["simulator_configuration_id"]).item()
+                    ),
+                    initial_state_id=str(
+                        np.asarray(archive["initial_state_id"]).item()
+                    ),
+                )
+                stored_positions_sha256 = str(
+                    np.asarray(archive["positions_sha256"]).item()
+                )
+                stored_velocities_sha256 = str(
+                    np.asarray(archive["velocities_sha256"]).item()
+                )
+        except RolloutCacheValidationError:
+            raise
+        except (EOFError, OSError, ValueError, KeyError, zipfile.BadZipFile) as error:
+            raise RolloutCacheValidationError(
+                f"replay cache record could not be decoded: {path}"
+            ) from error
+
+        try:
+            self._validate_expected(
+                replay,
+                expected_frame_ids=expected_frame_ids,
+                minimum_node_count=minimum_node_count,
+                expected_dt_s=expected_dt_s,
+                request_id=request_id,
+                simulator_configuration_id=simulator_configuration_id,
+                initial_state_id=initial_state_id,
+            )
+        except ValueError as error:
+            raise RolloutCacheValidationError(
+                "cached replay provenance does not match the request"
+            ) from error
+        positions_sha256 = array_sha256(replay.positions_m)
+        velocities_sha256 = array_sha256(replay.velocities_mps)
+        if stored_positions_sha256 != positions_sha256:
+            raise RolloutCacheValidationError(
+                "cached replay position checksum mismatch"
+            )
+        if stored_velocities_sha256 != velocities_sha256:
+            raise RolloutCacheValidationError(
+                "cached replay velocity checksum mismatch"
+            )
+        return replay, positions_sha256, velocities_sha256
+
+    def _publish_record(
+        self,
+        path: Path,
+        *,
+        cache_key: str,
+        descriptor_json: str,
+        replay: CachedReplayTrajectory,
+        positions_sha256: str,
+        velocities_sha256: str,
+        replace_existing: bool,
+    ) -> bool:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w+b",
+                dir=path.parent,
+                prefix=f".{cache_key}.",
+                suffix=".tmp",
+                delete=False,
+            ) as handle:
+                temporary_path = Path(handle.name)
+                np.savez_compressed(
+                    handle,
+                    schema_name=np.asarray(REPLAY_CACHE_SCHEMA_NAME),
+                    schema_version=np.asarray(REPLAY_CACHE_SCHEMA_VERSION),
+                    cache_key=np.asarray(cache_key),
+                    descriptor_json=np.asarray(descriptor_json),
+                    positions_m=replay.positions_m,
+                    velocities_mps=replay.velocities_mps,
+                    frame_ids=replay.frame_ids,
+                    dt_s=np.asarray(replay.dt_s),
+                    request_id=np.asarray(replay.request_id),
+                    simulator_configuration_id=np.asarray(
+                        replay.simulator_configuration_id
+                    ),
+                    initial_state_id=np.asarray(replay.initial_state_id),
+                    positions_sha256=np.asarray(positions_sha256),
+                    velocities_sha256=np.asarray(velocities_sha256),
+                )
+                handle.flush()
+                os.fsync(handle.fileno())
+            if replace_existing:
+                os.replace(temporary_path, path)
+                temporary_path = None
+            else:
+                try:
+                    os.link(temporary_path, path)
+                except FileExistsError:
+                    return False
+            ContentAddressedRolloutCache._fsync_directory(path.parent)
+            return True
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
+
+    def get_or_compute(
+        self,
+        descriptor: Mapping[str, Any],
+        compute: Callable[[], Any],
+        *,
+        expected_frame_ids: np.ndarray,
+        minimum_node_count: int,
+        expected_dt_s: float,
+        request_id: str,
+        simulator_configuration_id: str,
+        initial_state_id: str,
+    ) -> ReplayCacheResult:
+        """Return a complete validated replay, computing it only when absent."""
+
+        frames = np.asarray(expected_frame_ids, dtype=np.int64)
+        if frames.ndim != 1 or not len(frames) or minimum_node_count < 1:
+            raise ValueError("replay cache dimensions must be positive")
+        expected_dt = float(expected_dt_s)
+        if not np.isfinite(expected_dt) or expected_dt <= 0.0:
+            raise ValueError("expected replay dt_s must be positive and finite")
+        expected_request_id = _nonempty_identifier(request_id, name="request_id")
+        expected_configuration_id = _nonempty_identifier(
+            simulator_configuration_id,
+            name="simulator_configuration_id",
+        )
+        expected_initial_state_id = _nonempty_identifier(
+            initial_state_id,
+            name="initial_state_id",
+        )
+        descriptor_json = self.descriptor_json(descriptor)
+        cache_key = hashlib.sha256(descriptor_json.encode("utf-8")).hexdigest()
+        path = self._record_path(cache_key)
+        relative_path = path.relative_to(self.root).as_posix()
+        invalidated = False
+
+        if path.exists():
+            try:
+                replay, positions_sha256, velocities_sha256 = self._load_record(
+                    path,
+                    cache_key=cache_key,
+                    descriptor_json=descriptor_json,
+                    expected_frame_ids=frames,
+                    minimum_node_count=minimum_node_count,
+                    expected_dt_s=expected_dt,
+                    request_id=expected_request_id,
+                    simulator_configuration_id=expected_configuration_id,
+                    initial_state_id=expected_initial_state_id,
+                )
+            except RolloutCacheValidationError:
+                invalidated = True
+            else:
+                return ReplayCacheResult(
+                    replay=replay,
+                    cache_key=cache_key,
+                    record_path=path,
+                    relative_path=relative_path,
+                    positions_sha256=positions_sha256,
+                    velocities_sha256=velocities_sha256,
+                    status="hit",
+                )
+
+        replay = CachedReplayTrajectory.from_object(compute())
+        self._validate_expected(
+            replay,
+            expected_frame_ids=frames,
+            minimum_node_count=minimum_node_count,
+            expected_dt_s=expected_dt,
+            request_id=expected_request_id,
+            simulator_configuration_id=expected_configuration_id,
+            initial_state_id=expected_initial_state_id,
+        )
+        positions_sha256 = array_sha256(replay.positions_m)
+        velocities_sha256 = array_sha256(replay.velocities_mps)
+        published = self._publish_record(
+            path,
+            cache_key=cache_key,
+            descriptor_json=descriptor_json,
+            replay=replay,
+            positions_sha256=positions_sha256,
+            velocities_sha256=velocities_sha256,
+            replace_existing=invalidated,
+        )
+        try:
+            loaded, loaded_positions_sha256, loaded_velocities_sha256 = (
+                self._load_record(
+                    path,
+                    cache_key=cache_key,
+                    descriptor_json=descriptor_json,
+                    expected_frame_ids=frames,
+                    minimum_node_count=minimum_node_count,
+                    expected_dt_s=expected_dt,
+                    request_id=expected_request_id,
+                    simulator_configuration_id=expected_configuration_id,
+                    initial_state_id=expected_initial_state_id,
+                )
+            )
+        except RolloutCacheValidationError:
+            if published:
+                raise
+            self._publish_record(
+                path,
+                cache_key=cache_key,
+                descriptor_json=descriptor_json,
+                replay=replay,
+                positions_sha256=positions_sha256,
+                velocities_sha256=velocities_sha256,
+                replace_existing=True,
+            )
+            loaded, loaded_positions_sha256, loaded_velocities_sha256 = (
+                self._load_record(
+                    path,
+                    cache_key=cache_key,
+                    descriptor_json=descriptor_json,
+                    expected_frame_ids=frames,
+                    minimum_node_count=minimum_node_count,
+                    expected_dt_s=expected_dt,
+                    request_id=expected_request_id,
+                    simulator_configuration_id=expected_configuration_id,
+                    initial_state_id=expected_initial_state_id,
+                )
+            )
+            status: CacheStatus = "repaired"
+        else:
+            if published:
+                status = "repaired" if invalidated else "miss"
+            else:
+                status = "race_hit"
+        return ReplayCacheResult(
+            replay=loaded,
+            cache_key=cache_key,
+            record_path=path,
+            relative_path=relative_path,
+            positions_sha256=loaded_positions_sha256,
+            velocities_sha256=loaded_velocities_sha256,
+            status=status,
+        )

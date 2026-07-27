@@ -7,14 +7,16 @@ import pickle
 from dataclasses import asdict, dataclass
 from itertools import product
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from bayesian_phystwin.causal4d_provider_v1 import (
+from bayesian_phystwin.causal4d_provider_v1 import released_self_collision_for_case
+from bayesian_phystwin.causal4d_provider_v2 import (
     PhysTwinReplayProvider,
+    RestartReplayRequestV1,
     create_official_replay_provider,
-    released_self_collision_for_case,
+    sha256_file,
 )
 from bayesian_phystwin.causal4d_graph_provider_v1 import (
     controller_hand_count,
@@ -36,12 +38,32 @@ from causal4d.contracts import (
 from causal4d.graph_provider_contract import require_bayesian_phystwin_graph_provider
 from causal4d.parameter_support import SupportMethod, reduce_parameter_support
 from causal4d.provider_contract import require_bayesian_phystwin_provider
+from causal4d.replay_provider_contract import (
+    require_bayesian_phystwin_replay_provider,
+    stable_replay_identifier,
+    validate_replay_trajectory,
+)
 from causal4d.rollout_bank import JointRolloutBank
 
 
 def _load_pickle(path: str | Path) -> Any:
     with Path(path).open("rb") as handle:
         return pickle.load(handle)
+
+
+def _graph_replay_descriptor(graph: PhysTwinSpringGraph) -> dict[str, Any]:
+    return {
+        "vertices_sha256": array_sha256(np.asarray(graph.vertices)),
+        "springs_sha256": array_sha256(np.asarray(graph.springs)),
+        "rest_lengths_sha256": array_sha256(np.asarray(graph.rest_lengths)),
+        "masses_sha256": array_sha256(np.asarray(graph.masses)),
+        "num_object_springs": int(graph.num_object_springs),
+        "num_object_points": int(graph.num_object_points),
+    }
+
+
+def _source_artifact_digests(paths: Mapping[str, str | Path]) -> dict[str, str]:
+    return {name: sha256_file(path) for name, path in paths.items()}
 
 
 @dataclass(frozen=True)
@@ -827,6 +849,7 @@ class OfficialPhysTwinBackend:
         config: OfficialPhysTwinBackendConfig | None = None,
     ) -> None:
         self.provider_manifest = require_bayesian_phystwin_provider()
+        self.replay_provider_manifest = require_bayesian_phystwin_replay_provider()
         self.graph_provider_manifest = require_bayesian_phystwin_graph_provider()
         self.official_repo = Path(official_repo)
         self.final_data_path = Path(final_data_path)
@@ -835,6 +858,15 @@ class OfficialPhysTwinBackend:
         self.baseline_trajectory_path = Path(baseline_trajectory_path)
         self.profile_path = Path(profile_path)
         self.config = config or OfficialPhysTwinBackendConfig()
+        self.source_artifacts_sha256 = _source_artifact_digests(
+            {
+                "final_data": self.final_data_path,
+                "optimal_params": self.optimal_params_path,
+                "checkpoint": self.checkpoint_path,
+                "baseline_trajectory": self.baseline_trajectory_path,
+                "parameter_profile": self.profile_path,
+            }
+        )
         self.data = _load_pickle(self.final_data_path)
         self.optimal = _load_pickle(self.optimal_params_path)
         self.baseline = np.asarray(
@@ -889,6 +921,75 @@ class OfficialPhysTwinBackend:
             maximum_count=parameter_particle_count,
             support_method=parameter_support_method,
         )
+        self.released_initial_state_id = stable_replay_identifier(
+            "causal4d-released-initial-state-v1",
+            {
+                "case": self.case_name,
+                "baseline_frame_zero_sha256": array_sha256(self.baseline[0]),
+                "controller_frame_zero_sha256": array_sha256(
+                    self.controller_points[0]
+                ),
+            },
+        )
+        self.base_simulator_configuration_id = stable_replay_identifier(
+            "causal4d-phystwin-simulator-base-v1",
+            {
+                "case": self.case_name,
+                "runtime": asdict(self.config),
+                "source_artifacts_sha256": self.source_artifacts_sha256,
+            },
+        )
+
+    @property
+    def frame_dt_s(self) -> float:
+        """Physical interval represented by one provider trajectory frame."""
+
+        return float(self.config.dt * self.config.num_substeps)
+
+    def replay_simulator_configuration_id(
+        self,
+        graph: PhysTwinSpringGraph,
+    ) -> str:
+        """Bind one immutable provider instance to its exact spring graph."""
+
+        base_id = getattr(
+            self,
+            "base_simulator_configuration_id",
+            stable_replay_identifier(
+                "causal4d-phystwin-simulator-base-v1",
+                {
+                    "case": self.case_name,
+                    "runtime": asdict(self.config),
+                    "source_artifacts_sha256": getattr(
+                        self, "source_artifacts_sha256", {}
+                    ),
+                },
+            ),
+        )
+        return stable_replay_identifier(
+            "causal4d-phystwin-simulator-graph-v1",
+            {
+                "base_simulator_configuration_id": base_id,
+                "spring_graph": _graph_replay_descriptor(graph),
+            },
+        )
+
+    def replay_released_initial_state_id(self) -> str:
+        """Return the released initial-state identity used by initial replays."""
+
+        identifier = getattr(self, "released_initial_state_id", None)
+        if identifier is not None:
+            return str(identifier)
+        return stable_replay_identifier(
+            "causal4d-released-initial-state-v1",
+            {
+                "case": self.case_name,
+                "baseline_frame_zero_sha256": array_sha256(self.baseline[0]),
+                "controller_frame_zero_sha256": array_sha256(
+                    self.controller_points[0]
+                ),
+            },
+        )
 
     @property
     def observations_from_endpoint(self) -> np.ndarray:
@@ -905,9 +1006,21 @@ class OfficialPhysTwinBackend:
         return {
             "backend": "official_phystwin_warp",
             "provider": self.provider_manifest.as_dict(),
+            "replay_provider": self.replay_provider_manifest.as_dict(),
             "graph_provider": self.graph_provider_manifest.as_dict(),
+            "replay_contract": {
+                "provider_api_version": 2,
+                "frame_dt_s": self.frame_dt_s,
+                "base_simulator_configuration_id": getattr(
+                    self, "base_simulator_configuration_id", None
+                ),
+                "released_initial_state_id": self.replay_released_initial_state_id(),
+            },
             "case": self.case_name,
             "train_end_frame": self.train_end_frame,
+            "source_artifacts_sha256": dict(
+                getattr(self, "source_artifacts_sha256", {})
+            ),
             "source_paths": {
                 "official_repo": str(self.official_repo.resolve()),
                 "final_data": str(self.final_data_path.resolve()),
@@ -1075,6 +1188,7 @@ class OfficialPhysTwinBackend:
             else self.config.self_collision
         )
         shift_diagnostics: dict[str, Any] = {}
+        replay_records: list[dict[str, Any]] = []
         unique_shifts = tuple(
             dict.fromkeys(
                 hypothesis.contact.attachment_shifts for hypothesis in hypotheses
@@ -1092,6 +1206,9 @@ class OfficialPhysTwinBackend:
                 "controller_spring_count": len(variant.graph.springs)
                 - variant.graph.num_object_springs,
             }
+            simulator_configuration_id = self.replay_simulator_configuration_id(
+                variant.graph
+            )
             replay_provider: PhysTwinReplayProvider = create_official_replay_provider(
                 self.official_repo,
                 self.data,
@@ -1103,6 +1220,8 @@ class OfficialPhysTwinBackend:
                 dt=self.config.dt,
                 num_substeps=self.config.num_substeps,
                 self_collision=bool(self_collision),
+                simulator_configuration_id=simulator_configuration_id,
+                released_initial_state_id=self.replay_released_initial_state_id(),
                 deterministic_spring_forces=self.config.deterministic_spring_forces,
                 spring_parameterization="grouped",
                 device=self.config.device,
@@ -1121,7 +1240,6 @@ class OfficialPhysTwinBackend:
                         hypothesis.contact,
                         start_frame=self.train_end_frame,
                     )
-                    replay_provider.set_controller_points(controls)
                     for particle_index, particle in enumerate(
                         self.particles.log_scales
                     ):
@@ -1133,21 +1251,85 @@ class OfficialPhysTwinBackend:
                             ],
                             dtype=np.float32,
                         )
-                        replay_provider.set_group_log_scales(group_scales)
-                        future = replay_provider.replay_restart(
-                            twin_belief.endpoint_position_m[particle_index].copy(),
-                            twin_belief.endpoint_velocity_mps[particle_index].copy(),
+                        endpoint_position = twin_belief.endpoint_position_m[
+                            particle_index
+                        ].copy()
+                        endpoint_velocity = twin_belief.endpoint_velocity_mps[
+                            particle_index
+                        ].copy()
+                        initial_state_id = stable_replay_identifier(
+                            "causal4d-twin-belief-endpoint-v1",
+                            {
+                                "twin_belief_id": twin_belief.artifact_id,
+                                "particle_id": twin_belief.particle_ids[particle_index],
+                                "position_sha256": array_sha256(endpoint_position),
+                                "velocity_sha256": array_sha256(endpoint_velocity),
+                            },
+                        )
+                        request_id = stable_replay_identifier(
+                            "causal4d-restart-replay-request-v1",
+                            {
+                                "simulator_configuration_id": (
+                                    simulator_configuration_id
+                                ),
+                                "initial_state_id": initial_state_id,
+                                "hypothesis_id": hypothesis.hypothesis_id,
+                                "particle_id": twin_belief.particle_ids[particle_index],
+                                "group_log_scales_sha256": array_sha256(group_scales),
+                                "controller_points_sha256": array_sha256(controls),
+                                "start_frame": self.train_end_frame,
+                                "stop_frame": self.frame_count,
+                            },
+                        )
+                        request = RestartReplayRequestV1(
+                            request_id=request_id,
+                            simulator_configuration_id=(
+                                simulator_configuration_id
+                            ),
+                            initial_state_id=initial_state_id,
+                            group_log_scales=group_scales,
+                            controller_points_m=controls,
+                            position_m=endpoint_position,
+                            velocity_mps=endpoint_velocity,
                             start_frame=self.train_end_frame,
                             stop_frame=self.frame_count,
                         )
-                        trajectories[hypothesis_index, particle_index, 0] = (
-                            twin_belief.endpoint_position_m[
-                                particle_index, : self.original_count
-                            ]
+                        replay = replay_provider.replay(request)
+                        validate_replay_trajectory(
+                            request,
+                            replay,
+                            expected_dt_s=self.frame_dt_s,
                         )
-                        trajectories[hypothesis_index, particle_index, 1:] = future[
-                            :, : self.original_count
-                        ]
+                        if replay.positions_m.shape[1] < self.original_count:
+                            raise ValueError(
+                                "replay trajectory has fewer nodes than the "
+                                "observed object"
+                            )
+                        trajectories[hypothesis_index, particle_index, 0] = (
+                            endpoint_position[: self.original_count]
+                        )
+                        trajectories[hypothesis_index, particle_index, 1:] = (
+                            replay.positions_m[:, : self.original_count]
+                        )
+                        replay_records.append(
+                            {
+                                "request_id": request_id,
+                                "simulator_configuration_id": (
+                                    simulator_configuration_id
+                                ),
+                                "initial_state_id": initial_state_id,
+                                "hypothesis_id": hypothesis.hypothesis_id,
+                                "particle_id": twin_belief.particle_ids[particle_index],
+                                "frame_ids": replay.frame_ids.tolist(),
+                                "dt_s": float(replay.dt_s),
+                                "positions_sha256": array_sha256(
+                                    replay.positions_m
+                                ),
+                                "velocities_sha256": array_sha256(
+                                    replay.velocities_mps
+                                ),
+                            }
+                        )
             finally:
                 replay_provider.close()
 
@@ -1179,6 +1361,9 @@ class OfficialPhysTwinBackend:
                 "attachment_shift_diagnostics": shift_diagnostics,
                 "rollout_shape": list(trajectories.shape),
                 "rollout_frame_interval": [endpoint_index, self.frame_count],
+                "replay_provider_api_version": 2,
+                "replay_request_count": len(replay_records),
+                "replay_requests": replay_records,
                 "causal_context": self.causal_context(
                     action_proposals,
                     protocol_id=twin_belief.context.protocol_id,

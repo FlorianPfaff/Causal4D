@@ -17,6 +17,13 @@ from typing import Any
 
 import numpy as np
 
+from bayesian_phystwin.causal4d_provider_v2 import (
+    InitialReplayRequestV1,
+    ReplayRequestV1,
+    ReplayTrajectoryV1,
+    RestartReplayRequestV1,
+)
+
 import causal4d.phystwin_backend as phystwin_backend_module
 from causal4d.contracts import TwinBelief, array_sha256
 from causal4d.phystwin_backend import (
@@ -28,8 +35,8 @@ from causal4d.phystwin_backend import (
 )
 from causal4d.rollout_bank import JointRolloutBank
 from causal4d.rollout_cache import (
-    ContentAddressedRolloutCache,
-    RolloutCacheResult,
+    ContentAddressedReplayCache,
+    ReplayCacheResult,
     file_sha256,
     repository_source_identity,
 )
@@ -114,6 +121,9 @@ def _provider_source_identity() -> dict[str, Any]:
 
 
 def _source_artifact_digests(backend: OfficialPhysTwinBackend) -> dict[str, str]:
+    recorded = getattr(backend, "source_artifacts_sha256", None)
+    if recorded is not None:
+        return dict(recorded)
     sources = {
         "final_data": backend.final_data_path,
         "optimal_params": backend.optimal_params_path,
@@ -126,7 +136,7 @@ def _source_artifact_digests(backend: OfficialPhysTwinBackend) -> dict[str, str]
 
 @dataclass
 class _RolloutCacheSession:
-    cache: ContentAddressedRolloutCache
+    cache: ContentAddressedReplayCache
     provider_manifest: dict[str, Any]
     provider_source: dict[str, Any]
     official_source: dict[str, Any]
@@ -147,8 +157,8 @@ class _RolloutCacheSession:
         rollout_cache_dir: str | Path,
     ) -> _RolloutCacheSession:
         return cls(
-            cache=ContentAddressedRolloutCache(rollout_cache_dir),
-            provider_manifest=backend.provider_manifest.as_dict(),
+            cache=ContentAddressedReplayCache(rollout_cache_dir),
+            provider_manifest=backend.replay_provider_manifest.as_dict(),
             provider_source=_provider_source_identity(),
             official_source=repository_source_identity(backend.official_repo),
             numerical_runtime=_numerical_runtime_descriptor(),
@@ -158,13 +168,21 @@ class _RolloutCacheSession:
         )
 
     def wrap_factory(self, factory: Callable[..., Any]) -> Callable[..., Any]:
-        def cached_factory(*args: Any, **kwargs: Any) -> _LazyCachedReplayProvider:
+        def cached_factory(*args: Any, **kwargs: Any) -> _LazyCachedReplayProviderV2:
             self.provider_proxy_count += 1
             graph = _factory_value(args, kwargs, name="graph", position=4)
             original_count = int(_factory_value(args, kwargs, name="original_count"))
             deterministic = bool(
                 _factory_value(args, kwargs, name="deterministic_spring_forces")
             )
+            simulator_configuration_id = str(
+                _factory_value(args, kwargs, name="simulator_configuration_id")
+            )
+            released_initial_state_id = str(
+                _factory_value(args, kwargs, name="released_initial_state_id")
+            )
+            dt = float(_factory_value(args, kwargs, name="dt"))
+            num_substeps = int(_factory_value(args, kwargs, name="num_substeps"))
             self.deterministic_modes.add(deterministic)
             static_descriptor = {
                 "provider": self.provider_manifest,
@@ -179,13 +197,14 @@ class _RolloutCacheSession:
                         _factory_value(args, kwargs, name="num_surface_points")
                     ),
                     "original_count": original_count,
-                    "dt": float(_factory_value(args, kwargs, name="dt")),
-                    "num_substeps": int(
-                        _factory_value(args, kwargs, name="num_substeps")
-                    ),
+                    "dt": dt,
+                    "num_substeps": num_substeps,
+                    "frame_dt_s": dt * num_substeps,
                     "self_collision": bool(
                         _factory_value(args, kwargs, name="self_collision")
                     ),
+                    "simulator_configuration_id": simulator_configuration_id,
+                    "released_initial_state_id": released_initial_state_id,
                     "deterministic_spring_forces": deterministic,
                     "spring_parameterization": str(
                         _factory_value(
@@ -197,7 +216,7 @@ class _RolloutCacheSession:
                     "device": str(_factory_value(args, kwargs, name="device")),
                 },
             }
-            return _LazyCachedReplayProvider(
+            return _LazyCachedReplayProviderV2(
                 session=self,
                 factory=factory,
                 factory_args=args,
@@ -214,31 +233,43 @@ class _RolloutCacheSession:
 
     def record_call(
         self,
-        result: RolloutCacheResult,
+        result: ReplayCacheResult,
         *,
-        controller_points: np.ndarray,
-        group_log_scales: np.ndarray,
-        endpoint_position: np.ndarray,
-        endpoint_velocity: np.ndarray,
-        start_frame: int,
-        stop_frame: int,
+        request: ReplayRequestV1,
     ) -> None:
-        self.records.append(
-            {
-                "ordinal": len(self.records),
-                "cache_key": result.cache_key,
-                "cache_status": result.status,
-                "cache_hit": result.cache_hit,
-                "record_path": result.relative_path,
-                "trajectory_sha256": result.trajectory_sha256,
-                "controller_points_sha256": array_sha256(controller_points),
-                "group_log_scales_sha256": array_sha256(group_log_scales),
-                "group_log_scales": np.asarray(group_log_scales, dtype=float).tolist(),
-                "endpoint_position_sha256": array_sha256(endpoint_position),
-                "endpoint_velocity_sha256": array_sha256(endpoint_velocity),
-                "frame_interval": [int(start_frame), int(stop_frame)],
-            }
-        )
+        record: dict[str, Any] = {
+            "ordinal": len(self.records),
+            "cache_key": result.cache_key,
+            "cache_status": result.status,
+            "cache_hit": result.cache_hit,
+            "record_path": result.relative_path,
+            "request_type": type(request).__name__,
+            "request_id": request.request_id,
+            "simulator_configuration_id": request.simulator_configuration_id,
+            "initial_state_id": request.initial_state_id,
+            "positions_sha256": result.positions_sha256,
+            "velocities_sha256": result.velocities_sha256,
+            "frame_ids": result.replay.frame_ids.tolist(),
+            "dt_s": result.replay.dt_s,
+            "controller_points_sha256": array_sha256(request.controller_points_m),
+            "group_log_scales_sha256": array_sha256(request.group_log_scales),
+            "group_log_scales": np.asarray(
+                request.group_log_scales, dtype=float
+            ).tolist(),
+        }
+        if isinstance(request, RestartReplayRequestV1):
+            record.update(
+                {
+                    "endpoint_position_sha256": array_sha256(request.position_m),
+                    "endpoint_velocity_sha256": array_sha256(request.velocity_mps),
+                    "frame_interval": [request.start_frame, request.stop_frame],
+                }
+            )
+        elif isinstance(request, InitialReplayRequestV1):
+            record["frame_interval"] = [0, request.frame_count]
+        else:  # pragma: no cover - typed providers admit only the two requests
+            raise TypeError("unsupported replay request type")
+        self.records.append(record)
 
     def bind_rollout_components(
         self,
@@ -290,7 +321,7 @@ class _RolloutCacheSession:
         return {
             "enabled": True,
             "schema_name": "causal4d.phystwin-rollout-cache-manifest",
-            "schema_version": 1,
+            "schema_version": 2,
             "root": str(self.cache.root),
             "record_count": len(self.records),
             "validated_record_count": len(self.records),
@@ -301,6 +332,7 @@ class _RolloutCacheSession:
             "provider_proxy_count": self.provider_proxy_count,
             "provider_instance_count": self.provider_instance_count,
             "all_records_validated": True,
+            "cached_payload": "positions_velocities_and_provenance",
             "replay_semantics": (
                 "deterministic"
                 if deterministic
@@ -316,8 +348,8 @@ class _RolloutCacheSession:
         }
 
 
-class _LazyCachedReplayProvider:
-    """Instantiate the real provider only when one requested record is absent."""
+class _LazyCachedReplayProviderV2:
+    """Instantiate the real replay-v2 provider only on a cache miss."""
 
     def __init__(
         self,
@@ -336,9 +368,32 @@ class _LazyCachedReplayProvider:
         self._static_descriptor = static_descriptor
         self._original_count = original_count
         self._provider: Any | None = None
-        self._controller_points: np.ndarray | None = None
-        self._group_log_scales: np.ndarray | None = None
-        self.device = str(factory_kwargs.get("device", "unknown"))
+        self._device = str(factory_kwargs.get("device", "unknown"))
+        self._frame_dt_s = float(factory_kwargs["dt"]) * int(
+            factory_kwargs["num_substeps"]
+        )
+        self._simulator_configuration_id = str(
+            factory_kwargs["simulator_configuration_id"]
+        )
+        self._released_initial_state_id = str(
+            factory_kwargs["released_initial_state_id"]
+        )
+
+    @property
+    def device(self) -> str:
+        return self._device
+
+    @property
+    def frame_dt_s(self) -> float:
+        return self._frame_dt_s
+
+    @property
+    def simulator_configuration_id(self) -> str:
+        return self._simulator_configuration_id
+
+    @property
+    def released_initial_state_id(self) -> str:
+        return self._released_initial_state_id
 
     def _ensure_provider(self) -> Any:
         if self._provider is None:
@@ -347,92 +402,92 @@ class _LazyCachedReplayProvider:
                 **self._factory_kwargs,
             )
             self._session.note_provider_instantiation()
-            if self._controller_points is not None:
-                self._provider.set_controller_points(self._controller_points.copy())
-            if self._group_log_scales is not None:
-                self._provider.set_group_log_scales(self._group_log_scales.copy())
         return self._provider
 
-    def set_controller_points(self, values: np.ndarray) -> None:
-        self._controller_points = np.asarray(values, dtype=np.float32).copy()
-        if self._provider is not None:
-            self._provider.set_controller_points(self._controller_points.copy())
-
-    def set_group_log_scales(self, values: np.ndarray) -> None:
-        self._group_log_scales = np.asarray(values, dtype=np.float32).copy()
-        if self._provider is not None:
-            self._provider.set_group_log_scales(self._group_log_scales.copy())
-
-    def replay_initial(self, *, frame_count: int) -> Any:
-        return self._ensure_provider().replay_initial(frame_count=frame_count)
-
-    def replay_restart(
-        self,
-        position_m: np.ndarray,
-        velocity_mps: np.ndarray,
-        *,
-        start_frame: int,
-        stop_frame: int,
-    ) -> np.ndarray:
-        if self._controller_points is None or self._group_log_scales is None:
-            raise RuntimeError(
-                "controller points and group scales must be set before replay"
-            )
-        position = np.asarray(position_m).copy()
-        velocity = np.asarray(velocity_mps).copy()
-        call_descriptor = {
-            **self._static_descriptor,
-            "controller_points": _array_descriptor(self._controller_points),
+    @staticmethod
+    def _request_descriptor(request: ReplayRequestV1) -> dict[str, Any]:
+        descriptor: dict[str, Any] = {
+            "request_type": type(request).__name__,
+            "request_id": request.request_id,
+            "simulator_configuration_id": request.simulator_configuration_id,
+            "initial_state_id": request.initial_state_id,
+            "controller_points": _array_descriptor(request.controller_points_m),
             "group_log_scales": {
-                **_array_descriptor(self._group_log_scales),
-                "values": np.asarray(self._group_log_scales, dtype=float).tolist(),
-            },
-            "endpoint_position": _array_descriptor(position),
-            "endpoint_velocity": _array_descriptor(velocity),
-            "frame_interval": {
-                "start": int(start_frame),
-                "stop": int(stop_frame),
+                **_array_descriptor(request.group_log_scales),
+                "values": np.asarray(
+                    request.group_log_scales, dtype=float
+                ).tolist(),
             },
         }
-
-        def compute() -> np.ndarray:
-            provider = self._ensure_provider()
-            return np.asarray(
-                provider.replay_restart(
-                    position.copy(),
-                    velocity.copy(),
-                    start_frame=start_frame,
-                    stop_frame=stop_frame,
-                ),
-                dtype=np.float32,
+        if isinstance(request, InitialReplayRequestV1):
+            descriptor["frame_interval"] = {"start": 0, "stop": request.frame_count}
+        elif isinstance(request, RestartReplayRequestV1):
+            descriptor.update(
+                {
+                    "endpoint_position": _array_descriptor(request.position_m),
+                    "endpoint_velocity": _array_descriptor(request.velocity_mps),
+                    "frame_interval": {
+                        "start": request.start_frame,
+                        "stop": request.stop_frame,
+                    },
+                }
             )
+        else:  # pragma: no cover - typed providers admit only the two requests
+            raise TypeError("unsupported replay request type")
+        return descriptor
+
+    def replay(self, request: ReplayRequestV1) -> ReplayTrajectoryV1:
+        if request.simulator_configuration_id != self._simulator_configuration_id:
+            raise ValueError("request configuration does not match cached provider")
+        if (
+            isinstance(request, InitialReplayRequestV1)
+            and request.initial_state_id != self._released_initial_state_id
+        ):
+            raise ValueError("initial request does not identify the released state")
+        if isinstance(request, InitialReplayRequestV1):
+            expected_frame_ids = np.arange(request.frame_count, dtype=np.int64)
+        elif isinstance(request, RestartReplayRequestV1):
+            expected_frame_ids = np.arange(
+                request.start_frame,
+                request.stop_frame,
+                dtype=np.int64,
+            )
+        else:  # pragma: no cover - typed providers admit only the two requests
+            raise TypeError("unsupported replay request type")
+        call_descriptor = {
+            **self._static_descriptor,
+            "request": self._request_descriptor(request),
+        }
+
+        def compute() -> Any:
+            return self._ensure_provider().replay(request)
 
         result = self._session.cache.get_or_compute(
             call_descriptor,
             compute,
-            expected_frame_count=stop_frame - start_frame,
+            expected_frame_ids=expected_frame_ids,
             minimum_node_count=self._original_count,
+            expected_dt_s=self._frame_dt_s,
+            request_id=request.request_id,
+            simulator_configuration_id=request.simulator_configuration_id,
+            initial_state_id=request.initial_state_id,
         )
-        self._session.record_call(
-            result,
-            controller_points=self._controller_points,
-            group_log_scales=self._group_log_scales,
-            endpoint_position=position,
-            endpoint_velocity=velocity,
-            start_frame=start_frame,
-            stop_frame=stop_frame,
+        self._session.record_call(result, request=request)
+        replay = result.replay
+        return ReplayTrajectoryV1(
+            positions_m=replay.positions_m,
+            velocities_mps=replay.velocities_mps,
+            frame_ids=replay.frame_ids,
+            dt_s=replay.dt_s,
+            request_id=replay.request_id,
+            simulator_configuration_id=replay.simulator_configuration_id,
+            initial_state_id=replay.initial_state_id,
         )
-        return result.trajectory
 
     def close(self) -> None:
         if self._provider is not None:
             self._provider.close()
             self._provider = None
-
-    def __getattr__(self, name: str) -> Any:
-        if name.startswith("_"):
-            raise AttributeError(name)
-        return getattr(self._ensure_provider(), name)
 
 
 def build_resumable_rollout_bank(
@@ -455,7 +510,8 @@ def build_resumable_rollout_bank(
         result_manifest["rollout_cache"] = {
             "enabled": False,
             "schema_name": "causal4d.phystwin-rollout-cache-manifest",
-            "schema_version": 1,
+            "schema_version": 2,
+            "cached_payload": "positions_velocities_and_provenance",
         }
         return bank, result_manifest
 

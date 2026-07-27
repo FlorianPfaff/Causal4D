@@ -56,7 +56,8 @@ jobs:
         run: |
           python -m mypy \
             scripts/ci \
-            src/causal4d/provider_contract.py
+            src/causal4d/provider_contract.py \
+            src/causal4d/replay_provider_contract.py
 
   core:
     name: Core-only / Python ${{ matrix.python-version }}

@@ -3,10 +3,10 @@
 Causal4D consumes Bayesian-PhysTwin only through explicit versioned public
 modules:
 
-- `bayesian_phystwin.causal4d_provider_v1` for the existing belief-artifact,
-  replay, fixed Bayesian-anchor, and diagnostic compatibility path;
-- `bayesian_phystwin.causal4d_provider_v2` for immutable request-complete replay
-  contracts used by newer integrations;
+- `bayesian_phystwin.causal4d_provider_v1` for frozen scientific and diagnostic
+  compatibility names;
+- `bayesian_phystwin.causal4d_provider_v2` for all production initial and restart
+  replay execution through immutable request-complete contracts;
 - `bayesian_phystwin.causal4d_graph_provider_v1` for the NumPy-only spring-graph
   value type, graph construction, and released controller grouping semantics;
 - `bayesian_phystwin.causal4d_artifacts_v1` for hash-locked released pickle
@@ -15,10 +15,9 @@ modules:
   diagnostics that still reuse BPT experiment semantics.
 
 The graph module is explicitly parented to Bayesian-PhysTwin's immutable
-`causal4d_provider_v2` contract. This PR does not silently switch the existing
-Causal4D rollout backend from replay provider v1 to v2; that replay migration is
-a separate compatibility change. Provider v1 remains necessary for frozen and
-current diagnostic paths.
+`causal4d_provider_v2` contract. Causal4D's belief exporter, rollout-bank backend,
+and resumable cache now execute replay exclusively through provider v2. Provider
+v1 remains only for frozen scientific and diagnostic compatibility operations.
 
 Production source and scripts no longer import any unversioned
 Bayesian-PhysTwin implementation module. An AST allowlist makes new direct
@@ -28,14 +27,17 @@ experiment imports a blocking test failure.
 
 Normal development accepts Bayesian-PhysTwin versions in the range
 `>=0.4,<0.5`. Compatibility is not inferred from the package version alone.
-Causal4D validates the current replay provider for:
+Causal4D validates two deliberately separate provider manifests:
 
-- provider API/schema version 1;
-- the capabilities required for artifact checksums, parameter particles,
-  particle-specific endpoint state, replay, residual lifting, target validity,
-  the fixed Bayesian-anchor endpoint, and each migrated diagnostic capability
-  group;
-- `TwinBelief` and `GraphBelief` artifact schema version 1.
+- scientific provider API/schema version 1 for frozen compatibility names,
+  fixed-anchor inference, and migrated diagnostics; and
+- replay provider API/schema version 2 for typed initial/restart requests,
+  immutable position/velocity trajectories, frame provenance, and stateless
+  replay execution.
+
+The scientific manifest requires its existing `TwinBelief` and `GraphBelief`
+artifact schemas. The replay manifest additionally requires `ReplayRequest` and
+`ReplayTrajectory` schema version 1 and every provider-v2 replay capability.
 
 The graph provider is checked separately for:
 
@@ -46,9 +48,11 @@ The graph provider is checked separately for:
 - the exact parent `bayesian_phystwin.causal4d_provider_v2` identity and API
   version 2.
 
-The replay manifest is loaded with
+The scientific manifest is loaded with
 `load_bayesian_phystwin_provider_manifest()` and checked with
-`validate_bayesian_phystwin_provider()`. The graph manifest is loaded with
+`validate_bayesian_phystwin_provider()`. The replay manifest is loaded with
+`load_bayesian_phystwin_replay_provider_manifest()` and checked with
+`validate_bayesian_phystwin_replay_provider()`. The graph manifest is loaded with
 `load_bayesian_phystwin_graph_provider_manifest()` and checked with
 `validate_bayesian_phystwin_graph_provider()`. A version, capability, artifact,
 graph-provider, or parent-provider mismatch fails closed and is reported
@@ -56,43 +60,36 @@ explicitly.
 
 ## Execution API
 
-The current `PhysTwinReplayProvider` v1 protocol remains the execution boundary
-for Causal4D's main BPT belief exporter and rollout-bank backend. They use only
-these operations:
+Production simulation uses `PhysTwinReplayProvider` from the explicitly versioned
+`causal4d_provider_v2` module. Each invocation is one immutable
+`InitialReplayRequestV1` or `RestartReplayRequestV1` containing:
 
-- set grouped spring log-scales;
-- set a controller trajectory;
-- replay from the released initial state;
-- replay from an explicit position/velocity endpoint;
-- release runtime resources.
+- a content-addressed request identifier;
+- the exact simulator-configuration and initial-state identifiers;
+- grouped spring log-scales and the complete controller trajectory;
+- for restarts, the particle-specific endpoint position and velocity; and
+- the complete requested frame interval.
 
-`create_official_replay_provider()` constructs BPT's Warp-backed v1
-implementation. Existing specialized diagnostics use public compatibility
-functions from the same versioned module while they are incrementally moved
-onto higher-level execution protocols.
+Causal4D independently validates every `ReplayTrajectoryV1` response against the
+request ID, configuration ID, state ID, frame IDs, timestep, shapes, and finite
+position/velocity values. The resumable cache stores and hashes positions,
+velocities, frame provenance, timestep, and all three identities. A cache hit can
+therefore reconstruct a complete provider-v2 response without instantiating Warp.
 
-Bayesian-PhysTwin provider v2 already supplies immutable request-complete replay
-DTOs, velocity-bearing replay trajectories, and owned replay/geometry/hash
-modules. The graph child contract reuses v2's canonical package metadata and
-declares v2 as its parent without re-exporting or redefining the replay
-protocol. A later Causal4D replay migration can therefore adopt v2 without
-changing this graph/controller contract.
+Provider v1 is not the production replay boundary. It remains a versioned
+compatibility facade for frozen diagnostics and scientific operations that have no
+request-complete replay role. Graph and controller geometry remain in
+`causal4d_graph_provider_v1`, which is NumPy-only and declares replay provider v2
+as its parent contract.
 
-Graph and controller geometry stay outside the accelerator-facing protocol.
-Causal4D imports `PhysTwinSpringGraph`, `PhysTwinSpringGraphConfig`,
-`build_phystwin_spring_graph()`, `controller_hand_count()`, and
-`infer_controller_groups()` only from `causal4d_graph_provider_v1`. The graph
-surface depends only on NumPy and can therefore be validated in core CI without
-Torch, Warp, OpenCV, or SciPy.
-
-The official rollout manifest records both the current replay-provider manifest
-and the graph-provider manifest. Public-data studies additionally record the
-public-study provider manifest, and new Molmo query preparation requires trusted
-SHA-256 identities for both `final_data.pkl` and `calibrate.pkl`. Frozen evidence
-can thus identify the exact replay implementation, graph/controller contract,
-and legacy visual inputs independently.
-This provenance separation improves upgrade auditability; it is not an
-empirical accuracy, calibration, or causal-prediction claim.
+The official rollout manifest records the scientific provider, replay-provider-v2,
+and graph-provider manifests separately. It also records source-artifact hashes,
+simulator/state identifiers, every request ID, exact frame provenance, and position
+and velocity digests. Public-data studies additionally record the public-study
+provider manifest, and Molmo query preparation requires trusted SHA-256 identities
+for both `final_data.pkl` and `calibrate.pkl`. This provenance separation improves
+upgrade auditability; it is not an empirical accuracy, calibration, or
+causal-prediction claim.
 
 ## Development installation
 

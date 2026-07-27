@@ -21,6 +21,7 @@ _BAYESIAN_PHYSTWIN_TEST_MODULES = frozenset(
         "test_discrepancy_localization_aggregate.py",
         "test_phystwin_propagated_state.py",
         "test_phystwin_resumable.py",
+        "test_replay_provider_contract.py",
     }
 )
 
@@ -39,6 +40,6 @@ def pytest_report_header(config) -> str | None:
     if _BAYESIAN_PHYSTWIN_AVAILABLE:
         return None
     return (
-        "bayesian_phystwin is unavailable; excluding 12 private integration "
+        "bayesian_phystwin is unavailable; excluding 13 private integration "
         "test modules"
     )

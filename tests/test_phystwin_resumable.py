@@ -5,44 +5,45 @@ from typing import Any
 
 import numpy as np
 
+from bayesian_phystwin.causal4d_provider_v2 import (
+    PhysTwinReplayProvider,
+    ReplayRequestV1,
+    ReplayTrajectoryV1,
+    RestartReplayRequestV1,
+)
 from causal4d.phystwin_resumable import _RolloutCacheSession
-from causal4d.rollout_cache import ContentAddressedRolloutCache
+from causal4d.rollout_cache import ContentAddressedReplayCache
 
 
 class FakeProvider:
-    def __init__(self, counter: dict[str, int]) -> None:
+    def __init__(self, counter: dict[str, int], **kwargs: Any) -> None:
         counter["providers"] += 1
         self.counter = counter
-        self.controller: np.ndarray | None = None
-        self.scales: np.ndarray | None = None
-        self.device = "cpu"
+        self.device = str(kwargs["device"])
+        self.frame_dt_s = float(kwargs["dt"]) * int(kwargs["num_substeps"])
+        self.simulator_configuration_id = str(
+            kwargs["simulator_configuration_id"]
+        )
+        self.released_initial_state_id = str(kwargs["released_initial_state_id"])
 
-    def set_controller_points(self, values: np.ndarray) -> None:
-        self.controller = np.asarray(values).copy()
-
-    def set_group_log_scales(self, values: np.ndarray) -> None:
-        self.scales = np.asarray(values).copy()
-
-    def replay_initial(self, *, frame_count: int) -> tuple[np.ndarray, None]:
-        return np.zeros((frame_count, 1, 3), dtype=np.float32), None
-
-    def replay_restart(
-        self,
-        position_m: np.ndarray,
-        velocity_mps: np.ndarray,
-        *,
-        start_frame: int,
-        stop_frame: int,
-    ) -> np.ndarray:
-        del velocity_mps
+    def replay(self, request: ReplayRequestV1) -> ReplayTrajectoryV1:
+        if not isinstance(request, RestartReplayRequestV1):
+            raise TypeError("unit provider expects a restart request")
         self.counter["replays"] += 1
-        frames = stop_frame - start_frame
-        endpoint = np.asarray(position_m, dtype=np.float32)
-        result = np.repeat(endpoint[None], frames, axis=0)
-        if self.scales is None:
-            raise RuntimeError("scales were not set")
-        result += float(np.sum(self.scales))
-        return result
+        frames = request.stop_frame - request.start_frame
+        positions = np.repeat(request.position_m[None], frames, axis=0)
+        positions += float(np.sum(request.group_log_scales))
+        velocities = np.repeat(request.velocity_mps[None], frames, axis=0)
+        velocities += 0.25
+        return ReplayTrajectoryV1(
+            positions_m=positions,
+            velocities_mps=velocities,
+            frame_ids=np.arange(request.start_frame, request.stop_frame),
+            dt_s=self.frame_dt_s,
+            request_id=request.request_id,
+            simulator_configuration_id=request.simulator_configuration_id,
+            initial_state_id=request.initial_state_id,
+        )
 
     def close(self) -> None:
         self.counter["closes"] += 1
@@ -61,12 +62,12 @@ def _graph() -> SimpleNamespace:
 
 def _session(tmp_path: Path) -> _RolloutCacheSession:
     return _RolloutCacheSession(
-        cache=ContentAddressedRolloutCache(tmp_path / "cache"),
+        cache=ContentAddressedReplayCache(tmp_path / "cache"),
         provider_manifest={
-            "manifest_id": "provider",
+            "manifest_id": "provider-v2",
             "provider_version": "0.4.1",
             "provider_revision": "revision",
-            "schema_version": 1,
+            "schema_version": 2,
         },
         provider_source={"fingerprint": "provider-source"},
         official_source={"fingerprint": "source", "revision": "source-rev"},
@@ -86,6 +87,8 @@ def _factory_arguments() -> tuple[tuple[Any, ...], dict[str, Any]]:
             "dt": 1e-4,
             "num_substeps": 4,
             "self_collision": False,
+            "simulator_configuration_id": "configuration-v2",
+            "released_initial_state_id": "released-state-v1",
             "deterministic_spring_forces": True,
             "spring_parameterization": "grouped",
             "device": "cpu",
@@ -93,12 +96,15 @@ def _factory_arguments() -> tuple[tuple[Any, ...], dict[str, Any]]:
     )
 
 
-def _replay(proxy: Any) -> np.ndarray:
-    proxy.set_controller_points(np.zeros((4, 1, 3), dtype=np.float32))
-    proxy.set_group_log_scales(np.asarray([0.1, -0.2], dtype=np.float32))
-    return proxy.replay_restart(
-        np.zeros((3, 3), dtype=np.float32),
-        np.zeros((3, 3), dtype=np.float32),
+def _request() -> RestartReplayRequestV1:
+    return RestartReplayRequestV1(
+        request_id="request-v2",
+        simulator_configuration_id="configuration-v2",
+        initial_state_id="endpoint-state-v1",
+        group_log_scales=np.asarray([0.1, -0.2], dtype=np.float32),
+        controller_points_m=np.zeros((4, 1, 3), dtype=np.float32),
+        position_m=np.zeros((3, 3), dtype=np.float32),
+        velocity_mps=np.ones((3, 3), dtype=np.float32),
         start_frame=2,
         stop_frame=4,
     )
@@ -108,22 +114,25 @@ def test_all_hit_rerun_skips_real_provider_construction(tmp_path: Path) -> None:
     counter = {"providers": 0, "replays": 0, "closes": 0}
 
     def factory(*args: Any, **kwargs: Any) -> FakeProvider:
-        del args, kwargs
-        return FakeProvider(counter)
+        del args
+        return FakeProvider(counter, **kwargs)
 
     args, kwargs = _factory_arguments()
     first_session = _session(tmp_path)
     first_proxy = first_session.wrap_factory(factory)(*args, **kwargs)
-    first = _replay(first_proxy)
+    assert isinstance(first_proxy, PhysTwinReplayProvider)
+    first = first_proxy.replay(_request())
     first_proxy.close()
 
     second_session = _session(tmp_path)
     second_proxy = second_session.wrap_factory(factory)(*args, **kwargs)
-    second = _replay(second_proxy)
+    second = second_proxy.replay(_request())
     second_proxy.close()
 
     assert counter == {"providers": 1, "replays": 1, "closes": 1}
-    assert np.array_equal(first, second)
+    np.testing.assert_array_equal(first.positions_m, second.positions_m)
+    np.testing.assert_array_equal(first.velocities_mps, second.velocities_mps)
+    np.testing.assert_array_equal(first.frame_ids, [2, 3])
     assert first_session.records[0]["cache_status"] == "miss"
     assert second_session.records[0]["cache_status"] == "hit"
     assert first_session.provider_instance_count == 1
@@ -133,6 +142,9 @@ def test_all_hit_rerun_skips_real_provider_construction(tmp_path: Path) -> None:
     record_path = first_session.cache.root / record["record_path"]
     with np.load(record_path, allow_pickle=False) as archive:
         envelope = json.loads(str(archive["descriptor_json"]))
+        assert "positions_m" in archive.files
+        assert "velocities_mps" in archive.files
+        assert str(archive["request_id"]) == "request-v2"
     descriptor = envelope["descriptor"]
     assert {
         "provider",
@@ -141,9 +153,12 @@ def test_all_hit_rerun_skips_real_provider_construction(tmp_path: Path) -> None:
         "numerical_runtime",
         "source_artifacts_sha256",
         "spring_graph",
-        "controller_points",
-        "group_log_scales",
-        "endpoint_position",
-        "endpoint_velocity",
-        "frame_interval",
+        "provider_factory",
+        "request",
     } <= set(descriptor)
+    assert descriptor["request"]["request_type"] == "RestartReplayRequestV1"
+    assert record["positions_sha256"] != record["velocities_sha256"]
+    assert first_session.manifest()["schema_version"] == 2
+    assert first_session.manifest()["cached_payload"] == (
+        "positions_velocities_and_provenance"
+    )
