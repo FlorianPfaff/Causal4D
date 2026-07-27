@@ -11,11 +11,11 @@ import numpy as np
 from causal4d.contracts import TwinBelief, load_contract
 from causal4d.phystwin_backend import load_bayesian_phystwin_particles
 
-from bayesian_phystwin.dynamic_discrepancy import (
+from bayesian_phystwin.causal4d_provider_v1 import (
     LOCALIZATION_GRAPH_RANK,
     load_dynamic_discrepancy_correction,
 )
-from bayesian_phystwin.phystwin_comparison import official_metrics_by_frame
+from bayesian_phystwin.causal4d_provider_v1 import official_metrics_by_frame
 from .phystwin_discrepancy_localization import (
     BASELINE,
     READOUT,
@@ -41,11 +41,11 @@ from bayesian_phystwin.causal4d_provider_v1 import (
     sha256_file,
     target_validity,
 )
-from bayesian_phystwin.propagated_state_belief import (
+from bayesian_phystwin.causal4d_provider_v1 import (
     PropagatedStateBeliefConfig,
     infer_propagated_state_belief,
 )
-from bayesian_phystwin.propagated_state_correction import (
+from bayesian_phystwin.causal4d_provider_v1 import (
     PropagatedStateCorrection,
     PropagatedStateSelectionConfig,
     decode_limited_state_weights,

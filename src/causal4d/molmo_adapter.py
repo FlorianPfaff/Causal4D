@@ -3,14 +3,31 @@
 from __future__ import annotations
 
 import json
-import pickle
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
 import numpy as np
 
-from bayesian_phystwin.phystwin_raw_cues import load_phystwin_raw_track_map
+
+def load_trusted_legacy_phystwin_pickle(*args: Any, **kwargs: Any) -> Any:
+    """Load a hash-locked legacy artifact without importing BPT at module import."""
+
+    from bayesian_phystwin.causal4d_artifacts_v1 import (
+        load_trusted_legacy_phystwin_pickle as provider_loader,
+    )
+
+    return provider_loader(*args, **kwargs)
+
+
+def load_released_phystwin_raw_track_map(*args: Any, **kwargs: Any) -> Any:
+    """Load the immutable raw-track map through the versioned artifact boundary."""
+
+    from bayesian_phystwin.causal4d_artifacts_v1 import (
+        load_released_phystwin_raw_track_map as provider_loader,
+    )
+
+    return provider_loader(*args, **kwargs)
 
 
 def farthest_point_indices(points: np.ndarray, count: int) -> np.ndarray:
@@ -55,6 +72,8 @@ class MolmoPhysTwinQuery:
     source_fps: float
     forecast_fps: float
     frame_stride: int
+    final_data_sha256: str | None = None
+    calibration_sha256: str | None = None
 
     def __post_init__(self) -> None:
         history = np.asarray(self.history_frame_indices, dtype=int)
@@ -94,6 +113,16 @@ class MolmoPhysTwinQuery:
             raise ValueError("frame stride must match source_fps / forecast_fps")
         if np.any(nodes < 0) or np.any(raw_tracks < 0):
             raise ValueError("track indices must be nonnegative")
+        for name, digest in (
+            ("final_data_sha256", self.final_data_sha256),
+            ("calibration_sha256", self.calibration_sha256),
+        ):
+            if digest is None:
+                continue
+            if len(digest) != 64 or any(
+                character not in "0123456789abcdef" for character in digest
+            ):
+                raise ValueError(f"{name} must be a lowercase SHA-256 digest")
         for path in self.image_paths:
             if not Path(path).is_file():
                 raise FileNotFoundError(path)
@@ -122,6 +151,8 @@ class MolmoPhysTwinQuery:
             "source_fps": self.source_fps,
             "forecast_fps": self.forecast_fps,
             "frame_stride": self.frame_stride,
+            "final_data_sha256": self.final_data_sha256,
+            "calibration_sha256": self.calibration_sha256,
             "point_coordinate_contract": "raw row/column tracks converted to x/y pixels",
             "trajectory_coordinate_contract": "metric world coordinates",
             "temporal_contract": "history and future sampled at forecast_fps",
@@ -132,6 +163,8 @@ def prepare_molmo_phystwin_query(
     final_data_path: str | Path,
     raw_case_dir: str | Path,
     *,
+    final_data_sha256: str,
+    calibration_sha256: str,
     train_end_frame: int,
     history_size: int = 3,
     point_count: int = 8,
@@ -142,8 +175,16 @@ def prepare_molmo_phystwin_query(
 
     final_path = Path(final_data_path)
     raw_path = Path(raw_case_dir)
-    with final_path.open("rb") as handle:
-        final_data = pickle.load(handle)
+    final_data = load_trusted_legacy_phystwin_pickle(
+        final_path,
+        expected_sha256=final_data_sha256,
+        artifact_kind="mapping",
+        required_keys=(
+            "object_points",
+            "object_visibilities",
+            "object_motions_valid",
+        ),
+    )
     object_points = np.asarray(final_data["object_points"], dtype=float)
     visible = np.asarray(final_data["object_visibilities"], dtype=bool)
     motion_valid = np.asarray(final_data["object_motions_valid"], dtype=bool)
@@ -171,13 +212,27 @@ def prepare_molmo_phystwin_query(
     )
     if history_frames[0] < 0:
         raise ValueError("train_end_frame cannot provide the requested sampled history")
-    mapping = load_phystwin_raw_track_map(final_path, raw_path)
+    mapping = load_released_phystwin_raw_track_map(
+        final_path,
+        raw_path,
+        final_data_sha256=final_data_sha256,
+    )
     intrinsics = np.asarray(metadata["intrinsics"], dtype=float)
     width, height = map(int, metadata["WH"])
-    with (raw_path / "calibrate.pkl").open("rb") as handle:
-        camera_to_world = np.asarray(pickle.load(handle), dtype=float)
+    camera_to_world = np.asarray(
+        load_trusted_legacy_phystwin_pickle(
+            raw_path / "calibrate.pkl",
+            expected_sha256=calibration_sha256,
+            artifact_kind="ndarray",
+        ),
+        dtype=float,
+    )
     camera_count = len(mapping.track_paths)
-    if intrinsics.shape != (camera_count, 3, 3) or camera_to_world.shape != (camera_count, 4, 4):
+    if intrinsics.shape != (camera_count, 3, 3) or camera_to_world.shape != (
+        camera_count,
+        4,
+        4,
+    ):
         raise ValueError("raw camera calibration does not match the track archives")
 
     candidates_by_camera: list[np.ndarray] = []
@@ -187,16 +242,13 @@ def prepare_molmo_phystwin_query(
         raw_visibility = mapping.visibility_by_camera[camera][
             history_frames[:, None], raw_ids[None]
         ]
-        raw_tracks = mapping.tracks_by_camera[camera][history_frames[:, None], raw_ids[None]]
+        raw_tracks = mapping.tracks_by_camera[camera][
+            history_frames[:, None], raw_ids[None]
+        ]
         # Released archives use row/column coordinates, as required by the pcd lookup.
         row = raw_tracks[..., 0]
         column = raw_tracks[..., 1]
-        in_bounds = (
-            (row >= 0.0)
-            & (row < height)
-            & (column >= 0.0)
-            & (column < width)
-        )
+        in_bounds = (row >= 0.0) & (row < height) & (column >= 0.0) & (column < width)
         processed_valid = np.all(
             visible[history_frames] & motion_valid[history_frames], axis=0
         )
@@ -223,7 +275,9 @@ def prepare_molmo_phystwin_query(
     raw_ids = mapping.source_track[nodes]
     raw_row_column = mapping.tracks_by_camera[camera][t0, raw_ids]
     points_xy = raw_row_column[:, [1, 0]]
-    image_paths = tuple(raw_path / "color" / str(camera) / f"{frame}.png" for frame in history_frames)
+    image_paths = tuple(
+        raw_path / "color" / str(camera) / f"{frame}.png" for frame in history_frames
+    )
     return MolmoPhysTwinQuery(
         case_name=final_path.resolve().parent.name,
         raw_case_dir=raw_path,
@@ -240,10 +294,14 @@ def prepare_molmo_phystwin_query(
         source_fps=source_fps,
         forecast_fps=float(forecast_fps),
         frame_stride=frame_stride,
+        final_data_sha256=final_data_sha256,
+        calibration_sha256=calibration_sha256,
     )
 
 
-def camera_to_world_points(points_camera_m: np.ndarray, camera_to_world: np.ndarray) -> np.ndarray:
+def camera_to_world_points(
+    points_camera_m: np.ndarray, camera_to_world: np.ndarray
+) -> np.ndarray:
     points = np.asarray(points_camera_m, dtype=float)
     transform = np.asarray(camera_to_world, dtype=float)
     if points.ndim < 2 or points.shape[-1] != 3 or transform.shape != (4, 4):
@@ -268,11 +326,17 @@ class MolmoForecastBundle:
         camera = np.asarray(self.future_camera_m, dtype=float)
         world = np.asarray(self.future_world_m, dtype=float)
         expected_prefix = (len(self.forecast_ids), len(self.query.node_indices))
-        if camera.ndim != 4 or camera.shape[:2] != expected_prefix or camera.shape[3] != 3:
+        if (
+            camera.ndim != 4
+            or camera.shape[:2] != expected_prefix
+            or camera.shape[3] != 3
+        ):
             raise ValueError("future_camera_m must have shape (K, P, F, 3)")
         if world.shape != camera.shape:
             raise ValueError("world and camera forecasts must have matching shapes")
-        if len(self.captions) != len(self.forecast_ids) or len(self.raw_text) != len(self.forecast_ids):
+        if len(self.captions) != len(self.forecast_ids) or len(self.raw_text) != len(
+            self.forecast_ids
+        ):
             raise ValueError("forecast metadata must match forecast_ids")
         if len(set(self.forecast_ids)) != len(self.forecast_ids):
             raise ValueError("forecast_ids must be unique")
@@ -310,7 +374,9 @@ def run_molmo_motion_forecasts(
 ) -> MolmoForecastBundle:
     """Load the released checkpoint once and forecast every language control."""
 
-    if not captions or any(not key or not value.strip() for key, value in captions.items()):
+    if not captions or any(
+        not key or not value.strip() for key, value in captions.items()
+    ):
         raise ValueError("captions must map nonempty ids to nonempty text")
     if future_horizon < 1:
         raise ValueError("future_horizon must be positive")
@@ -391,16 +457,22 @@ def save_molmo_forecasts(path: str | Path, bundle: MolmoForecastBundle) -> None:
         node_indices=bundle.query.node_indices,
         raw_track_indices=bundle.query.raw_track_indices,
         points_2d_xy=bundle.query.points_2d_xy.astype(np.float32),
-        points_3d_world_history_m=bundle.query.points_3d_world_history_m.astype(np.float32),
+        points_3d_world_history_m=bundle.query.points_3d_world_history_m.astype(
+            np.float32
+        ),
         camera_to_world=bundle.query.camera_to_world,
         intrinsics=bundle.query.intrinsics,
         source_fps=np.asarray(bundle.query.source_fps),
         forecast_fps=np.asarray(bundle.query.forecast_fps),
         frame_stride=np.asarray(bundle.query.frame_stride),
+        final_data_sha256=np.asarray(bundle.query.final_data_sha256 or ""),
+        calibration_sha256=np.asarray(bundle.query.calibration_sha256 or ""),
         camera_index=np.asarray(bundle.query.camera_index),
         t0_frame=np.asarray(bundle.query.t0_frame),
         history_frame_indices=bundle.query.history_frame_indices,
-        image_paths=np.asarray([str(path.resolve()) for path in bundle.query.image_paths]),
+        image_paths=np.asarray(
+            [str(path.resolve()) for path in bundle.query.image_paths]
+        ),
         raw_case_dir=np.asarray(str(bundle.query.raw_case_dir.resolve())),
         case_name=np.asarray(bundle.query.case_name),
         checkpoint=np.asarray(bundle.checkpoint),
@@ -424,12 +496,26 @@ def load_molmo_forecasts(path: str | Path) -> MolmoForecastBundle:
             )
             forecast_fps = source_fps
             frame_stride = 1
+        final_data_sha256 = (
+            str(archive["final_data_sha256"])
+            if "final_data_sha256" in archive.files
+            and str(archive["final_data_sha256"])
+            else None
+        )
+        calibration_sha256 = (
+            str(archive["calibration_sha256"])
+            if "calibration_sha256" in archive.files
+            and str(archive["calibration_sha256"])
+            else None
+        )
         query = MolmoPhysTwinQuery(
             case_name=str(archive["case_name"]),
             raw_case_dir=raw_case_dir,
             camera_index=int(archive["camera_index"]),
             t0_frame=int(archive["t0_frame"]),
-            history_frame_indices=np.asarray(archive["history_frame_indices"], dtype=int),
+            history_frame_indices=np.asarray(
+                archive["history_frame_indices"], dtype=int
+            ),
             image_paths=tuple(Path(str(value)) for value in archive["image_paths"]),
             node_indices=np.asarray(archive["node_indices"], dtype=int),
             raw_track_indices=np.asarray(archive["raw_track_indices"], dtype=int),
@@ -442,6 +528,8 @@ def load_molmo_forecasts(path: str | Path) -> MolmoForecastBundle:
             source_fps=source_fps,
             forecast_fps=forecast_fps,
             frame_stride=frame_stride,
+            final_data_sha256=final_data_sha256,
+            calibration_sha256=calibration_sha256,
         )
         return MolmoForecastBundle(
             query=query,

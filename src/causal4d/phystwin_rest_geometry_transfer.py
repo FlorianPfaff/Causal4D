@@ -10,7 +10,7 @@ from typing import Any, Mapping
 
 import numpy as np
 
-from bayesian_phystwin.phystwin_comparison import official_metrics_by_frame
+from bayesian_phystwin.causal4d_provider_v1 import official_metrics_by_frame
 from bayesian_phystwin.causal4d_graph_provider_v1 import (
     PhysTwinSpringGraphConfig,
     build_phystwin_spring_graph,
@@ -21,7 +21,7 @@ from bayesian_phystwin.causal4d_provider_v1 import (
     released_self_collision_for_case,
     sha256_file,
 )
-from bayesian_phystwin.phystwin_state_injection import estimate_endpoint_velocity_delta
+from bayesian_phystwin.causal4d_provider_v1 import estimate_endpoint_velocity_delta
 from causal4d.phystwin_rest_geometry import _run_configured_restart
 from causal4d.rest_geometry import (
     apply_frame_correction,

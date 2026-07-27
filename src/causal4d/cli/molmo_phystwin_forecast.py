@@ -39,6 +39,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("checkpoint")
     parser.add_argument("output_npz")
     parser.add_argument("--train-end-frame", type=int, required=True)
+    parser.add_argument(
+        "--final-data-sha256",
+        required=True,
+        help="trusted digest for the released final_data pickle",
+    )
+    parser.add_argument(
+        "--calibration-sha256",
+        required=True,
+        help="trusted digest for raw_case_dir/calibrate.pkl",
+    )
     parser.add_argument("--history-size", type=int, default=3)
     parser.add_argument("--future-horizon", type=int, default=30)
     parser.add_argument(
@@ -67,6 +77,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     query = prepare_molmo_phystwin_query(
         args.final_data,
         args.raw_case_dir,
+        final_data_sha256=args.final_data_sha256,
+        calibration_sha256=args.calibration_sha256,
         train_end_frame=args.train_end_frame,
         history_size=args.history_size,
         point_count=8,

@@ -1,12 +1,18 @@
 # Bayesian-PhysTwin provider boundary
 
-Causal4D currently consumes Bayesian-PhysTwin through two versioned public
+Causal4D consumes Bayesian-PhysTwin only through explicit versioned public
 modules:
 
 - `bayesian_phystwin.causal4d_provider_v1` for the existing belief-artifact,
-  replay, and diagnostic compatibility path;
+  replay, fixed Bayesian-anchor, and diagnostic compatibility path;
+- `bayesian_phystwin.causal4d_provider_v2` for immutable request-complete replay
+  contracts used by newer integrations;
 - `bayesian_phystwin.causal4d_graph_provider_v1` for the NumPy-only spring-graph
-  value type, graph construction, and released controller grouping semantics.
+  value type, graph construction, and released controller grouping semantics;
+- `bayesian_phystwin.causal4d_artifacts_v1` for hash-locked released pickle
+  inputs and immutable raw-track correspondence;
+- `bayesian_phystwin.causal4d_public_provider_v1` for source-locked public-data
+  diagnostics that still reuse BPT experiment semantics.
 
 The graph module is explicitly parented to Bayesian-PhysTwin's immutable
 `causal4d_provider_v2` contract. This PR does not silently switch the existing
@@ -14,8 +20,9 @@ Causal4D rollout backend from replay provider v1 to v2; that replay migration is
 a separate compatibility change. Provider v1 remains necessary for frozen and
 current diagnostic paths.
 
-Production code no longer imports graph/controller implementations or
-underscore-prefixed Bayesian-PhysTwin functions and modules directly.
+Production source and scripts no longer import any unversioned
+Bayesian-PhysTwin implementation module. An AST allowlist makes new direct
+experiment imports a blocking test failure.
 
 ## Compatibility contract
 
@@ -26,7 +33,8 @@ Causal4D validates the current replay provider for:
 - provider API/schema version 1;
 - the capabilities required for artifact checksums, parameter particles,
   particle-specific endpoint state, replay, residual lifting, target validity,
-  and the migrated diagnostics;
+  the fixed Bayesian-anchor endpoint, and each migrated diagnostic capability
+  group;
 - `TwinBelief` and `GraphBelief` artifact schema version 1.
 
 The graph provider is checked separately for:
@@ -78,8 +86,11 @@ surface depends only on NumPy and can therefore be validated in core CI without
 Torch, Warp, OpenCV, or SciPy.
 
 The official rollout manifest records both the current replay-provider manifest
-and the graph-provider manifest. Frozen evidence can thus identify the exact
-replay implementation and the exact graph/controller contract independently.
+and the graph-provider manifest. Public-data studies additionally record the
+public-study provider manifest, and new Molmo query preparation requires trusted
+SHA-256 identities for both `final_data.pkl` and `calibrate.pkl`. Frozen evidence
+can thus identify the exact replay implementation, graph/controller contract,
+and legacy visual inputs independently.
 This provenance separation improves upgrade auditability; it is not an
 empirical accuracy, calibration, or causal-prediction claim.
 
@@ -98,9 +109,9 @@ CAUSAL4D_REQUIRE_BPT_PROVIDER=1 python -m pytest -q \
 Package-based installations may use `python -m pip install ".[phystwin]"`;
 the extra encodes the supported `>=0.4,<0.5` range rather than one Git commit.
 The cross-repository workflows test the current development branches against
-each other's public contracts. An AST boundary test also rejects future direct
-imports from `phystwin_graph` or `phystwin_controller_sensitivity` in production
-source and scripts.
+each other's public contracts. An AST boundary test rejects every BPT import in
+production source and scripts unless its exact module is present in the
+versioned allowlist above.
 
 ## Frozen experiments
 

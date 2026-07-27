@@ -315,7 +315,9 @@ class _OfficialWarpRopeRunner:
             load_official_spring_mass_module,
             make_reliability_simulator_class,
         )
-        from bayesian_phystwin.phystwin_refit import build_phystwin_track_objective
+        from bayesian_phystwin.causal4d_public_provider_v1 import (
+            build_phystwin_track_objective,
+        )
 
         self.torch = torch
         self.wp = wp

@@ -21,7 +21,13 @@ BASE_CAUSAL4D_PROVIDER_CAPABILITIES = (
 )
 BAYESIAN_PHYSTWIN_PROVIDER_CAPABILITIES = (
     *BASE_CAUSAL4D_PROVIDER_CAPABILITIES,
+    "bayesian_anchor_endpoint",
+    "diagnostic_comparison",
     "diagnostic_compatibility",
+    "diagnostic_discrepancy",
+    "diagnostic_observation_audit",
+    "diagnostic_propagated_state",
+    "diagnostic_rest_geometry",
     "phystwin_replay",
     "residual_lifting",
     "target_validity",
@@ -129,9 +135,7 @@ class ProviderCompatibilityResult:
             "unsupported_schema_version": self.unsupported_schema_version,
             "unsupported_provider_version": self.unsupported_provider_version,
             "supported_provider_versions": self.supported_provider_versions,
-            "artifact_version_mismatches": list(
-                self.artifact_version_mismatches
-            ),
+            "artifact_version_mismatches": list(self.artifact_version_mismatches),
             "provider_manifest_id": self.provider_manifest_id,
         }
 

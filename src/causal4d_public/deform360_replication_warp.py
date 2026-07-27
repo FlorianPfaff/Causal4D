@@ -202,12 +202,16 @@ class OfficialWarpSparseGraphRunner:
             import torch
             import warp as wp
         except ImportError as error:  # pragma: no cover - GPU integration
-            raise RuntimeError("official-Warp replication requires torch and warp") from error
+            raise RuntimeError(
+                "official-Warp replication requires torch and warp"
+            ) from error
         from bayesian_phystwin.causal4d_provider_v1 import (
             load_official_spring_mass_module,
             make_reliability_simulator_class,
         )
-        from bayesian_phystwin.phystwin_refit import build_phystwin_track_objective
+        from bayesian_phystwin.causal4d_public_provider_v1 import (
+            build_phystwin_track_objective,
+        )
 
         self.torch = torch
         self.wp = wp
@@ -257,7 +261,10 @@ class OfficialWarpSparseGraphRunner:
         ).astype(np.float32)
         vertices = np.concatenate((self.initial_positions, self.controllers[0]), axis=0)
         masses = np.concatenate(
-            (case.graph.masses.astype(np.float32), np.ones(len(control_edges), np.float32))
+            (
+                case.graph.masses.astype(np.float32),
+                np.ones(len(control_edges), np.float32),
+            )
         )
 
         runtime_config = SimpleNamespace(
@@ -328,9 +335,7 @@ class OfficialWarpSparseGraphRunner:
         )
         wp.synchronize()
 
-    def _spring_log_y(
-        self, candidate: WarpRopeCandidate, active: tuple[bool, ...]
-    ):
+    def _spring_log_y(self, candidate: WarpRopeCandidate, active: tuple[bool, ...]):
         values = np.empty(len(self.springs), dtype=np.float32)
         values[: self.stretch_count] = candidate.stretch_spring_y
         values[self.stretch_count : self.num_object_springs] = candidate.bend_spring_y
@@ -341,9 +346,7 @@ class OfficialWarpSparseGraphRunner:
                 else self.config.inactive_controller_spring_y
             )
         return self.torch.log(
-            self.torch.as_tensor(
-                values, dtype=self.torch.float32, device=self.device
-            )
+            self.torch.as_tensor(values, dtype=self.torch.float32, device=self.device)
         ).contiguous()
 
     def rollout(
