@@ -1,0 +1,116 @@
+name: Publish immutable AIP verifier correction
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/bootstrap-causal4d-audit-repair-20260727'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out corrective verifier branch
+        uses: actions/checkout@v7
+        with:
+          ref: release/v0.3.0-causal4d-aip-verifier1
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Verify correction scope
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor v0.3.0-causal4d-aip HEAD
+          mapfile -t changed < <(git diff --name-only v0.3.0-causal4d-aip...HEAD | sort)
+          expected=(
+            milestones/v0.3.0-causal4d-aip/README.md
+            scripts/release/capture_file_manifest.py
+            scripts/release/verify_result_bundle.py
+          )
+          printf '%s\n' "${changed[@]}" > /tmp/changed.txt
+          printf '%s\n' "${expected[@]}" | sort > /tmp/expected.txt
+          diff -u /tmp/expected.txt /tmp/changed.txt
+
+      - name: Exercise standalone verifiers
+        run: |
+          set -euo pipefail
+          python scripts/release/capture_file_manifest.py --help >/dev/null
+          python scripts/release/verify_result_bundle.py --help >/dev/null
+          root=$(mktemp -d)
+          printf 'frozen-input\n' > "$root/source.txt"
+          cp "$root/source.txt" "$root/archive.txt"
+          python - "$root" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          specification = {
+              "schema_version": 1,
+              "milestone": "verifier-smoke",
+              "captured_at": "2026-07-27T00:00:00+00:00",
+              "host": "github-actions",
+              "entries": [
+                  {
+                      "id": "input",
+                      "category": "smoke",
+                      "source_path": str(root / "source.txt"),
+                      "archive_path": str(root / "archive.txt"),
+                  }
+              ],
+          }
+          (root / "specification.json").write_text(json.dumps(specification))
+          PY
+          python scripts/release/capture_file_manifest.py capture \
+            "$root/specification.json" "$root/manifest.json"
+          python scripts/release/capture_file_manifest.py verify \
+            "$root/manifest.json" --location source
+          python scripts/release/capture_file_manifest.py verify \
+            "$root/manifest.json" --location archive
+          mkdir "$root/result"
+          printf '{"value": 1.0}\n' > "$root/result/result.json"
+          python - "$root" <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          result = root / "result" / "result.json"
+          payload = {
+              "benchmark": "verifier-smoke",
+              "artifacts": {
+                  "result.json": {
+                      "bytes": result.stat().st_size,
+                      "sha256": hashlib.sha256(result.read_bytes()).hexdigest(),
+                  }
+              },
+          }
+          (root / "result" / "manifest.json").write_text(json.dumps(payload))
+          PY
+          python scripts/release/verify_result_bundle.py \
+            "$root/result/manifest.json" "$root/result"
+
+      - name: Publish corrective tag without moving the original
+        env:
+          CORRECTIVE_TAG: v0.3.0-causal4d-aip-verifier1
+        run: |
+          set -euo pipefail
+          target=$(git rev-parse HEAD)
+          original=$(git rev-parse v0.3.0-causal4d-aip^{commit})
+          test "$target" != "$original"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --tags origin "refs/tags/$CORRECTIVE_TAG" >/tmp/tag-ref 2>/dev/null; then
+            remote=$(awk '{print $1}' /tmp/tag-ref)
+            resolved=$(git rev-list -n 1 "$remote")
+            test "$resolved" = "$target"
+          else
+            git tag -a "$CORRECTIVE_TAG" -m "Add missing AIP verification utilities" "$target"
+            git push origin "refs/tags/$CORRECTIVE_TAG"
+          fi
