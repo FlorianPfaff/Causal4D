@@ -194,9 +194,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             backend,
             context=context,
         )
-        twin_belief_path = output_path.with_name(
-            output_path.stem + ".twin_belief.npz"
-        )
+        twin_belief_path = output_path.with_name(output_path.stem + ".twin_belief.npz")
         save_contract(twin_belief_path, twin_belief)
     bank, manifest = build_resumable_rollout_bank(
         backend,

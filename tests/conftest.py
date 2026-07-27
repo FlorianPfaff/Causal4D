@@ -6,9 +6,7 @@ import importlib.util
 from pathlib import Path
 
 
-_BAYESIAN_PHYSTWIN_AVAILABLE = (
-    importlib.util.find_spec("bayesian_phystwin") is not None
-)
+_BAYESIAN_PHYSTWIN_AVAILABLE = importlib.util.find_spec("bayesian_phystwin") is not None
 _BAYESIAN_PHYSTWIN_TEST_MODULES = frozenset(
     {
         "test_causal4d_bpt_belief.py",

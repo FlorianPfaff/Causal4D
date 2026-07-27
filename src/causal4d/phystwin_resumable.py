@@ -161,9 +161,7 @@ class _RolloutCacheSession:
         def cached_factory(*args: Any, **kwargs: Any) -> _LazyCachedReplayProvider:
             self.provider_proxy_count += 1
             graph = _factory_value(args, kwargs, name="graph", position=4)
-            original_count = int(
-                _factory_value(args, kwargs, name="original_count")
-            )
+            original_count = int(_factory_value(args, kwargs, name="original_count"))
             deterministic = bool(
                 _factory_value(args, kwargs, name="deterministic_spring_forces")
             )
@@ -235,9 +233,7 @@ class _RolloutCacheSession:
                 "trajectory_sha256": result.trajectory_sha256,
                 "controller_points_sha256": array_sha256(controller_points),
                 "group_log_scales_sha256": array_sha256(group_log_scales),
-                "group_log_scales": np.asarray(
-                    group_log_scales, dtype=float
-                ).tolist(),
+                "group_log_scales": np.asarray(group_log_scales, dtype=float).tolist(),
                 "endpoint_position_sha256": array_sha256(endpoint_position),
                 "endpoint_velocity_sha256": array_sha256(endpoint_velocity),
                 "frame_interval": [int(start_frame), int(stop_frame)],
@@ -354,9 +350,7 @@ class _LazyCachedReplayProvider:
             if self._controller_points is not None:
                 self._provider.set_controller_points(self._controller_points.copy())
             if self._group_log_scales is not None:
-                self._provider.set_group_log_scales(
-                    self._group_log_scales.copy()
-                )
+                self._provider.set_group_log_scales(self._group_log_scales.copy())
         return self._provider
 
     def set_controller_points(self, values: np.ndarray) -> None:
@@ -391,9 +385,7 @@ class _LazyCachedReplayProvider:
             "controller_points": _array_descriptor(self._controller_points),
             "group_log_scales": {
                 **_array_descriptor(self._group_log_scales),
-                "values": np.asarray(
-                    self._group_log_scales, dtype=float
-                ).tolist(),
+                "values": np.asarray(self._group_log_scales, dtype=float).tolist(),
             },
             "endpoint_position": _array_descriptor(position),
             "endpoint_velocity": _array_descriptor(velocity),
@@ -480,8 +472,8 @@ def build_resumable_rollout_bank(
             False,
         ):
             raise RuntimeError("nested PhysTwin rollout-cache sessions are unsupported")
-        phystwin_backend_module.create_official_replay_provider = (
-            session.wrap_factory(original_factory)
+        phystwin_backend_module.create_official_replay_provider = session.wrap_factory(
+            original_factory
         )
         try:
             bank, manifest = backend.build_rollout_bank(

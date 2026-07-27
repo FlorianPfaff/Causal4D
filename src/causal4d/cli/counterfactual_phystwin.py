@@ -219,9 +219,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "contact_policy": query.contact_policy,
                 "effective_components": effective_components,
                 "factual_kappa_reused": posterior.metadata["factual_kappa_reused"],
-                "fresh_kappa_cf_sampled": posterior.metadata[
-                    "fresh_kappa_cf_sampled"
-                ],
+                "fresh_kappa_cf_sampled": posterior.metadata["fresh_kappa_cf_sampled"],
                 "physical_posterior": str(output_path.resolve()),
                 "physical_posterior_id": posterior.artifact_id,
                 "query": str(query_path.resolve()),

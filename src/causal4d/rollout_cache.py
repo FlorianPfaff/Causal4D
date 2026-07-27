@@ -292,9 +292,7 @@ class ContentAddressedRolloutCache:
                     raise RolloutCacheValidationError(
                         "cache key does not match its path"
                     )
-                stored_descriptor = str(
-                    np.asarray(archive["descriptor_json"]).item()
-                )
+                stored_descriptor = str(np.asarray(archive["descriptor_json"]).item())
                 if stored_descriptor != descriptor_json:
                     raise RolloutCacheValidationError(
                         "cache descriptor does not match the requested rollout"
