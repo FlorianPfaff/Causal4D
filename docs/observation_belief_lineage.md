@@ -60,6 +60,29 @@ syntactically valid generic observation artifact cannot acquire a causal Prob4D
 claim merely by using the provider's repository name. The completed validation
 summary is retained when the observation belief is bound to a `TwinBelief`.
 
+## Provider-v2 attestation
+
+Historical provider-v1 observations remain valid for frozen reproduction. If a
+Prob4D observation carries `metadata.prob4d_provider_attestation`, Causal4D
+independently validates the complete embedded provider manifest, exact source
+revision, calibration artifact IDs, numerical modes, and runtime-revision
+evidence without importing Prob4D.
+
+New prospective evidence should use
+`load_claim_bearing_prob4d_observation_lineage`. The strict boundary additionally
+requires:
+
+- calibrated provider-v2 export with compatibility validation;
+- both gauge and point covariance-calibration IDs;
+- canonical repeated-eigenspace covariance roots;
+- analytic sequential `Sim(3)` composition Jacobians;
+- independently matched runtime code; and
+- the strict causal-stream contract rather than fixed-lag reconstruction output.
+
+See [Prob4D provider-v2 attestation validation](prob4d_provider_attestation.md).
+The attestation establishes immutable producer semantics and provenance; it does
+not establish empirical observation quality or downstream benefit.
+
 ## Exact factor-bundle validation
 
 ```bash
