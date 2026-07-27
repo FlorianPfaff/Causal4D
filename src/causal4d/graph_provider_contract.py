@@ -11,6 +11,14 @@ from causal4d.provider_contract import (
     validate_provider_compatibility,
 )
 
+BAYESIAN_PHYSTWIN_GRAPH_PROVIDER_API = (
+    "bayesian_phystwin.causal4d_graph_provider_v1"
+)
+BAYESIAN_PHYSTWIN_GRAPH_PROVIDER_API_VERSION = 1
+BAYESIAN_PHYSTWIN_GRAPH_PARENT_PROVIDER_API = (
+    "bayesian_phystwin.causal4d_provider_v2"
+)
+BAYESIAN_PHYSTWIN_GRAPH_PARENT_PROVIDER_API_VERSION = 2
 BAYESIAN_PHYSTWIN_GRAPH_PROVIDER_CAPABILITIES = (
     "controller_grouping",
     "phystwin_spring_graph",
@@ -42,22 +50,42 @@ def load_bayesian_phystwin_graph_provider_manifest(
     )
 
 
+def _validate_graph_provider_metadata(
+    manifest: PhysicalBeliefProviderManifest,
+) -> None:
+    expected = {
+        "provider_api": BAYESIAN_PHYSTWIN_GRAPH_PROVIDER_API,
+        "provider_api_version": BAYESIAN_PHYSTWIN_GRAPH_PROVIDER_API_VERSION,
+        "parent_provider_api": BAYESIAN_PHYSTWIN_GRAPH_PARENT_PROVIDER_API,
+        "parent_provider_api_version": (
+            BAYESIAN_PHYSTWIN_GRAPH_PARENT_PROVIDER_API_VERSION
+        ),
+    }
+    mismatches = {
+        name: (value, manifest.metadata.get(name))
+        for name, value in expected.items()
+        if manifest.metadata.get(name) != value
+    }
+    if mismatches:
+        raise ValueError(
+            "unexpected Bayesian-PhysTwin graph provider metadata: "
+            + json.dumps(mismatches, sort_keys=True)
+        )
+
+
 def validate_bayesian_phystwin_graph_provider(
     manifest: PhysicalBeliefProviderManifest | None = None,
     *,
     provider_revision: str | None = None,
 ) -> ProviderCompatibilityResult:
-    """Validate the installed BPT graph provider against Causal4D's v1 contract."""
+    """Validate BPT's graph child contract against immutable provider v2."""
 
     candidate = manifest or load_bayesian_phystwin_graph_provider_manifest(
         provider_revision=provider_revision
     )
     if candidate.provider_name != "bayesian-phystwin":
         raise ValueError("expected the bayesian-phystwin graph provider")
-    if candidate.metadata.get("provider_api") != (
-        "bayesian_phystwin.causal4d_graph_provider_v1"
-    ):
-        raise ValueError("unexpected Bayesian-PhysTwin graph provider API")
+    _validate_graph_provider_metadata(candidate)
     return validate_provider_compatibility(
         candidate,
         required_capabilities=BAYESIAN_PHYSTWIN_GRAPH_PROVIDER_CAPABILITIES,
@@ -88,6 +116,10 @@ def require_bayesian_phystwin_graph_provider(
 
 __all__ = [
     "BAYESIAN_PHYSTWIN_GRAPH_ARTIFACT_SCHEMA_VERSIONS",
+    "BAYESIAN_PHYSTWIN_GRAPH_PARENT_PROVIDER_API",
+    "BAYESIAN_PHYSTWIN_GRAPH_PARENT_PROVIDER_API_VERSION",
+    "BAYESIAN_PHYSTWIN_GRAPH_PROVIDER_API",
+    "BAYESIAN_PHYSTWIN_GRAPH_PROVIDER_API_VERSION",
     "BAYESIAN_PHYSTWIN_GRAPH_PROVIDER_CAPABILITIES",
     "load_bayesian_phystwin_graph_provider_manifest",
     "require_bayesian_phystwin_graph_provider",
