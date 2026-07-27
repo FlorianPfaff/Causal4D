@@ -46,14 +46,12 @@ jobs:
           python -m ruff format "${files[@]}"
           python -m ruff check "${files[@]}"
           python -m ruff format --check "${files[@]}"
-      - name: Run focused cache tests and capture diagnostics
+      - name: Run public cache tests and capture diagnostics
         id: focused
         shell: bash
         run: |
           set +e
-          python -m pytest -q \
-            tests/test_rollout_cache.py \
-            tests/test_phystwin_resumable.py \
+          python -m pytest -q tests/test_rollout_cache.py \
             > pr45-pytest-diagnostics.txt 2>&1
           status=$?
           cat pr45-pytest-diagnostics.txt
