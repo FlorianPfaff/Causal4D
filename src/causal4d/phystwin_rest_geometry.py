@@ -311,9 +311,7 @@ def evaluate_phystwin_rest_geometry_case(
     """Select on an inner training suffix, refit, and rerun the future in Warp."""
 
     frame_scales = _scale_grid(frame_scale_grid, name="frame_scale_grid")
-    rest_scales = _scale_grid(
-        rest_geometry_scale_grid, name="rest_geometry_scale_grid"
-    )
+    rest_scales = _scale_grid(rest_geometry_scale_grid, name="rest_geometry_scale_grid")
     controller_rest_modes = _controller_rest_grid(controller_rest_mode_grid)
     if graph_prior_strength <= 0.0:
         raise ValueError("graph_prior_strength must be positive")
@@ -362,9 +360,7 @@ def evaluate_phystwin_rest_geometry_case(
             config=graph_config,
         )
     else:
-        canonical_graph = load_canonical_material_graph(
-            canonical_material_graph_path
-        )
+        canonical_graph = load_canonical_material_graph(canonical_material_graph_path)
         if len(canonical_graph.vertices) != len(structure_points):
             raise ValueError("canonical graph and execution object size disagree")
         graph = attach_target_controller_to_canonical_graph(
@@ -520,9 +516,7 @@ def evaluate_phystwin_rest_geometry_case(
             maximum_log_ratio=maximum_rest_log_ratio,
         )
     )
-    frame_position = apply_frame_correction(
-        baseline[endpoint_index], correction.frame
-    )
+    frame_position = apply_frame_correction(baseline[endpoint_index], correction.frame)
     full_position = baseline[endpoint_index] + correction.endpoint_correction
     rotated_velocity = rotate_vectors(endpoint_velocity, correction.frame)
 
@@ -560,9 +554,10 @@ def evaluate_phystwin_rest_geometry_case(
         velocity=endpoint_velocity,
     )
     output_candidate = baseline.copy()
-    output_candidate[endpoint_index:] = apply_frame_correction(
-        baseline[endpoint_index:], correction.frame
-    ) + selected_rest_scale * correction.nonrigid_field[None]
+    output_candidate[endpoint_index:] = (
+        apply_frame_correction(baseline[endpoint_index:], correction.frame)
+        + selected_rest_scale * correction.nonrigid_field[None]
+    )
     candidates[OUTPUT_FRAME_GRAPH] = output_candidate
     add_rollout(
         FRAME_STATE,
@@ -735,9 +730,18 @@ def evaluate_phystwin_rest_geometry_case(
             "future_observations": "none",
         },
         "inputs": {
-            "final_data": {"path": str(Path(final_data_path).resolve()), "sha256": sha256_file(final_data_path)},
-            "baseline_trajectory": {"path": str(Path(baseline_trajectory_path).resolve()), "sha256": sha256_file(baseline_trajectory_path)},
-            "optimal_params": {"path": str(Path(optimal_params_path).resolve()), "sha256": sha256_file(optimal_params_path)},
+            "final_data": {
+                "path": str(Path(final_data_path).resolve()),
+                "sha256": sha256_file(final_data_path),
+            },
+            "baseline_trajectory": {
+                "path": str(Path(baseline_trajectory_path).resolve()),
+                "sha256": sha256_file(baseline_trajectory_path),
+            },
+            "optimal_params": {
+                "path": str(Path(optimal_params_path).resolve()),
+                "sha256": sha256_file(optimal_params_path),
+            },
             "checkpoint": {
                 "path": str(Path(checkpoint_path).resolve()),
                 "sha256": sha256_file(checkpoint_path),
@@ -746,9 +750,15 @@ def evaluate_phystwin_rest_geometry_case(
             "gt_track_3d": (
                 None
                 if gt_track_path is None
-                else {"path": str(Path(gt_track_path).resolve()), "sha256": sha256_file(gt_track_path)}
+                else {
+                    "path": str(Path(gt_track_path).resolve()),
+                    "sha256": sha256_file(gt_track_path),
+                }
             ),
-            "official_repo": {"path": str(Path(official_repo).resolve()), "commit": git_commit(official_repo)},
+            "official_repo": {
+                "path": str(Path(official_repo).resolve()),
+                "commit": git_commit(official_repo),
+            },
             "canonical_material_graph": (
                 None
                 if canonical_material_graph_path is None
@@ -801,7 +811,9 @@ def evaluate_phystwin_rest_geometry_case(
     return summary
 
 
-def _candidate_metrics(summary: dict[str, object], method: str) -> dict[str, np.ndarray]:
+def _candidate_metrics(
+    summary: dict[str, object], method: str
+) -> dict[str, np.ndarray]:
     return {
         metric: np.asarray(values["candidate_by_frame_m"], dtype=float)
         for metric, values in summary["methods"][method]["future"].items()
@@ -878,9 +890,7 @@ def run_phystwin_rest_geometry_comparison(
             raise FileNotFoundError(f"released checkpoint is missing for {case}")
 
     frame_scales = _scale_grid(frame_scale_grid, name="frame_scale_grid")
-    rest_scales = _scale_grid(
-        rest_geometry_scale_grid, name="rest_geometry_scale_grid"
-    )
+    rest_scales = _scale_grid(rest_geometry_scale_grid, name="rest_geometry_scale_grid")
     controller_rest_modes = _controller_rest_grid(controller_rest_mode_grid)
     clusters = {case: phystwin_physical_object_cluster(case) for case in selected}
     self_collision_by_case = {

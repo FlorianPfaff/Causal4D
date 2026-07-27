@@ -145,9 +145,7 @@ class BayesianPhysTwinParticles:
         object.__setattr__(self, "weights", weights)
         object.__setattr__(self, "grid_indices", indices)
         object.__setattr__(self, "retained_probability_mass", composed_retained)
-        object.__setattr__(
-            self, "represented_probability_mass", composed_represented
-        )
+        object.__setattr__(self, "represented_probability_mass", composed_represented)
         object.__setattr__(self, "bpt_retained_probability_mass", bpt_retained)
         object.__setattr__(
             self, "causal4d_retained_probability_mass", causal4d_retained
@@ -182,9 +180,7 @@ class BayesianPhysTwinParticles:
                 "selected_particle_count": len(self.weights),
             },
             "composed_relative_to_original_posterior": {
-                "directly_retained_probability_mass": (
-                    self.retained_probability_mass
-                ),
+                "directly_retained_probability_mass": (self.retained_probability_mass),
                 "represented_probability_mass": self.represented_probability_mass,
             },
         }
@@ -333,9 +329,7 @@ def load_bayesian_phystwin_particles(
         source_weight_key=selected_weight_key,
         retained_probability_mass=bpt_retained_mass * causal4d_retained_mass,
         selection_method=support_method,
-        represented_probability_mass=(
-            bpt_retained_mass * causal4d_represented_mass
-        ),
+        represented_probability_mass=(bpt_retained_mass * causal4d_represented_mass),
         source_particle_count=reduction.source_particle_count,
         bpt_retained_probability_mass=bpt_retained_mass,
         causal4d_retained_probability_mass=causal4d_retained_mass,

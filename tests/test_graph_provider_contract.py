@@ -33,12 +33,8 @@ def _manifest(
             if metadata is not None
             else {
                 "provider_api": BAYESIAN_PHYSTWIN_GRAPH_PROVIDER_API,
-                "provider_api_version": (
-                    BAYESIAN_PHYSTWIN_GRAPH_PROVIDER_API_VERSION
-                ),
-                "parent_provider_api": (
-                    BAYESIAN_PHYSTWIN_GRAPH_PARENT_PROVIDER_API
-                ),
+                "provider_api_version": (BAYESIAN_PHYSTWIN_GRAPH_PROVIDER_API_VERSION),
+                "parent_provider_api": (BAYESIAN_PHYSTWIN_GRAPH_PARENT_PROVIDER_API),
                 "parent_provider_api_version": (
                     BAYESIAN_PHYSTWIN_GRAPH_PARENT_PROVIDER_API_VERSION
                 ),

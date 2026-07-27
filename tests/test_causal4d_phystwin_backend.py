@@ -93,9 +93,7 @@ def test_profile_loader_preserves_staged_probability_mass(tmp_path: Path) -> Non
         0.9,
     )
     assert np.isclose(
-        accounting["causal4d_support_reduction"][
-            "directly_retained_probability_mass"
-        ],
+        accounting["causal4d_support_reduction"]["directly_retained_probability_mass"],
         8 / 9,
     )
     assert np.isclose(

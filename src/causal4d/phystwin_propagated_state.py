@@ -70,7 +70,9 @@ def _localization_input_path(summary: Mapping[str, Any], name: str) -> Path:
     record = summary["inputs"][name]
     path = Path(str(record["path"]))
     _require(path.is_file(), f"localization input is missing: {name}")
-    _require(sha256_file(path) == record["sha256"], f"localization input changed: {name}")
+    _require(
+        sha256_file(path) == record["sha256"], f"localization input changed: {name}"
+    )
     return path
 
 

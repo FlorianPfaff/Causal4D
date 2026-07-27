@@ -11,13 +11,9 @@ from causal4d.provider_contract import (
     validate_provider_compatibility,
 )
 
-BAYESIAN_PHYSTWIN_GRAPH_PROVIDER_API = (
-    "bayesian_phystwin.causal4d_graph_provider_v1"
-)
+BAYESIAN_PHYSTWIN_GRAPH_PROVIDER_API = "bayesian_phystwin.causal4d_graph_provider_v1"
 BAYESIAN_PHYSTWIN_GRAPH_PROVIDER_API_VERSION = 1
-BAYESIAN_PHYSTWIN_GRAPH_PARENT_PROVIDER_API = (
-    "bayesian_phystwin.causal4d_provider_v2"
-)
+BAYESIAN_PHYSTWIN_GRAPH_PARENT_PROVIDER_API = "bayesian_phystwin.causal4d_provider_v2"
 BAYESIAN_PHYSTWIN_GRAPH_PARENT_PROVIDER_API_VERSION = 2
 BAYESIAN_PHYSTWIN_GRAPH_PROVIDER_CAPABILITIES = (
     "controller_grouping",
@@ -90,9 +86,7 @@ def validate_bayesian_phystwin_graph_provider(
         candidate,
         required_capabilities=BAYESIAN_PHYSTWIN_GRAPH_PROVIDER_CAPABILITIES,
         supported_provider_versions=BAYESIAN_PHYSTWIN_COMPATIBILITY_RANGE,
-        required_artifact_versions=(
-            BAYESIAN_PHYSTWIN_GRAPH_ARTIFACT_SCHEMA_VERSIONS
-        ),
+        required_artifact_versions=(BAYESIAN_PHYSTWIN_GRAPH_ARTIFACT_SCHEMA_VERSIONS),
     )
 
 
