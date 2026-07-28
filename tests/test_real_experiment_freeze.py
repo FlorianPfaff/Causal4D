@@ -89,9 +89,7 @@ def _repository(tmp_path: Path) -> Path:
         amendment,
         omitted_field="amendment_sha256",
     )
-    (root / PREACQUISITION_PATH).write_text(
-        json.dumps(amendment), encoding="utf-8"
-    )
+    (root / PREACQUISITION_PATH).write_text(json.dumps(amendment), encoding="utf-8")
 
     (root / BPT_PIN_PATH).write_text(BPT_SHA + "\n", encoding="utf-8")
     (root / "pyproject.toml").write_text(
@@ -121,9 +119,10 @@ def test_freeze_binds_method_files_dependency_and_registered_calibration(
     )
     assert result["locked_files_checked"] == len(REQUIRED_LOCKED_PATHS)
     assert result["bayesian_phystwin_commit_sha"] == BPT_SHA
-    assert result["preacquisition_amendment_sha256"] == manifest["preacquisition"][
-        "amendment_sha256"
-    ]
+    assert (
+        result["preacquisition_amendment_sha256"]
+        == manifest["preacquisition"]["amendment_sha256"]
+    )
     assert result["passed"]
 
     analysis = manifest["analysis_contract"]
@@ -172,9 +171,7 @@ def test_freeze_rejects_file_drift_and_target_informed_selection(
         validate_method_freeze_manifest(changed, root)
 
     changed = deepcopy(manifest)
-    changed["analysis_contract"]["optional_branches_may_change_primary_analysis"] = (
-        True
-    )
+    changed["analysis_contract"]["optional_branches_may_change_primary_analysis"] = True
     with pytest.raises(ValueError, match="analysis contract"):
         validate_method_freeze_manifest(changed, root)
 
@@ -213,9 +210,9 @@ def test_freeze_rejects_preacquisition_or_gate_control_drift(tmp_path: Path) -> 
     )
     evidence_path = root / MECHANISM_GATE_EVIDENCE_PATH
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
-    evidence["acceptance_checks"][
-        "placebo_null_full_gate_upper_below_5_percent"
-    ] = False
+    evidence["acceptance_checks"]["placebo_null_full_gate_upper_below_5_percent"] = (
+        False
+    )
     evidence["result_sha256"] = _canonical_payload_sha256(
         evidence,
         omitted_field="result_sha256",
@@ -255,9 +252,7 @@ def test_checkout_validation_rejects_tracked_or_untracked_drift(
         cwd=root,
         check=True,
     )
-    subprocess.run(
-        ["git", "config", "user.name", "Test"], cwd=root, check=True
-    )
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
     subprocess.run(["git", "add", "."], cwd=root, check=True)
     subprocess.run(["git", "commit", "-qm", "freeze"], cwd=root, check=True)
     commit = subprocess.run(

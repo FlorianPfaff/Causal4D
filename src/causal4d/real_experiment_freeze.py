@@ -224,9 +224,7 @@ def _analysis_contract() -> dict[str, Any]:
             "outer_fold_count": 12,
             "expected_calibration_units_per_outer_fold": 9,
             "order_statistic_rank_one_based": 9,
-            "calibration_unit": (
-                "one preregistered execution per independent session"
-            ),
+            "calibration_unit": ("one preregistered execution per independent session"),
             "score_kind": "max_abs_standardized_coordinate_v1",
             "target_threshold_reselection_allowed": False,
             "pooled_coordinate_conformal_claimed": False,
@@ -487,9 +485,7 @@ def validate_method_freeze_manifest(
         "causal4d_commit_sha": commit_sha,
         "bayesian_phystwin_commit_sha": bpt_commit,
         "protocol_design_sha256": protocol["design_sha256"],
-        "preacquisition_amendment_sha256": checked_preacquisition[
-            "amendment_sha256"
-        ],
+        "preacquisition_amendment_sha256": checked_preacquisition["amendment_sha256"],
         "mechanism_gate_control_sha256": checked_preacquisition[
             "mechanism_gate_control"
         ]["result_sha256"],
