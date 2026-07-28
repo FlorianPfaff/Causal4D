@@ -121,6 +121,11 @@ jobs:
             echo "### Pinned Bayesian-PhysTwin integration" >> "$GITHUB_STEP_SUMMARY"
             echo "Skipped because the repository secret \`BPT_READ_TOKEN\` is absent." >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Require private-provider integration for releases
+        if: startsWith(github.ref, 'refs/tags/v') && steps.access.outputs.enabled != 'true'
+        run: |
+          echo "::error::Release tags require BPT_READ_TOKEN and an executed pinned-provider integration."
+          exit 1
       - name: Read exact Bayesian-PhysTwin pin
         if: steps.access.outputs.enabled == 'true'
         id: pin
