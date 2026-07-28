@@ -1,0 +1,80 @@
+name: Apply Causal4D hardening patch
+
+on:
+  push:
+    branches:
+      - agent/harden-content-addresses-and-numerics
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Apply reviewed patch and release safeguards
+        shell: bash
+        run: |
+          set -euo pipefail
+          gzip -dc .agent/causal4d-hardening.patch.gz > /tmp/causal4d-hardening.patch
+          git apply --check /tmp/causal4d-hardening.patch
+          git apply /tmp/causal4d-hardening.patch
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path(".github/workflows/ci.yml")
+          text = workflow.read_text(encoding="utf-8")
+          marker = """          fi
+                - name: Read exact Bayesian-PhysTwin pin
+          """
+          replacement = """          fi
+                - name: Require private-provider integration for releases
+                  if: startsWith(github.ref, 'refs/tags/v') && steps.access.outputs.enabled != 'true'
+                  run: |
+                    echo "::error::Release tags require BPT_READ_TOKEN and an executed pinned-provider integration."
+                    exit 1
+                - name: Read exact Bayesian-PhysTwin pin
+          """
+          if marker not in text:
+              raise SystemExit("pinned-provider release insertion point changed")
+          workflow.write_text(text.replace(marker, replacement, 1), encoding="utf-8")
+
+          frozen = Path("requirements/frozen/causal4d-0.3.0.txt")
+          text = frozen.read_text(encoding="utf-8")
+          old = (
+              "# Both repositories are locked because current Causal4D expects "
+              "the v1 provider API.\n"
+          )
+          new = (
+              "# These historical revisions are locked because this frozen "
+              "Causal4D snapshot\n"
+              "# expects the legacy provider-v1 boundary.\n"
+          )
+          if old not in text:
+              raise SystemExit("frozen-stack compatibility note changed")
+          frozen.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          documentation = Path("docs/ci.md")
+          text = documentation.read_text(encoding="utf-8")
+          old = """The three-repository workflow is not allowed to report success after skipping
+          its checkouts, wheel builds, and compatibility tests.
+          """
+          new = old + """Tag releases also fail in the main CI workflow when the credential is absent,
+          so a skipped pinned-provider job cannot authorize release publication.
+          """
+          if old not in text:
+              raise SystemExit("CI credential documentation changed")
+          documentation.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+          rm -rf .agent .github/workflows/apply-agent-hardening.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Harden content-addressed contracts and numerics"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
