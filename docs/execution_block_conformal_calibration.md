@@ -41,6 +41,7 @@ inputs accepted by `causal4d-real-calibration`.
   "protocol_design_sha256": "...",
   "preacquisition_plan_id": "causal4d-sloth-preacquisition-v4",
   "preacquisition_amendment_sha256": "...",
+  "method_freeze_sha256": "...",
   "fit": [
     {
       "execution_id": "source-fit-001",
@@ -62,6 +63,13 @@ inputs accepted by `causal4d-real-calibration`.
 }
 ```
 
+`protocol_id`, `protocol_design_sha256`, `preacquisition_plan_id`, and
+`preacquisition_amendment_sha256` are mandatory. Digests must be lowercase
+SHA-256 values. `method_freeze_sha256` is optional before the final method seal,
+but once supplied it becomes part of the immutable source calibration identity.
+The exact source-manifest digest is also embedded in the checksummed calibration
+artifact.
+
 Fit and seal the calibration artifact with:
 
 ```bash
@@ -74,13 +82,18 @@ causal4d-execution-block-calibration fit \
 
 `--expected-fit-units` may additionally lock the fit count. The command rejects
 repeated session IDs, execution overlap, session overlap between fit and
-calibration, mixed outer folds, incomplete frozen counts, and unattainable
-finite conformal ranks.
+calibration, mixed outer folds, incomplete frozen counts, unattainable finite
+conformal ranks, and incomplete or malformed protocol provenance.
 
 ## Target evaluation
 
 The target manifest uses the same schema and outer-fold ID with a `target` list.
-No target execution or session may occur in the fit or calibration source.
+No target execution or session may occur in the fit or calibration source. It
+must repeat the exact source `protocol_id`, protocol-design digest,
+preacquisition plan ID, and amendment digest. If either source or target names a
+`method_freeze_sha256`, both must name the same digest. A same-named fold from a
+different protocol, amendment, or method freeze is rejected before any target
+case is scored.
 
 ```bash
 causal4d-execution-block-calibration evaluate \
@@ -88,6 +101,12 @@ causal4d-execution-block-calibration evaluate \
   target-fold.json \
   target-evaluation.json
 ```
+
+The output contains a canonical `frozen_source_target_binding` record with the
+source and target manifest digests and the verified protocol identities. This
+record is written alongside the execution-block coverage result so paper-facing
+evidence cannot silently combine calibration and target artifacts from different
+registered designs.
 
 The output reports execution-block coverage as the primary quantity. Pointwise
 coordinate coverage, RMSE, track error, and interval width are diagnostics only.
