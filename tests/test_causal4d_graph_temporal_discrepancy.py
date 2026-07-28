@@ -99,3 +99,24 @@ def test_persistence_and_learned_dynamics_are_distinct() -> None:
     )
     assert not np.allclose(learned[4:], persistent[4:])
     np.testing.assert_allclose(persistent[4], persistent[3], atol=1e-7)
+
+
+def test_transition_fit_does_not_form_an_explicit_matrix_inverse(monkeypatch) -> None:
+    residual, valid, basis, eigenvalues = _residual_sequence()
+
+    def fail_on_inverse(*args, **kwargs):
+        del args, kwargs
+        raise AssertionError("explicit matrix inverse must not be used")
+
+    monkeypatch.setattr(np.linalg, "inv", fail_on_inverse)
+    model = fit_graph_temporal_discrepancy(
+        residual[:24],
+        valid[:24],
+        basis,
+        eigenvalues,
+        rank_candidates=(2,),
+        projection_ridge=1e-8,
+        dynamics_ridge=1e-8,
+    )
+    assert model.transition.shape == (2, 2)
+    assert np.all(np.isfinite(model.transition))

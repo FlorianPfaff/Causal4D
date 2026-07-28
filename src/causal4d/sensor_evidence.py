@@ -10,6 +10,8 @@ from typing import Any, Mapping
 
 import numpy as np
 
+from causal4d.immutable_json import validated_json_mapping
+
 from causal4d.contracts import array_sha256
 
 
@@ -20,13 +22,6 @@ def _readonly(values: np.ndarray, *, dtype: type | None = float) -> np.ndarray:
     array = np.asarray(values, dtype=dtype).copy()
     array.setflags(write=False)
     return array
-
-
-def _validated_metadata(values: Mapping[str, Any]) -> dict[str, Any]:
-    try:
-        return json.loads(json.dumps(dict(values), sort_keys=True, allow_nan=False))
-    except (TypeError, ValueError) as error:
-        raise ValueError("metadata must contain finite JSON values") from error
 
 
 def _validate_identity(
@@ -172,7 +167,14 @@ class ActuatorEvidence:
         object.__setattr__(self, "positions_m", positions)
         object.__setattr__(self, "variance_m2", variance)
         object.__setattr__(self, "valid_mask", mask)
-        object.__setattr__(self, "metadata", _validated_metadata(self.metadata))
+        object.__setattr__(
+            self,
+            "metadata",
+            validated_json_mapping(
+                self.metadata,
+                error_message="metadata must contain finite JSON values",
+            ),
+        )
 
     @property
     def artifact_id(self) -> str:
@@ -240,7 +242,14 @@ class ContactWrenchEvidence:
         object.__setattr__(self, "wrench", wrench)
         object.__setattr__(self, "variance", variance)
         object.__setattr__(self, "valid_mask", mask)
-        object.__setattr__(self, "metadata", _validated_metadata(self.metadata))
+        object.__setattr__(
+            self,
+            "metadata",
+            validated_json_mapping(
+                self.metadata,
+                error_message="metadata must contain finite JSON values",
+            ),
+        )
 
     @property
     def artifact_id(self) -> str:

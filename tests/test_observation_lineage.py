@@ -8,6 +8,7 @@ import pytest
 from causal4d.observation_lineage import (
     bind_twin_belief_observation_lineage,
     compute_observation_artifact_id,
+    ObservationLineage,
     load_observation_lineage,
     validate_twin_belief_observation_lineage,
 )
@@ -140,3 +141,33 @@ def test_lineage_rejects_observation_before_twin_o_minus(tmp_path: Path) -> None
         validate_twin_belief_observation_lineage(
             twin, lineage, require_bound=False
         )
+
+
+def test_lineage_provider_validation_is_deeply_immutable() -> None:
+    validation = {"provider": {"checks": ["schema", {"passed": True}]}}
+    lineage = ObservationLineage(
+        artifact_id="a" * 64,
+        case_id="case-1",
+        stream_id="prob4d:points",
+        causal_frame_stop=12,
+        minimum_frame_id=8,
+        maximum_frame_id=9,
+        observation_count=4,
+        group_count=2,
+        factor_rank=2,
+        source_repository="FlorianPfaff/Prob4D",
+        source_revision="b" * 40,
+        source_artifact_sha256="c" * 64,
+        provider_validation=validation,
+    )
+
+    validation["provider"]["checks"][1]["passed"] = False
+    assert lineage.provider_validation["provider"]["checks"][1]["passed"] is True
+    with pytest.raises(TypeError, match="immutable"):
+        lineage.provider_validation["provider"]["checks"].append("mutated")
+
+    metadata = lineage.metadata()
+    metadata["source_observation_provider_validation"]["provider"]["checks"].append(
+        "copy-only"
+    )
+    assert "copy-only" not in lineage.provider_validation["provider"]["checks"]

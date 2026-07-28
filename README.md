@@ -46,9 +46,11 @@ prospective mechanism gates.
 the uncertain deformable-object twin: state and parameter particles, graph
 geometry, PhysTwin/Warp replay, and perception/discrepancy artifacts. Causal4D
 consumes those artifacts and owns the intervention and counterfactual
-inference. The dependency points from Causal4D to Bayesian-PhysTwin through
-`bayesian_phystwin.causal4d_provider_v1`; execution uses the
-`PhysTwinReplayProvider` protocol rather than BPT internals.
+inference. Frozen scientific operations use the versioned
+`causal4d_provider_v1` facade, while production replay uses
+`causal4d_provider_v2` through the `PhysTwinReplayProvider` protocol. Graph and
+released visual artifacts use separately versioned provider facades; production
+source does not import Bayesian-PhysTwin internals.
 
 Install the `phystwin` extra for these adapters. Core controlled benchmarks do
 not require Warp or the PhysTwin checkout. See

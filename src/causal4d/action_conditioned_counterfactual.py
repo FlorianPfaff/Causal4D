@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import json
 from typing import Any, Literal, Mapping
 
 import numpy as np
+
+from causal4d.immutable_json import validated_json_mapping
 
 from causal4d.action_conditioned_discrepancy import (
     ActionConditionedDiscrepancyFeatures,
@@ -33,13 +34,6 @@ def _readonly(values: np.ndarray, *, dtype: type | None = float) -> np.ndarray:
     array = np.asarray(values, dtype=dtype).copy()
     array.setflags(write=False)
     return array
-
-
-def _validated_metadata(values: Mapping[str, Any]) -> dict[str, Any]:
-    try:
-        return json.loads(json.dumps(dict(values), sort_keys=True, allow_nan=False))
-    except (TypeError, ValueError) as error:
-        raise ValueError("metadata must contain finite JSON values") from error
 
 
 @dataclass(frozen=True)
@@ -93,7 +87,14 @@ class ActionConditionedPhysicalPosterior:
             "discrepancy_coefficient_covariance_m2",
             covariance,
         )
-        object.__setattr__(self, "metadata", _validated_metadata(self.metadata))
+        object.__setattr__(
+            self,
+            "metadata",
+            validated_json_mapping(
+                self.metadata,
+                error_message="metadata must contain finite JSON values",
+            ),
+        )
 
     @property
     def component_ids(self) -> tuple[str, ...]:

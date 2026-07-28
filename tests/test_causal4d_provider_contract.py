@@ -138,3 +138,24 @@ def test_manifest_identifier_is_order_invariant() -> None:
     )
     second = _manifest()
     assert first.manifest_id == second.manifest_id
+
+
+def test_manifest_content_address_cannot_be_changed_by_nested_mutation() -> None:
+    artifact_versions = {"TwinBelief": 1, "GraphBelief": 1}
+    metadata = {"nested": {"items": [1, {"accepted": True}]}}
+    manifest = _manifest(
+        artifact_schema_versions=artifact_versions,
+        metadata=metadata,
+    )
+    manifest_id = manifest.manifest_id
+
+    artifact_versions["TwinBelief"] = 99
+    metadata["nested"]["items"][1]["accepted"] = False
+    assert manifest.artifact_schema_versions["TwinBelief"] == 1
+    assert manifest.metadata["nested"]["items"][1]["accepted"] is True
+    assert manifest.manifest_id == manifest_id
+
+    with pytest.raises(TypeError, match="immutable"):
+        manifest.artifact_schema_versions["TwinBelief"] = 2
+    with pytest.raises(TypeError, match="immutable"):
+        manifest.metadata["nested"]["items"].append("mutated")

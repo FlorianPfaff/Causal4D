@@ -163,9 +163,9 @@ def _fit_transition(
     rank = values.shape[1]
     source = values[:-1].transpose(1, 0, 2).reshape(rank, -1)
     target = values[1:].transpose(1, 0, 2).reshape(rank, -1)
-    transition = (
-        target @ source.T @ np.linalg.inv(source @ source.T + ridge * np.eye(rank))
-    )
+    gram = source @ source.T + ridge * np.eye(rank)
+    cross = target @ source.T
+    transition = np.linalg.solve(gram, cross.T).T
     radius_before = float(np.max(np.abs(np.linalg.eigvals(transition))))
     if radius_before > maximum_spectral_radius:
         transition *= maximum_spectral_radius / radius_before

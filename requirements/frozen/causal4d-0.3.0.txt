@@ -1,4 +1,5 @@
 # Frozen pre-provider-API stack. Install this file in a fresh environment.
-# Both repositories are locked because current Causal4D expects the v1 provider API.
+# These historical revisions are locked because this frozen Causal4D snapshot
+# expects the legacy provider-v1 boundary.
 causal4d @ git+https://github.com/FlorianPfaff/Causal4D.git@33b75f68b1bcdc52161389f8f33ff724f1db0188
 bayesian-phystwin @ git+https://github.com/FlorianPfaff/Bayesian-PhysTwin.git@c7ad36aad7e592ce8a391c9ca2d4db7389dee3ac

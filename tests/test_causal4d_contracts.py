@@ -1,3 +1,4 @@
+import copy
 from pathlib import Path
 
 import numpy as np
@@ -200,3 +201,38 @@ def test_new_contact_query_does_not_carry_factual_contact_identity() -> None:
             contact_policy="same_grasp",
             source_factual_intervention_id="not-an-artifact-id",
         )
+
+
+def test_contract_metadata_is_deeply_immutable_and_artifact_id_stable(
+    tmp_path: Path,
+) -> None:
+    context, _ = _context()
+    metadata = {
+        "nested": {
+            "items": [1, {"accepted": True}],
+            "tuple_items": (2, 3),
+        }
+    }
+    belief = TwinBelief(**{**_belief(context).__dict__, "metadata": metadata})
+    artifact_id = belief.artifact_id
+
+    metadata["nested"]["items"][1]["accepted"] = False
+    assert belief.metadata["nested"]["items"][1]["accepted"] is True
+    assert belief.artifact_id == artifact_id
+    assert isinstance(belief.metadata, dict)
+    assert isinstance(belief.metadata["nested"]["items"], list)
+
+    with pytest.raises(TypeError, match="immutable"):
+        belief.metadata["nested"]["items"][1]["accepted"] = False
+    with pytest.raises(TypeError, match="immutable"):
+        belief.metadata["nested"]["items"].append("mutated")
+
+    copied = copy.deepcopy(belief.metadata)
+    copied["nested"]["items"].append("copy-only")
+    assert "copy-only" not in belief.metadata["nested"]["items"]
+
+    path = tmp_path / "immutable-belief.npz"
+    save_contract(path, belief)
+    restored = load_contract(path)
+    assert restored.artifact_id == artifact_id
+    assert restored.metadata == belief.metadata

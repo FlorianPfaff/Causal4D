@@ -10,6 +10,8 @@ from typing import Any, ClassVar, Literal, Mapping
 
 import numpy as np
 
+from causal4d.immutable_json import validated_json_mapping
+
 
 CONTRACT_VERSION = 1
 
@@ -49,13 +51,6 @@ def _validated_weights(values: np.ndarray, *, name: str) -> np.ndarray:
     if not np.isclose(np.sum(weights), 1.0, atol=1e-10, rtol=1e-10):
         raise ValueError(f"{name} must sum to one")
     return weights
-
-
-def _validated_metadata(values: Mapping[str, Any]) -> dict[str, Any]:
-    try:
-        return json.loads(json.dumps(dict(values), sort_keys=True, allow_nan=False))
-    except (TypeError, ValueError) as error:
-        raise ValueError("metadata must be finite JSON data") from error
 
 
 @dataclass(frozen=True)
@@ -335,7 +330,7 @@ class TwinBelief(_Contract):
         object.__setattr__(self, "discrepancy_mean_m", discrepancy)
         object.__setattr__(self, "discrepancy_variance_m2", variance)
         object.__setattr__(self, "weights", weights)
-        object.__setattr__(self, "metadata", _validated_metadata(self.metadata))
+        object.__setattr__(self, "metadata", validated_json_mapping(self.metadata))
 
     def _scalar_payload(self) -> dict[str, Any]:
         return {
@@ -402,7 +397,7 @@ class FactualIntervention(_Contract):
         object.__setattr__(self, "hypothesis_indices", hypotheses)
         object.__setattr__(self, "twin_particle_indices", particles)
         object.__setattr__(self, "weights", weights)
-        object.__setattr__(self, "metadata", _validated_metadata(self.metadata))
+        object.__setattr__(self, "metadata", validated_json_mapping(self.metadata))
 
     def _scalar_payload(self) -> dict[str, Any]:
         return {
@@ -462,7 +457,7 @@ class CounterfactualQuery(_Contract):
                 raise ValueError("query_node_indices must be a nonempty nonnegative vector")
         object.__setattr__(self, "controller_points_m", controls)
         object.__setattr__(self, "query_node_indices", nodes)
-        object.__setattr__(self, "metadata", _validated_metadata(self.metadata))
+        object.__setattr__(self, "metadata", validated_json_mapping(self.metadata))
 
     def _scalar_payload(self) -> dict[str, Any]:
         return {
@@ -554,7 +549,7 @@ class PhysicalPosterior(_Contract):
         object.__setattr__(self, "kappa_cf", kappa)
         object.__setattr__(self, "hypothesis_indices", hypotheses)
         object.__setattr__(self, "twin_particle_indices", particles)
-        object.__setattr__(self, "metadata", _validated_metadata(self.metadata))
+        object.__setattr__(self, "metadata", validated_json_mapping(self.metadata))
 
     def _scalar_payload(self) -> dict[str, Any]:
         return {
@@ -622,7 +617,7 @@ class TaskPosterior(_Contract):
         object.__setattr__(self, "task_weights", task)
         object.__setattr__(self, "semantic_log_scores", scores)
         object.__setattr__(self, "query_node_indices", nodes)
-        object.__setattr__(self, "metadata", _validated_metadata(self.metadata))
+        object.__setattr__(self, "metadata", validated_json_mapping(self.metadata))
 
     def _scalar_payload(self) -> dict[str, Any]:
         return {
