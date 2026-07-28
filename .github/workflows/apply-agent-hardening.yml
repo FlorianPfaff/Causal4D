@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/harden-content-addresses-and-numerics
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -77,4 +80,4 @@ jobs:
           git add -A
           git diff --cached --check
           git commit -m "Harden content-addressed contracts and numerics"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
