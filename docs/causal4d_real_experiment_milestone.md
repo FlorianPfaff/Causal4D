@@ -31,11 +31,18 @@ The following rules apply to the primary real-experiment analysis:
 - No new intervention, discrepancy, semantic, reconstruction, or planning
   mechanism may enter the primary comparison before the 36-execution result is
   reported.
-- The exact Causal4D commit, clean-worktree state, Bayesian-PhysTwin commit pin,
-  protocol, acquisition schedule, scope document, and protocol document are
-  sealed before the first confirmatory execution.
+- The exact Causal4D commit, clean-worktree state, protocol, acquisition
+  schedule, exact locked Bayesian-PhysTwin revision, final v4 pre-acquisition
+  amendment, mechanism-gate control evidence, scope document, and protocol
+  document are sealed before the first confirmatory execution.
+- The confirmatory uncertainty path is
+  `causal4d-execution-block-calibration`: one preregistered execution per
+  independent session, nine calibration units per outer fold, and the locked
+  rank-9-of-9 threshold at nominal 90% coverage.
+- `causal4d-real-calibration` remains an explicitly diagnostic coordinate-level
+  affine-calibration path and cannot produce the confirmatory calibration claim.
 - Target outcomes may not select methods, hyperparameters, exclusions,
-  calibration transforms, or optional branches.
+  calibration transforms, thresholds, or optional branches.
 - Optional semantic and public-data results cannot rescue a failed factual,
   transfer, new-contact, or calibration gate.
 - A method-affecting defect found before target outcomes are inspected requires
@@ -73,10 +80,14 @@ causal4d-real-experiment-freeze validate \
   --expected-causal4d-commit "$(git rev-parse HEAD)"
 ```
 
-The seal command refuses a dirty Git worktree. The manifest records file
-checksums, the protocol design digest, the exact Bayesian-PhysTwin dependency
-commit, the six-frame observation boundary, the registered analysis
-entrypoints, and the mandatory reporting contract.
+The seal command refuses a dirty Git worktree. Freeze schema v2 records file
+checksums, the protocol design digest, the exact Bayesian-PhysTwin commit from
+`requirements/ci/bayesian-phystwin-provider-v1.sha`, the final v4 amendment
+digest, its mechanism-gate control digest, the six-frame observation boundary,
+and the registered analysis entrypoints. It also freezes the confirmatory
+execution-block score, calibration unit, fold count, finite rank, and
+non-claims. A manifest that substitutes the older coordinate-pooled calibration
+command fails validation.
 
 ## Execution checkpoints
 
@@ -121,7 +132,9 @@ Report the preregistered primary comparisons:
 
 The primary targets are factual continuation, chronological same-grasp transfer,
 new-contact transfer with fresh `kappa_cf`, and the 12 locked cross-action/contact
-calibration folds.
+calibration folds. Every fold must be fitted and evaluated through
+`causal4d-execution-block-calibration`; the target evaluation may not revise the
+source-frozen threshold.
 
 ## Mandatory report
 
