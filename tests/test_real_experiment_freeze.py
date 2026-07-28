@@ -1,3 +1,4 @@
+import hashlib
 import json
 import subprocess
 from copy import deepcopy
@@ -6,6 +7,12 @@ from pathlib import Path
 import pytest
 
 from causal4d.real_experiment_freeze import (
+    BPT_PIN_PATH,
+    DIAGNOSTIC_ONLY_ANALYSIS_ENTRYPOINTS,
+    MECHANISM_GATE_EVIDENCE_PATH,
+    PREACQUISITION_PATH,
+    PREACQUISITION_PLAN_ID,
+    REQUIRED_ANALYSIS_ENTRYPOINTS,
     REQUIRED_LOCKED_PATHS,
     build_method_freeze_manifest,
     validate_method_freeze_manifest,
@@ -15,6 +22,23 @@ from causal4d.real_experiment_freeze import (
 
 BPT_SHA = "c7ad36aad7e592ce8a391c9ca2d4db7389dee3ac"
 CAUSAL4D_SHA = "a" * 40
+PROTOCOL_SHA = "b" * 64
+
+
+def _canonical_payload_sha256(
+    values: dict[str, object],
+    *,
+    omitted_field: str,
+) -> str:
+    payload = dict(values)
+    payload.pop(omitted_field, None)
+    serialized = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(serialized).hexdigest()
 
 
 def _repository(tmp_path: Path) -> Path:
@@ -24,20 +48,65 @@ def _repository(tmp_path: Path) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(f"locked:{relative}\n", encoding="utf-8")
     (root / "configs/causal4d/sloth_multi_action_v1.json").write_text(
-        json.dumps({"design_sha256": "b" * 64}), encoding="utf-8"
+        json.dumps({"design_sha256": PROTOCOL_SHA}), encoding="utf-8"
     )
+
+    evidence: dict[str, object] = {
+        "schema_version": 1,
+        "artifact_kind": "MechanismGateControlEvidence",
+        "acceptance_checks": {
+            "placebo_null_full_gate_upper_below_5_percent": True,
+            "positive_control_full_gate_lower_above_80_percent": True,
+            "wrong_family_on_positive_upper_below_5_percent": True,
+        },
+        "frozen_v3_gate_supported_in_controlled_benchmark": True,
+    }
+    evidence["result_sha256"] = _canonical_payload_sha256(
+        evidence,
+        omitted_field="result_sha256",
+    )
+    (root / MECHANISM_GATE_EVIDENCE_PATH).write_text(
+        json.dumps(evidence), encoding="utf-8"
+    )
+
+    amendment: dict[str, object] = {
+        "schema_version": 1,
+        "plan_id": PREACQUISITION_PLAN_ID,
+        "status": "supersedes_v3_before_any_physical_execution",
+        "supersedes": {
+            "physical_executions_completed_before_supersession": 0,
+        },
+        "base_protocol": {
+            "design_sha256": PROTOCOL_SHA,
+            "confirmatory_execution_count": 36,
+        },
+        "mechanism_gate_control_lock": {
+            "evidence_artifact": MECHANISM_GATE_EVIDENCE_PATH,
+            "evidence_sha256": evidence["result_sha256"],
+        },
+    }
+    amendment["amendment_sha256"] = _canonical_payload_sha256(
+        amendment,
+        omitted_field="amendment_sha256",
+    )
+    (root / PREACQUISITION_PATH).write_text(
+        json.dumps(amendment), encoding="utf-8"
+    )
+
+    (root / BPT_PIN_PATH).write_text(BPT_SHA + "\n", encoding="utf-8")
     (root / "pyproject.toml").write_text(
         "[project.optional-dependencies]\n"
         "phystwin = [\n"
-        f'  "bayesian-phystwin @ git+https://github.com/FlorianPfaff/'
-        f'Bayesian-PhysTwin.git@{BPT_SHA}",\n'
+        '  "bayesian-phystwin>=0.4,<0.5",\n'
         "]\n",
         encoding="utf-8",
     )
     return root
 
 
-def test_freeze_binds_method_files_and_dependency_commit(tmp_path: Path) -> None:
+def test_freeze_binds_method_files_dependency_and_registered_calibration(
+    tmp_path: Path,
+) -> None:
     root = _repository(tmp_path)
     manifest = build_method_freeze_manifest(
         root,
@@ -52,7 +121,30 @@ def test_freeze_binds_method_files_and_dependency_commit(tmp_path: Path) -> None
     )
     assert result["locked_files_checked"] == len(REQUIRED_LOCKED_PATHS)
     assert result["bayesian_phystwin_commit_sha"] == BPT_SHA
+    assert result["preacquisition_amendment_sha256"] == manifest["preacquisition"][
+        "amendment_sha256"
+    ]
     assert result["passed"]
+
+    analysis = manifest["analysis_contract"]
+    assert analysis["entrypoints"] == list(REQUIRED_ANALYSIS_ENTRYPOINTS)
+    assert "causal4d-execution-block-calibration" in analysis["entrypoints"]
+    assert "causal4d-real-calibration" not in analysis["entrypoints"]
+    assert analysis["diagnostic_only_entrypoints"] == list(
+        DIAGNOSTIC_ONLY_ANALYSIS_ENTRYPOINTS
+    )
+    assert analysis["confirmatory_calibration"] == {
+        "entrypoint": "causal4d-execution-block-calibration",
+        "confidence_level": 0.90,
+        "outer_fold_count": 12,
+        "expected_calibration_units_per_outer_fold": 9,
+        "order_statistic_rank_one_based": 9,
+        "calibration_unit": "one preregistered execution per independent session",
+        "score_kind": "max_abs_standardized_coordinate_v1",
+        "target_threshold_reselection_allowed": False,
+        "pooled_coordinate_conformal_claimed": False,
+        "worst_group_coverage_guarantee_claimed": False,
+    }
 
 
 def test_freeze_rejects_file_drift_and_target_informed_selection(
@@ -80,9 +172,57 @@ def test_freeze_rejects_file_drift_and_target_informed_selection(
         validate_method_freeze_manifest(changed, root)
 
     changed = deepcopy(manifest)
-    changed["analysis_contract"]["optional_branches_may_change_primary_analysis"] = True
+    changed["analysis_contract"]["optional_branches_may_change_primary_analysis"] = (
+        True
+    )
     with pytest.raises(ValueError, match="analysis contract"):
         validate_method_freeze_manifest(changed, root)
+
+    changed = deepcopy(manifest)
+    changed["analysis_contract"]["confirmatory_calibration"]["entrypoint"] = (
+        "causal4d-real-calibration"
+    )
+    with pytest.raises(ValueError, match="analysis contract"):
+        validate_method_freeze_manifest(changed, root)
+
+
+def test_freeze_rejects_preacquisition_or_gate_control_drift(tmp_path: Path) -> None:
+    root = _repository(tmp_path)
+    manifest = build_method_freeze_manifest(
+        root,
+        causal4d_commit_sha=CAUSAL4D_SHA,
+        frozen_by="operator-1",
+    )
+
+    amendment_path = root / PREACQUISITION_PATH
+    amendment = json.loads(amendment_path.read_text(encoding="utf-8"))
+    amendment["base_protocol"]["design_sha256"] = "c" * 64
+    amendment["amendment_sha256"] = _canonical_payload_sha256(
+        amendment,
+        omitted_field="amendment_sha256",
+    )
+    amendment_path.write_text(json.dumps(amendment), encoding="utf-8")
+    with pytest.raises(ValueError, match="different base protocol"):
+        validate_method_freeze_manifest(manifest, root, verify_files=False)
+
+    root = _repository(tmp_path / "gate")
+    manifest = build_method_freeze_manifest(
+        root,
+        causal4d_commit_sha=CAUSAL4D_SHA,
+        frozen_by="operator-1",
+    )
+    evidence_path = root / MECHANISM_GATE_EVIDENCE_PATH
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    evidence["acceptance_checks"][
+        "placebo_null_full_gate_upper_below_5_percent"
+    ] = False
+    evidence["result_sha256"] = _canonical_payload_sha256(
+        evidence,
+        omitted_field="result_sha256",
+    )
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+    with pytest.raises(ValueError, match="different gate-control evidence"):
+        validate_method_freeze_manifest(manifest, root, verify_files=False)
 
 
 def test_freeze_rejects_checkout_or_bpt_pin_mismatch(tmp_path: Path) -> None:
@@ -99,8 +239,8 @@ def test_freeze_rejects_checkout_or_bpt_pin_mismatch(tmp_path: Path) -> None:
             expected_causal4d_commit_sha="c" * 40,
         )
 
-    pyproject = root / "pyproject.toml"
-    pyproject.write_text(pyproject.read_text().replace(BPT_SHA, "d" * 40))
+    bpt_pin = root / BPT_PIN_PATH
+    bpt_pin.write_text("d" * 40 + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match="Bayesian-PhysTwin pin"):
         validate_method_freeze_manifest(manifest, root, verify_files=False)
 

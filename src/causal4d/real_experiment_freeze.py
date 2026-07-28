@@ -11,27 +11,38 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MILESTONE_ID = "causal4d-same-object-real-v1"
+BPT_PIN_PATH = "requirements/ci/bayesian-phystwin-provider-v1.sha"
 PROTOCOL_PATH = "configs/causal4d/sloth_multi_action_v1.json"
+PREACQUISITION_PATH = "configs/causal4d/sloth_preacquisition_v4.json"
+PREACQUISITION_PLAN_ID = "causal4d-sloth-preacquisition-v4"
+MECHANISM_GATE_EVIDENCE_PATH = (
+    "runs/causal4d_preacquisition_v4/mechanism_gate_controls.json"
+)
 REQUIRED_LOCKED_PATHS = (
     PROTOCOL_PATH,
     "configs/causal4d/sloth_multi_action_v1_schedule.csv",
+    PREACQUISITION_PATH,
+    MECHANISM_GATE_EVIDENCE_PATH,
     "docs/causal4d_paper_scope.md",
     "docs/causal4d_same_object_multi_action_protocol.md",
+    "docs/causal4d_real_experiment_milestone.md",
+    "docs/causal4d_preacquisition_v4.md",
+    "docs/execution_block_conformal_calibration.md",
+    "src/causal4d/execution_block_calibration.py",
+    "src/causal4d/cli/execution_block_calibration.py",
+    BPT_PIN_PATH,
     "pyproject.toml",
 )
 REQUIRED_ANALYSIS_ENTRYPOINTS = (
     "causal4d-real-protocol",
-    "causal4d-real-calibration",
+    "causal4d-execution-block-calibration",
     "causal4d-evaluate-physical-counterfactual",
 )
+DIAGNOSTIC_ONLY_ANALYSIS_ENTRYPOINTS = ("causal4d-real-calibration",)
 _SHA40 = re.compile(r"^[0-9a-f]{40}$")
 _SHA64 = re.compile(r"^[0-9a-f]{64}$")
-_BPT_PIN = re.compile(
-    r'["\']bayesian-phystwin\s*@\s*git\+https://github\.com/'
-    r'FlorianPfaff/Bayesian-PhysTwin\.git@([0-9a-f]{40})["\']'
-)
 
 
 def _require(condition: bool, message: str) -> None:
@@ -59,14 +70,35 @@ def _sha256_file(path: Path) -> tuple[str, int]:
     return digest.hexdigest(), size
 
 
-def _read_bayesian_phystwin_pin(pyproject_path: Path) -> str:
-    document = pyproject_path.read_text(encoding="utf-8")
-    matches = _BPT_PIN.findall(document)
+def _canonical_payload_sha256(
+    values: Mapping[str, Any],
+    *,
+    omitted_field: str,
+) -> str:
+    payload = dict(values)
+    payload.pop(omitted_field, None)
+    serialized = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(serialized).hexdigest()
+
+
+def _read_json_object(path: Path, *, name: str) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    _require(isinstance(payload, Mapping), f"{name} must be a JSON object")
+    return dict(payload)
+
+
+def _read_bayesian_phystwin_pin(pin_path: Path) -> str:
+    value = pin_path.read_text(encoding="utf-8").strip()
     _require(
-        len(matches) == 1,
-        "pyproject must contain one exact Bayesian-PhysTwin commit pin",
+        bool(_SHA40.fullmatch(value)),
+        "Bayesian-PhysTwin pin must contain one lowercase 40-hex commit",
     )
-    return matches[0]
+    return value
 
 
 def _validate_utc_timestamp(value: Any) -> str:
@@ -81,6 +113,139 @@ def _validate_utc_timestamp(value: Any) -> str:
         "freeze timestamp must be UTC",
     )
     return value
+
+
+def _preacquisition_contract(
+    repository_root: Path,
+    *,
+    protocol_design_sha256: str,
+) -> dict[str, Any]:
+    plan = _read_json_object(
+        repository_root / PREACQUISITION_PATH,
+        name="pre-acquisition amendment",
+    )
+    _require(
+        plan.get("plan_id") == PREACQUISITION_PLAN_ID,
+        "wrong pre-acquisition plan id",
+    )
+    _require(
+        plan.get("status") == "supersedes_v3_before_any_physical_execution",
+        "pre-acquisition v4 was not locked before physical execution",
+    )
+    amendment_sha256 = plan.get("amendment_sha256")
+    _require(
+        isinstance(amendment_sha256, str) and bool(_SHA64.fullmatch(amendment_sha256)),
+        "pre-acquisition amendment SHA-256 is missing",
+    )
+    _require(
+        amendment_sha256
+        == _canonical_payload_sha256(plan, omitted_field="amendment_sha256"),
+        "pre-acquisition amendment SHA-256 does not match its contents",
+    )
+    _require(
+        plan.get("supersedes", {}).get(
+            "physical_executions_completed_before_supersession"
+        )
+        == 0,
+        "pre-acquisition v4 was introduced after physical execution began",
+    )
+
+    base_protocol = plan.get("base_protocol", {})
+    _require(
+        base_protocol.get("design_sha256") == protocol_design_sha256,
+        "pre-acquisition amendment binds a different base protocol",
+    )
+    _require(
+        base_protocol.get("confirmatory_execution_count") == 36,
+        "pre-acquisition amendment changed the confirmatory execution count",
+    )
+
+    gate_lock = plan.get("mechanism_gate_control_lock", {})
+    _require(
+        gate_lock.get("evidence_artifact") == MECHANISM_GATE_EVIDENCE_PATH,
+        "pre-acquisition amendment references the wrong gate-control evidence",
+    )
+    evidence = _read_json_object(
+        repository_root / MECHANISM_GATE_EVIDENCE_PATH,
+        name="mechanism-gate control evidence",
+    )
+    _require(
+        evidence.get("schema_version") == 1
+        and evidence.get("artifact_kind") == "MechanismGateControlEvidence",
+        "unexpected mechanism-gate control evidence",
+    )
+    evidence_sha256 = evidence.get("result_sha256")
+    _require(
+        isinstance(evidence_sha256, str) and bool(_SHA64.fullmatch(evidence_sha256)),
+        "mechanism-gate control result SHA-256 is missing",
+    )
+    _require(
+        evidence_sha256
+        == _canonical_payload_sha256(evidence, omitted_field="result_sha256"),
+        "mechanism-gate control checksum mismatch",
+    )
+    _require(
+        gate_lock.get("evidence_sha256") == evidence_sha256,
+        "pre-acquisition amendment binds different gate-control evidence",
+    )
+    checks = evidence.get("acceptance_checks", {})
+    _require(
+        checks
+        == {
+            "placebo_null_full_gate_upper_below_5_percent": True,
+            "positive_control_full_gate_lower_above_80_percent": True,
+            "wrong_family_on_positive_upper_below_5_percent": True,
+        }
+        and evidence.get("frozen_v3_gate_supported_in_controlled_benchmark") is True,
+        "mechanism-gate controls did not pass the frozen acceptance checks",
+    )
+
+    return {
+        "path": PREACQUISITION_PATH,
+        "plan_id": PREACQUISITION_PLAN_ID,
+        "amendment_sha256": amendment_sha256,
+        "base_protocol_design_sha256": protocol_design_sha256,
+        "confirmatory_execution_count": 36,
+        "mechanism_gate_control": {
+            "path": MECHANISM_GATE_EVIDENCE_PATH,
+            "result_sha256": evidence_sha256,
+        },
+    }
+
+
+def _analysis_contract() -> dict[str, Any]:
+    return {
+        "entrypoints": list(REQUIRED_ANALYSIS_ENTRYPOINTS),
+        "diagnostic_only_entrypoints": list(DIAGNOSTIC_ONLY_ANALYSIS_ENTRYPOINTS),
+        "allowed_observation_prefix_frames": 6,
+        "confirmatory_calibration": {
+            "entrypoint": "causal4d-execution-block-calibration",
+            "confidence_level": 0.90,
+            "outer_fold_count": 12,
+            "expected_calibration_units_per_outer_fold": 9,
+            "order_statistic_rank_one_based": 9,
+            "calibration_unit": (
+                "one preregistered execution per independent session"
+            ),
+            "score_kind": "max_abs_standardized_coordinate_v1",
+            "target_threshold_reselection_allowed": False,
+            "pooled_coordinate_conformal_claimed": False,
+            "worst_group_coverage_guarantee_claimed": False,
+        },
+        "target_outcomes_may_select_method_or_hyperparameters": False,
+        "optional_branches_may_change_primary_analysis": False,
+        "method_changes_require_new_protocol_version": True,
+    }
+
+
+def _reporting_contract() -> dict[str, Any]:
+    return {
+        "report_success_or_well_powered_negative_result": True,
+        "report_all_36_executions_or_preregistered_exclusions": True,
+        "report_independent_execution_calibration": True,
+        "report_effect_intervals_and_replay_reset_variance": True,
+        "optional_semantic_or_public_data_results_cannot_rescue_primary_failure": True,
+    }
 
 
 def repository_git_state(repository_root: str | Path) -> dict[str, Any]:
@@ -152,13 +317,17 @@ def build_method_freeze_manifest(
         digest, size = _sha256_file(path)
         locked_files.append({"path": relative, "sha256": digest, "bytes": size})
 
-    protocol = json.loads((root / PROTOCOL_PATH).read_text(encoding="utf-8"))
+    protocol = _read_json_object(root / PROTOCOL_PATH, name="real protocol")
     design_sha256 = protocol.get("design_sha256")
     _require(
         isinstance(design_sha256, str) and bool(_SHA64.fullmatch(design_sha256)),
         "protocol design SHA-256 is missing",
     )
-    bpt_commit = _read_bayesian_phystwin_pin(root / "pyproject.toml")
+    preacquisition = _preacquisition_contract(
+        root,
+        protocol_design_sha256=design_sha256,
+    )
+    bpt_commit = _read_bayesian_phystwin_pin(root / BPT_PIN_PATH)
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -177,24 +346,10 @@ def build_method_freeze_manifest(
             "path": PROTOCOL_PATH,
             "design_sha256": design_sha256,
         },
+        "preacquisition": preacquisition,
         "locked_files": locked_files,
-        "analysis_contract": {
-            "entrypoints": list(REQUIRED_ANALYSIS_ENTRYPOINTS),
-            "allowed_observation_prefix_frames": 6,
-            "target_outcomes_may_select_method_or_hyperparameters": False,
-            "optional_branches_may_change_primary_analysis": False,
-            "method_changes_require_new_protocol_version": True,
-        },
-        "reporting_contract": {
-            "report_success_or_well_powered_negative_result": True,
-            "report_all_36_executions_or_preregistered_exclusions": True,
-            "report_independent_execution_calibration": True,
-            "report_effect_intervals_and_replay_reset_variance": True,
-            (
-                "optional_semantic_or_public_data_results_cannot_rescue_"
-                "primary_failure"
-            ): True,
-        },
+        "analysis_contract": _analysis_contract(),
+        "reporting_contract": _reporting_contract(),
     }
 
 
@@ -261,16 +416,24 @@ def validate_method_freeze_manifest(
 
     bpt_commit = manifest.get("bayesian_phystwin", {}).get("commit_sha")
     _require(
-        bpt_commit == _read_bayesian_phystwin_pin(root / "pyproject.toml"),
+        bpt_commit == _read_bayesian_phystwin_pin(root / BPT_PIN_PATH),
         "Bayesian-PhysTwin pin differs from the frozen dependency",
     )
 
     protocol = manifest.get("protocol", {})
     _require(protocol.get("path") == PROTOCOL_PATH, "wrong protocol path")
-    checked_protocol = json.loads((root / PROTOCOL_PATH).read_text(encoding="utf-8"))
+    checked_protocol = _read_json_object(root / PROTOCOL_PATH, name="real protocol")
     _require(
         protocol.get("design_sha256") == checked_protocol.get("design_sha256"),
         "protocol design digest differs from the freeze",
+    )
+    checked_preacquisition = _preacquisition_contract(
+        root,
+        protocol_design_sha256=str(protocol["design_sha256"]),
+    )
+    _require(
+        manifest.get("preacquisition") == checked_preacquisition,
+        "pre-acquisition contract differs from the registered method freeze",
     )
 
     entries = manifest.get("locked_files", [])
@@ -312,28 +475,11 @@ def validate_method_freeze_manifest(
             )
 
     _require(
-        manifest.get("analysis_contract")
-        == {
-            "entrypoints": list(REQUIRED_ANALYSIS_ENTRYPOINTS),
-            "allowed_observation_prefix_frames": 6,
-            "target_outcomes_may_select_method_or_hyperparameters": False,
-            "optional_branches_may_change_primary_analysis": False,
-            "method_changes_require_new_protocol_version": True,
-        },
+        manifest.get("analysis_contract") == _analysis_contract(),
         "analysis contract differs from the registered method freeze",
     )
     _require(
-        manifest.get("reporting_contract")
-        == {
-            "report_success_or_well_powered_negative_result": True,
-            "report_all_36_executions_or_preregistered_exclusions": True,
-            "report_independent_execution_calibration": True,
-            "report_effect_intervals_and_replay_reset_variance": True,
-            (
-                "optional_semantic_or_public_data_results_cannot_rescue_"
-                "primary_failure"
-            ): True,
-        },
+        manifest.get("reporting_contract") == _reporting_contract(),
         "reporting contract differs from the registered milestone",
     )
     return {
@@ -341,6 +487,15 @@ def validate_method_freeze_manifest(
         "causal4d_commit_sha": commit_sha,
         "bayesian_phystwin_commit_sha": bpt_commit,
         "protocol_design_sha256": protocol["design_sha256"],
+        "preacquisition_amendment_sha256": checked_preacquisition[
+            "amendment_sha256"
+        ],
+        "mechanism_gate_control_sha256": checked_preacquisition[
+            "mechanism_gate_control"
+        ]["result_sha256"],
+        "confirmatory_calibration_entrypoint": _analysis_contract()[
+            "confirmatory_calibration"
+        ]["entrypoint"],
         "locked_files_checked": len(REQUIRED_LOCKED_PATHS),
         "file_hashes_verified": verify_files,
         "passed": True,
