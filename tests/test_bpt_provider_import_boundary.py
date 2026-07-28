@@ -12,6 +12,7 @@ import pytest
 ALLOWED_BAYESIAN_PHYSTWIN_MODULES = frozenset(
     {
         "bayesian_phystwin.causal4d_artifacts_v1",
+        "bayesian_phystwin.causal4d_artifacts_v2",
         "bayesian_phystwin.causal4d_graph_provider_v1",
         "bayesian_phystwin.causal4d_provider_v1",
         "bayesian_phystwin.causal4d_provider_v2",
