@@ -16,6 +16,10 @@ from causal4d.execution_block_calibration import (
     load_execution_block_conformal_calibration,
     save_execution_block_conformal_calibration,
 )
+from causal4d.execution_block_provenance import (
+    bind_execution_block_source_manifest,
+    validate_execution_block_target_manifest,
+)
 
 
 def _sha256(path: str | Path) -> str:
@@ -28,6 +32,8 @@ def _sha256(path: str | Path) -> str:
 
 def _load_manifest(path: str | Path) -> dict[str, Any]:
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(payload, Mapping):
+        raise ValueError("execution-block manifest root must be a JSON object")
     if payload.get("schema_version") != 1:
         raise ValueError("unsupported execution-block manifest schema")
     if (
@@ -35,7 +41,7 @@ def _load_manifest(path: str | Path) -> dict[str, Any]:
         or not payload["outer_fold_id"]
     ):
         raise ValueError("execution-block manifest has no outer_fold_id")
-    return payload
+    return dict(payload)
 
 
 def _load_prediction_case(specification: Mapping[str, Any]) -> Any:
@@ -73,20 +79,11 @@ def _artifact_metadata(
     manifest: Mapping[str, Any],
     *,
     manifest_sha256: str,
-) -> dict[str, Any]:
-    retained = {
-        key: manifest[key]
-        for key in (
-            "protocol_id",
-            "protocol_design_sha256",
-            "preacquisition_plan_id",
-            "preacquisition_amendment_sha256",
-            "method_freeze_sha256",
-        )
-        if key in manifest
-    }
-    retained["source_manifest_sha256"] = manifest_sha256
-    return retained
+) -> dict[str, str]:
+    return bind_execution_block_source_manifest(
+        manifest,
+        manifest_sha256=manifest_sha256,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -172,6 +169,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.calibration_json
             )
             manifest = _load_manifest(args.target_manifest_json)
+            target_manifest_sha256 = _sha256(args.target_manifest_json)
+            frozen_binding = validate_execution_block_target_manifest(
+                calibration.metadata,
+                manifest,
+                expected_outer_fold_id=calibration.outer_fold_id,
+                target_manifest_sha256=target_manifest_sha256,
+            )
             outer_fold_id = str(manifest["outer_fold_id"])
             target_specs = manifest.get("target", manifest.get("cases", []))
             target_cases = tuple(
@@ -186,8 +190,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 target_cases,
                 calibration,
             )
+            evaluation["frozen_source_target_binding"] = frozen_binding
             evaluation["target_manifest"] = {
-                "sha256": _sha256(args.target_manifest_json),
+                "sha256": target_manifest_sha256,
             }
             output = Path(args.output_evaluation_json)
             output.parent.mkdir(parents=True, exist_ok=True)
@@ -205,6 +210,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "passed": True,
                 "calibration_id": calibration.calibration_id,
                 "outer_fold_id": calibration.outer_fold_id,
+                "frozen_binding_verified": frozen_binding["verified"],
                 "target_execution_count": evaluation["target_execution_count"],
                 "execution_block_coverage": evaluation["execution_block_coverage"],
                 "output": str(output.resolve()),
