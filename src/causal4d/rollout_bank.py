@@ -9,6 +9,16 @@ from typing import Any, Sequence
 import numpy as np
 
 
+def _readonly_array(
+    values: np.ndarray,
+    *,
+    dtype: np.dtype[Any] | type | None = None,
+) -> np.ndarray:
+    result = np.asarray(values, dtype=dtype).copy()
+    result.setflags(write=False)
+    return result
+
+
 def _normalized_weights(values: np.ndarray, *, name: str) -> np.ndarray:
     weights = np.asarray(values, dtype=float)
     if weights.ndim != 1 or not len(weights):
@@ -18,12 +28,34 @@ def _normalized_weights(values: np.ndarray, *, name: str) -> np.ndarray:
     total = float(np.sum(weights))
     if total <= 0.0:
         raise ValueError(f"{name} must have positive mass")
-    return weights / total
+    normalized = weights / total
+    normalized.setflags(write=False)
+    return normalized
+
+
+def _validated_joint_weights(
+    values: np.ndarray,
+    *,
+    expected_shape: tuple[int, int],
+    name: str,
+) -> np.ndarray:
+    weights = np.asarray(values, dtype=float)
+    if weights.shape != expected_shape:
+        raise ValueError(f"{name} must match the joint rollout support")
+    if not np.all(np.isfinite(weights)) or np.any(weights < 0.0):
+        raise ValueError(f"{name} must be finite and nonnegative")
+    if not np.isclose(np.sum(weights), 1.0):
+        raise ValueError(f"{name} must sum to one")
+    return weights
 
 
 def _normalize_joint_log_weights(log_weights: np.ndarray) -> np.ndarray:
     values = np.asarray(log_weights, dtype=float)
-    if values.ndim != 2 or not np.any(np.isfinite(values)):
+    if values.ndim != 2:
+        raise ValueError("joint log weights must be a matrix")
+    if np.any(np.isnan(values)) or np.any(np.isposinf(values)):
+        raise ValueError("joint log weights may contain only finite values or -inf")
+    if not np.any(np.isfinite(values)):
         raise ValueError("joint log weights must contain finite support")
     maximum = float(np.max(values[np.isfinite(values)]))
     weights = np.exp(np.where(np.isfinite(values), values - maximum, -np.inf))
@@ -69,14 +101,16 @@ def _student_t_mean_log_score(
     degrees_of_freedom: float,
     reduction_axes: tuple[int, ...],
 ) -> np.ndarray:
-    if degrees_of_freedom <= 0.0:
-        raise ValueError("degrees_of_freedom must be positive")
+    if not np.isfinite(degrees_of_freedom) or degrees_of_freedom <= 0.0:
+        raise ValueError("degrees_of_freedom must be finite and positive")
     scale = np.asarray(scale_m, dtype=float)
     if np.any(~np.isfinite(scale)) or np.any(scale <= 0.0):
         raise ValueError("likelihood scales must be finite and positive")
     standardized = residual / scale
-    terms = -0.5 * (degrees_of_freedom + 1.0) * np.log1p(
-        np.square(standardized) / degrees_of_freedom
+    terms = (
+        -0.5
+        * (degrees_of_freedom + 1.0)
+        * np.log1p(np.square(standardized) / degrees_of_freedom)
     )
     valid_float = np.asarray(valid, dtype=float)
     while valid_float.ndim < terms.ndim:
@@ -98,8 +132,10 @@ class PhysicalTrajectoryDistribution:
     interval_upper: np.ndarray | None = None
 
     def __post_init__(self) -> None:
-        mean = np.asarray(self.mean, dtype=float)
-        variance = np.asarray(self.variance, dtype=float)
+        if not isinstance(self.method, str) or not self.method:
+            raise ValueError("trajectory distribution method must be nonempty")
+        mean = _readonly_array(self.mean, dtype=float)
+        variance = _readonly_array(self.variance, dtype=float)
         if mean.ndim != 3 or mean.shape[2] not in {2, 3}:
             raise ValueError("trajectory mean must have shape (T, N, 2|3)")
         if variance.shape != mean.shape:
@@ -111,10 +147,12 @@ class PhysicalTrajectoryDistribution:
         if (self.interval_lower is None) != (self.interval_upper is None):
             raise ValueError("both interval bounds must be supplied together")
         if self.interval_lower is not None and self.interval_upper is not None:
-            lower = np.asarray(self.interval_lower, dtype=float)
-            upper = np.asarray(self.interval_upper, dtype=float)
+            lower = _readonly_array(self.interval_lower, dtype=float)
+            upper = _readonly_array(self.interval_upper, dtype=float)
             if lower.shape != mean.shape or upper.shape != mean.shape:
                 raise ValueError("trajectory interval bounds must match the mean")
+            if not np.all(np.isfinite(lower)) or not np.all(np.isfinite(upper)):
+                raise ValueError("trajectory interval bounds must be finite")
             if np.any(lower > upper):
                 raise ValueError("trajectory interval lower bound exceeds upper bound")
             object.__setattr__(self, "interval_lower", lower)
@@ -140,9 +178,9 @@ class SparseTrajectoryEvidence:
     source: str = "external_trajectory"
 
     def __post_init__(self) -> None:
-        positions = np.asarray(self.positions_m, dtype=float)
-        nodes = np.asarray(self.node_indices, dtype=int)
-        frames = np.asarray(self.rollout_frame_indices, dtype=float)
+        positions = _readonly_array(self.positions_m, dtype=float)
+        nodes = _readonly_array(self.node_indices, dtype=int)
+        frames = _readonly_array(self.rollout_frame_indices, dtype=float)
         if positions.ndim != 3 or positions.shape[2] not in {2, 3}:
             raise ValueError("evidence positions must have shape (F, Q, 2|3)")
         if nodes.shape != (positions.shape[1],):
@@ -151,21 +189,40 @@ class SparseTrajectoryEvidence:
             raise ValueError("rollout_frame_indices must identify every evidence frame")
         if np.any(nodes < 0) or not np.all(np.isfinite(frames)):
             raise ValueError("evidence nodes and frame indices must be valid")
-        if self.scale_m <= 0.0 or self.degrees_of_freedom <= 0.0:
-            raise ValueError("evidence scale and degrees of freedom must be positive")
-        if self.likelihood_weight < 0.0:
-            raise ValueError("evidence likelihood_weight must be nonnegative")
+        if (
+            not np.isfinite(self.scale_m)
+            or self.scale_m <= 0.0
+            or not np.isfinite(self.degrees_of_freedom)
+            or self.degrees_of_freedom <= 0.0
+        ):
+            raise ValueError(
+                "evidence scale and degrees of freedom must be finite and positive"
+            )
+        if not np.isfinite(self.likelihood_weight) or self.likelihood_weight < 0.0:
+            raise ValueError(
+                "evidence likelihood_weight must be finite and nonnegative"
+            )
+        if (
+            not isinstance(self.anchor_rollout_frame, (int, np.integer))
+            or self.anchor_rollout_frame < 0
+        ):
+            raise ValueError("anchor_rollout_frame must be a nonnegative integer")
+        if not isinstance(self.source, str) or not self.source:
+            raise ValueError("evidence source must be nonempty")
         if self.valid is not None:
-            valid = np.asarray(self.valid, dtype=bool)
+            valid = np.asarray(self.valid, dtype=bool).copy()
             if valid.shape == positions.shape[:2]:
                 valid = np.repeat(valid[:, :, None], positions.shape[2], axis=2)
             if valid.shape != positions.shape:
-                raise ValueError("evidence validity must have shape (F, Q) or (F, Q, C)")
+                raise ValueError(
+                    "evidence validity must have shape (F, Q) or (F, Q, C)"
+                )
+            valid.setflags(write=False)
             object.__setattr__(self, "valid", valid)
         if self.compare_displacements:
             if self.anchor_positions_m is None:
                 raise ValueError("displacement evidence requires anchor_positions_m")
-            anchor = np.asarray(self.anchor_positions_m, dtype=float)
+            anchor = _readonly_array(self.anchor_positions_m, dtype=float)
             if anchor.shape != positions.shape[1:]:
                 raise ValueError("anchor_positions_m must have shape (Q, C)")
             if not np.all(np.isfinite(anchor)):
@@ -198,9 +255,11 @@ class JointRolloutBank:
             self.parameter_weights,
             name="parameter_weights",
         )
-        particles = np.asarray(self.parameter_particles, dtype=float)
-        trajectories = np.asarray(self.trajectories, dtype=np.float32)
+        particles = _readonly_array(self.parameter_particles, dtype=float)
+        trajectories = _readonly_array(self.trajectories, dtype=np.float32)
         hypothesis_count = len(self.hypothesis_ids)
+        if hypothesis_count < 1 or any(not value for value in self.hypothesis_ids):
+            raise ValueError("hypothesis_ids must be nonempty")
         if len(set(self.hypothesis_ids)) != hypothesis_count:
             raise ValueError("hypothesis_ids must be unique")
         if len(self.hypothesis_metadata) != hypothesis_count:
@@ -218,8 +277,8 @@ class JointRolloutBank:
             raise ValueError("rollout coordinates must be 2D or 3D")
         if not np.all(np.isfinite(particles)) or not np.all(np.isfinite(trajectories)):
             raise ValueError("rollout bank arrays must be finite")
-        if self.variance_floor_m2 <= 0.0:
-            raise ValueError("variance_floor_m2 must be positive")
+        if not np.isfinite(self.variance_floor_m2) or self.variance_floor_m2 <= 0.0:
+            raise ValueError("variance_floor_m2 must be finite and positive")
         if not 0.0 < self.confidence_level < 1.0:
             raise ValueError("confidence_level must lie in (0, 1)")
         object.__setattr__(self, "hypothesis_prior_weights", hypothesis_weights)
@@ -249,10 +308,11 @@ class JointRolloutBank:
             if base_weights is None
             else np.asarray(base_weights, dtype=float)
         )
-        if weights.shape != self.prior_joint_weights.shape:
-            raise ValueError("base_weights must match the joint rollout support")
-        if np.any(weights < 0.0) or not np.isclose(np.sum(weights), 1.0):
-            raise ValueError("base_weights must be nonnegative and sum to one")
+        weights = _validated_joint_weights(
+            weights,
+            expected_shape=self.prior_joint_weights.shape,
+            name="base_weights",
+        )
         return np.log(np.maximum(weights, 1e-300))
 
     def update_from_observations(
@@ -278,17 +338,32 @@ class JointRolloutBank:
             raise ValueError(f"observations must have shape {expected}")
         if not 2 <= prefix_frame_count < self.frame_count:
             raise ValueError("prefix_frame_count must leave at least one future frame")
-        if scale_m <= 0.0 or likelihood_power <= 0.0:
-            raise ValueError("observation scale and likelihood power must be positive")
-        if dynamic_likelihood_weight < 0.0:
-            raise ValueError("dynamic_likelihood_weight must be nonnegative")
+        if (
+            not np.isfinite(scale_m)
+            or scale_m <= 0.0
+            or not np.isfinite(likelihood_power)
+            or likelihood_power <= 0.0
+        ):
+            raise ValueError(
+                "observation scale and likelihood power must be finite and positive"
+            )
+        if (
+            not np.isfinite(dynamic_likelihood_weight)
+            or dynamic_likelihood_weight < 0.0
+        ):
+            raise ValueError("dynamic_likelihood_weight must be finite and nonnegative")
         nodes = np.asarray(
             tuple(range(self.node_count))
             if observed_nodes is None
             else tuple(observed_nodes),
             dtype=int,
         )
-        if nodes.ndim != 1 or not len(nodes) or np.any(nodes < 0) or np.any(nodes >= self.node_count):
+        if (
+            nodes.ndim != 1
+            or not len(nodes)
+            or np.any(nodes < 0)
+            or np.any(nodes >= self.node_count)
+        ):
             raise ValueError("observed_nodes must identify available rollout nodes")
         coordinate_valid = _coordinate_mask(observations, mask)
         selected_observed = observations[1:prefix_frame_count, nodes]
@@ -377,6 +452,11 @@ class JointRolloutBank:
         """Apply robust product-of-experts evidence over physical rollouts."""
 
         predicted = self._interpolated_nodes(evidence)
+        if (
+            evidence.compare_displacements
+            and evidence.anchor_rollout_frame >= self.frame_count
+        ):
+            raise ValueError("evidence anchor frame falls outside the rollout bank")
         target = evidence.positions_m
         if target.shape[2] != self.coordinate_count:
             raise ValueError("evidence coordinate count differs from the rollout bank")
@@ -397,8 +477,7 @@ class JointRolloutBank:
             reduction_axes=(2, 3, 4),
         )
         return _normalize_joint_log_weights(
-            self._base_log_weights(base_weights)
-            + evidence.likelihood_weight * score
+            self._base_log_weights(base_weights) + evidence.likelihood_weight * score
         )
 
     def predictive_distribution(
@@ -414,12 +493,15 @@ class JointRolloutBank:
             if joint_weights is None
             else np.asarray(joint_weights, dtype=float)
         )
-        if weights.shape != self.prior_joint_weights.shape:
-            raise ValueError("joint_weights must match the rollout bank")
-        if np.any(weights < 0.0) or not np.isclose(np.sum(weights), 1.0):
-            raise ValueError("joint_weights must be nonnegative and sum to one")
-        if variance_multiplier <= 0.0:
-            raise ValueError("variance_multiplier must be positive")
+        weights = _validated_joint_weights(
+            weights,
+            expected_shape=self.prior_joint_weights.shape,
+            name="joint_weights",
+        )
+        if not isinstance(method, str) or not method:
+            raise ValueError("prediction method must be nonempty")
+        if not np.isfinite(variance_multiplier) or variance_multiplier <= 0.0:
+            raise ValueError("variance_multiplier must be finite and positive")
         mean = np.zeros(self.trajectories.shape[2:], dtype=np.float64)
         second_moment = np.zeros_like(mean)
         for hypothesis in range(self.trajectories.shape[0]):
@@ -457,15 +539,17 @@ class JointRolloutBank:
         )
 
     def hypothesis_marginal(self, joint_weights: np.ndarray) -> np.ndarray:
-        weights = np.asarray(joint_weights, dtype=float)
-        if weights.shape != self.prior_joint_weights.shape:
-            raise ValueError("joint_weights must match the rollout bank")
-        marginal = np.sum(weights, axis=1)
-        return marginal / np.sum(marginal)
+        weights = _validated_joint_weights(
+            joint_weights,
+            expected_shape=self.prior_joint_weights.shape,
+            name="joint_weights",
+        )
+        return np.sum(weights, axis=1)
 
     def parameter_marginal(self, joint_weights: np.ndarray) -> np.ndarray:
-        weights = np.asarray(joint_weights, dtype=float)
-        if weights.shape != self.prior_joint_weights.shape:
-            raise ValueError("joint_weights must match the rollout bank")
-        marginal = np.sum(weights, axis=0)
-        return marginal / np.sum(marginal)
+        weights = _validated_joint_weights(
+            joint_weights,
+            expected_shape=self.prior_joint_weights.shape,
+            name="joint_weights",
+        )
+        return np.sum(weights, axis=0)
