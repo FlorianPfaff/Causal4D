@@ -28,7 +28,9 @@ def array_sha256(values: np.ndarray) -> str:
 
 
 def _validate_sha256(value: str, *, name: str) -> None:
-    if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+    if len(value) != 64 or any(
+        character not in "0123456789abcdef" for character in value
+    ):
         raise ValueError(f"{name} must be a lowercase SHA-256 digest")
 
 
@@ -154,7 +156,9 @@ class CausalContext:
         if self.o_minus.frame_stop > self.o_plus.frame_start:
             raise ValueError("O- must not overlap O+")
         if self.u_obs.frame_stop > self.o_plus.frame_stop:
-            raise ValueError("u_obs must not extend beyond the factual observation window")
+            raise ValueError(
+                "u_obs must not extend beyond the factual observation window"
+            )
         if self.u_cf.frame_start < self.o_minus.frame_stop:
             raise ValueError("u_cf must begin at or after the pre-intervention window")
 
@@ -207,7 +211,9 @@ def build_causal_context(
     if len(observed_action_array) < frame_count:
         raise ValueError("observed actions must cover the factual observation interval")
     if len(counterfactual_action_array) < frame_count:
-        raise ValueError("counterfactual actions must cover the requested future interval")
+        raise ValueError(
+            "counterfactual actions must cover the requested future interval"
+        )
     return CausalContext(
         protocol_id=protocol_id,
         o_minus=ObservationWindow(
@@ -306,15 +312,24 @@ class TwinBelief(_Contract):
         particle_count = len(weights)
         if self.endpoint_frame != self.context.o_minus.frame_stop - 1:
             raise ValueError("TwinBelief endpoint must be the final O- frame")
-        if len(self.particle_ids) != particle_count or len(set(self.particle_ids)) != particle_count:
+        if (
+            len(self.particle_ids) != particle_count
+            or len(set(self.particle_ids)) != particle_count
+        ):
             raise ValueError("particle_ids must uniquely identify every particle")
         if not self.theta_names:
             raise ValueError("theta_names must be nonempty")
-        if position.ndim != 3 or position.shape[0] != particle_count or position.shape[2] != 3:
+        if (
+            position.ndim != 3
+            or position.shape[0] != particle_count
+            or position.shape[2] != 3
+        ):
             raise ValueError("endpoint_position_m must have shape (P, N, 3)")
         expected_state = position.shape
         if velocity.shape != expected_state or discrepancy.shape != expected_state:
-            raise ValueError("velocity and discrepancy means must match endpoint positions")
+            raise ValueError(
+                "velocity and discrepancy means must match endpoint positions"
+            )
         if variance.shape != expected_state:
             raise ValueError("discrepancy_variance_m2 must have shape (P, N, 3)")
         if theta.shape != (particle_count, len(self.theta_names)):
@@ -389,7 +404,11 @@ class FactualIntervention(_Contract):
             raise ValueError("support indices must be nonnegative")
         if not np.all(np.isfinite(phi)) or not np.all(np.isfinite(kappa)):
             raise ValueError("intervention variables must be finite")
-        if not self.context.o_plus.frame_start < self.evidence_frame_stop <= self.context.o_plus.frame_stop:
+        if (
+            not self.context.o_plus.frame_start
+            < self.evidence_frame_stop
+            <= self.context.o_plus.frame_stop
+        ):
             raise ValueError("evidence_frame_stop must be a nonempty O+ prefix")
         _validate_sha256(self.source_twin_belief_id, name="source_twin_belief_id")
         object.__setattr__(self, "phi", phi)
@@ -436,12 +455,21 @@ class CounterfactualQuery(_Contract):
 
     def __post_init__(self) -> None:
         controls = _readonly_array(self.controller_points_m, dtype=float)
-        if controls.ndim != 3 or controls.shape[2] != 3 or not np.all(np.isfinite(controls)):
+        if (
+            controls.ndim != 3
+            or controls.shape[2] != 3
+            or not np.all(np.isfinite(controls))
+        ):
             raise ValueError("controller_points_m must have finite shape (T, C, 3)")
         if self.horizon_frames < 1 or len(controls) != self.horizon_frames:
             raise ValueError("horizon_frames must match the counterfactual controls")
-        if self.context.u_cf.frame_stop - self.context.u_cf.frame_start != self.horizon_frames:
-            raise ValueError("counterfactual context interval must match horizon_frames")
+        if (
+            self.context.u_cf.frame_stop - self.context.u_cf.frame_start
+            != self.horizon_frames
+        ):
+            raise ValueError(
+                "counterfactual context interval must match horizon_frames"
+            )
         if array_sha256(controls) != self.context.u_cf.trajectory_sha256:
             raise ValueError("counterfactual controls disagree with the u_cf digest")
         if self.contact_policy not in {"same_grasp", "new_contact"}:
@@ -454,7 +482,9 @@ class CounterfactualQuery(_Contract):
         if self.query_node_indices is not None:
             nodes = _readonly_array(self.query_node_indices, dtype=np.int64)
             if nodes.ndim != 1 or len(nodes) == 0 or np.any(nodes < 0):
-                raise ValueError("query_node_indices must be a nonempty nonnegative vector")
+                raise ValueError(
+                    "query_node_indices must be a nonempty nonnegative vector"
+                )
         object.__setattr__(self, "controller_points_m", controls)
         object.__setattr__(self, "query_node_indices", nodes)
         object.__setattr__(self, "metadata", validated_json_mapping(self.metadata))
@@ -601,13 +631,17 @@ class TaskPosterior(_Contract):
         if len(self.component_ids) != count or len(set(self.component_ids)) != count:
             raise ValueError("component_ids must uniquely identify every component")
         if task.shape != physical.shape or scores.shape != physical.shape:
-            raise ValueError("task weights and semantic scores must match physical support")
+            raise ValueError(
+                "task weights and semantic scores must match physical support"
+            )
         if not np.all(np.isfinite(scores)):
             raise ValueError("semantic scores must be finite")
         if self.beta < 0.0 or not np.isfinite(self.beta):
             raise ValueError("beta must be finite and nonnegative")
         if nodes.ndim != 1 or len(nodes) == 0 or np.any(nodes < 0):
-            raise ValueError("query_node_indices must identify sparse physical readouts")
+            raise ValueError(
+                "query_node_indices must identify sparse physical readouts"
+            )
         if not self.semantic_source:
             raise ValueError("semantic_source must be nonempty")
         _validate_sha256(self.physical_posterior_id, name="physical_posterior_id")
@@ -637,7 +671,13 @@ class TaskPosterior(_Contract):
         }
 
 
-Contract = TwinBelief | FactualIntervention | CounterfactualQuery | PhysicalPosterior | TaskPosterior
+Contract = (
+    TwinBelief
+    | FactualIntervention
+    | CounterfactualQuery
+    | PhysicalPosterior
+    | TaskPosterior
+)
 
 
 def save_contract(path: str | Path, artifact: Contract) -> None:
@@ -672,7 +712,11 @@ def load_contract(path: str | Path) -> Contract:
         context = CausalContext.from_dict(descriptor["context"])
         payload = descriptor["payload"]
         kind = str(descriptor["contract_type"])
-        arrays = {name: np.asarray(archive[name]) for name in archive.files if name != "descriptor_json"}
+        arrays = {
+            name: np.asarray(archive[name])
+            for name in archive.files
+            if name != "descriptor_json"
+        }
     if kind == TwinBelief.contract_type:
         artifact: Contract = TwinBelief(
             context=context,
@@ -711,7 +755,9 @@ def load_contract(path: str | Path) -> Contract:
             phi_names=tuple(map(str, payload["phi_names"])),
             kappa_names=tuple(map(str, payload["kappa_names"])),
             source_twin_belief_id=str(payload["source_twin_belief_id"]),
-            source_factual_intervention_id=str(payload["source_factual_intervention_id"]),
+            source_factual_intervention_id=str(
+                payload["source_factual_intervention_id"]
+            ),
             source_query_id=str(payload["source_query_id"]),
             metadata=payload["metadata"],
             **arrays,

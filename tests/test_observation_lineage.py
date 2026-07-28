@@ -13,9 +13,7 @@ from causal4d.observation_lineage import (
     validate_twin_belief_observation_lineage,
 )
 
-GOLDEN_ARTIFACT_ID = (
-    "9c02e638f60424cca7738d347d1258acd208eb562f422efacd077db4edb2fe80"
-)
+GOLDEN_ARTIFACT_ID = "9c02e638f60424cca7738d347d1258acd208eb562f422efacd077db4edb2fe80"
 
 
 @dataclass(frozen=True)
@@ -110,9 +108,7 @@ def test_binding_is_content_addressed_and_then_required(tmp_path: Path) -> None:
     twin = _TwinBelief(_Context("case-1", _Window(12)), {})
 
     with pytest.raises(ValueError, match="no source observation binding"):
-        validate_twin_belief_observation_lineage(
-            twin, lineage, require_bound=True
-        )
+        validate_twin_belief_observation_lineage(twin, lineage, require_bound=True)
     bound = bind_twin_belief_observation_lineage(twin, lineage)
     result = validate_twin_belief_observation_lineage(
         bound, lineage, require_bound=True
@@ -127,9 +123,7 @@ def test_lineage_rejects_observation_beyond_twin_o_minus(tmp_path: Path) -> None
     lineage = load_observation_lineage(path)
     twin = _TwinBelief(_Context("case-1", _Window(10)), {})
     with pytest.raises(ValueError, match="beyond the TwinBelief O- boundary"):
-        validate_twin_belief_observation_lineage(
-            twin, lineage, require_bound=False
-        )
+        validate_twin_belief_observation_lineage(twin, lineage, require_bound=False)
 
 
 def test_lineage_rejects_observation_before_twin_o_minus(tmp_path: Path) -> None:
@@ -138,9 +132,7 @@ def test_lineage_rejects_observation_before_twin_o_minus(tmp_path: Path) -> None
     lineage = load_observation_lineage(path)
     twin = _TwinBelief(_Context("case-1", _Window(12, frame_start=9)), {})
     with pytest.raises(ValueError, match="before the TwinBelief O- boundary"):
-        validate_twin_belief_observation_lineage(
-            twin, lineage, require_bound=False
-        )
+        validate_twin_belief_observation_lineage(twin, lineage, require_bound=False)
 
 
 def test_lineage_provider_validation_is_deeply_immutable() -> None:

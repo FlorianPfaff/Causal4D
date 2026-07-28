@@ -149,7 +149,13 @@ def test_all_contracts_round_trip_with_complete_causal_context(tmp_path: Path) -
         assert type(restored) is type(artifact)
         assert restored.artifact_id == artifact.artifact_id
         context_dict = restored.context.as_dict()
-        assert set(context_dict) == {"protocol_id", "o_minus", "o_plus", "u_obs", "u_cf"}
+        assert set(context_dict) == {
+            "protocol_id",
+            "o_minus",
+            "o_plus",
+            "u_obs",
+            "u_cf",
+        }
 
 
 def test_twin_belief_keeps_particle_specific_endpoint_states() -> None:

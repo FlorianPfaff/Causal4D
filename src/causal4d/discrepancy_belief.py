@@ -98,8 +98,7 @@ class GraphDiscrepancyBelief:
         if projection.shape != (3,):
             raise ValueError("projection_variance_m2 must have shape (3,)")
         if not all(
-            np.all(np.isfinite(value))
-            for value in (mean, covariance, projection)
+            np.all(np.isfinite(value)) for value in (mean, covariance, projection)
         ):
             raise ValueError("discrepancy belief arrays must be finite")
         if np.any(projection < 0.0):

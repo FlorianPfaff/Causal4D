@@ -9,6 +9,4 @@ def test_package_version_and_phystwin_range_match_pyproject() -> None:
         encoding="utf-8"
     )
     assert f'version = "{causal4d.__version__}"' in pyproject
-    assert (
-        f'"bayesian-phystwin{BAYESIAN_PHYSTWIN_COMPATIBILITY_RANGE}"' in pyproject
-    )
+    assert f'"bayesian-phystwin{BAYESIAN_PHYSTWIN_COMPATIBILITY_RANGE}"' in pyproject

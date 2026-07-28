@@ -248,9 +248,7 @@ def apply_action_conditioned_counterfactual_operator(
         physical=physical,
         readout_trajectories_m=readout,
         readout_variance_m2=variance,
-        discrepancy_coefficient_covariance_m2=(
-            forecast.coefficient_covariance_m2
-        ),
+        discrepancy_coefficient_covariance_m2=(forecast.coefficient_covariance_m2),
         graph_discrepancy_belief_id=graph_discrepancy_belief.artifact_id,
         discrepancy_model_id=forecast.model_id,
         metadata={

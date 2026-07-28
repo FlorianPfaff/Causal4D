@@ -55,9 +55,7 @@ def test_schema_and_artifact_mismatch_are_reported() -> None:
     )
     assert not result.compatible
     assert result.unsupported_schema_version == 2
-    assert result.artifact_version_mismatches == (
-        "TwinBelief:expected=2:actual=1",
-    )
+    assert result.artifact_version_mismatches == ("TwinBelief:expected=2:actual=1",)
 
 
 def test_provider_version_range_is_enforced() -> None:
@@ -108,10 +106,7 @@ def test_bayesian_phystwin_policy_requires_execution_and_artifact_contracts() ->
     )
     result = validate_bayesian_phystwin_provider(wrong_artifact)
     assert not result.compatible
-    assert result.artifact_version_mismatches == (
-        "TwinBelief:expected=1:actual=2",
-    )
-
+    assert result.artifact_version_mismatches == ("TwinBelief:expected=1:actual=2",)
 
 
 def test_runtime_requirement_rejects_an_incompatible_installed_provider(

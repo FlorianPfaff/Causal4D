@@ -199,6 +199,6 @@ def test_calibration_content_address_cannot_be_changed_by_nested_mutation() -> N
     with pytest.raises(TypeError, match="immutable"):
         calibration.metadata["protocol"]["ids"].append("mutated")
     with pytest.raises(TypeError, match="immutable"):
-        calibration.fragility_diagnostics[
-            "leave_one_calibration_session_out"
-        ].append({})
+        calibration.fragility_diagnostics["leave_one_calibration_session_out"].append(
+            {}
+        )
