@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -26,6 +27,20 @@ def _is_sha256(value: Any) -> bool:
         and len(value) == 64
         and all(character in "0123456789abcdef" for character in value)
     )
+
+
+def _parse_utc_timestamp(value: Any, name: str) -> datetime:
+    _require(isinstance(value, str) and bool(value), f"{name} is missing")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError(f"{name} is not ISO 8601") from error
+    _require(parsed.tzinfo is not None, f"{name} must include a timezone")
+    _require(
+        parsed.utcoffset() == timezone.utc.utcoffset(parsed),
+        f"{name} must be UTC",
+    )
+    return parsed
 
 
 def _vector(value: Any, length: int, name: str) -> np.ndarray:
@@ -295,6 +310,7 @@ def validate_contact_registration(
     _require(set(regions) == expected_regions, "contact region set changed")
     centroids = {}
     uncertainty_radius = {}
+    all_review_times: list[datetime] = []
     for region_id, region in regions.items():
         centroid = _vector(
             region["physical_centroid_world_m"], 3, f"{region_id} centroid"
@@ -470,15 +486,28 @@ def validate_contact_registration(
             )
         reviews = list(region["independent_reviews"])
         _require(len(reviews) >= 2, f"{region_id} needs two independent reviews")
+        reviewer_ids: list[str] = []
+        review_times: list[datetime] = []
         for review in reviews:
+            reviewer_id = review.get("reviewer_id")
             _require(
-                isinstance(review.get("reviewer_id"), str)
-                and review["reviewer_id"]
-                and isinstance(review.get("reviewed_at_utc"), str)
-                and review["reviewed_at_utc"],
+                isinstance(reviewer_id, str) and bool(reviewer_id.strip()),
                 f"{region_id} review provenance is missing",
             )
+            reviewer_ids.append(reviewer_id.strip())
+            review_times.append(
+                _parse_utc_timestamp(
+                    review.get("reviewed_at_utc"),
+                    f"{region_id} reviewed_at_utc",
+                )
+            )
             _vector(review["centroid_world_m"], 3, f"{region_id} review centroid")
+        _require(
+            len({reviewer_id.casefold() for reviewer_id in reviewer_ids})
+            == len(reviewer_ids),
+            f"{region_id} independent reviewers must be distinct",
+        )
+        all_review_times.extend(review_times)
         for key in ("interreview_rms_m", "multiview_reprojection_rmse_px"):
             value = float(region[key])
             _require(
@@ -516,10 +545,16 @@ def validate_contact_registration(
     _require(approval.get("approved") is True, "registration approval is missing")
     _require(
         isinstance(approval.get("approver_id"), str)
-        and approval["approver_id"]
-        and isinstance(approval.get("approved_at_utc"), str)
-        and approval["approved_at_utc"],
+        and bool(approval["approver_id"].strip()),
         "approval provenance is missing",
+    )
+    approved_at = _parse_utc_timestamp(
+        approval.get("approved_at_utc"),
+        "registration approved_at_utc",
+    )
+    _require(
+        all(reviewed_at <= approved_at for reviewed_at in all_review_times),
+        "contact registration approval predates an independent review",
     )
     checksums = artifact.get("source_checksums", {})
     _require(
@@ -534,6 +569,7 @@ def validate_contact_registration(
         "contact_region_count": len(regions),
         "object_node_count": node_count,
         "approved": True,
+        "approved_at_utc": approval["approved_at_utc"],
     }
 
 

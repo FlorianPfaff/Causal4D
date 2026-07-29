@@ -115,6 +115,15 @@ def test_timebase_requires_exact_stream_coverage_and_verified_artifact(
         evidence.validate_timebase_calibration(protocol, missing_stream)
 
 
+def test_timebase_approval_cannot_predate_calibration(tmp_path: Path) -> None:
+    protocol = build_same_object_real_protocol()
+    calibration = _approved_timebase(protocol, tmp_path)
+    calibration["approval"]["approved_at_utc"] = "2026-07-27T05:59:59Z"
+
+    with pytest.raises(ValueError, match="approval predates calibration"):
+        evidence.validate_timebase_calibration(protocol, calibration)
+
+
 def test_timebase_rejects_nonfinite_and_negative_sync_error(tmp_path: Path) -> None:
     protocol = build_same_object_real_protocol()
     calibration = _approved_timebase(protocol, tmp_path)
@@ -327,6 +336,39 @@ def test_method_freeze_attestation_must_be_independent() -> None:
             method_freeze=method_freeze,
             method_freeze_sha256="3" * 64,
         )
+
+
+def test_preacquisition_chronology_rejects_postdated_prerequisites() -> None:
+    start = datetime(2026, 7, 27, 8, 0, tzinfo=timezone.utc)
+    prerequisites = {
+        "timebase_calibration": {
+            "valid": True,
+            "calibrated_at_utc": "2026-07-27T06:00:00Z",
+            "approved_at_utc": "2026-07-27T06:05:00Z",
+        },
+        "contact_registration": {
+            "valid": True,
+            "approved_at_utc": "2026-07-27T06:10:00Z",
+        },
+        "method_freeze": {
+            "valid": True,
+            "frozen_at_utc": "2026-07-27T06:15:00Z",
+        },
+        "method_freeze_validation": {
+            "valid": True,
+            "verified_at_utc": "2026-07-27T08:00:01Z",
+        },
+    }
+    result = evidence._preacquisition_chronology(
+        prerequisites,
+        [{"validated": True, "_started_at": start}],
+    )
+
+    assert not result["passed"]
+    assert result["blockers"] == [
+        "preacquisition_chronology:method_freeze_verified"
+    ]
+    assert result["earliest_execution_started_at_utc"] == "2026-07-27T08:00:00Z"
 
 
 def test_analysis_readiness_is_separate_from_evidence_accounting() -> None:
