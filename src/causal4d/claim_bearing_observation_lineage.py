@@ -33,6 +33,18 @@ def require_claim_bearing_prob4d_lineage(
             "claim-bearing Prob4D observation requires explicit causal stream "
             "contract version 2"
         )
+    stream_contract = validation.get("claim_bearing_stream_contract")
+    if not isinstance(stream_contract, Mapping):
+        raise ValueError(
+            "claim-bearing Prob4D causal stream contract was not validated"
+        )
+    if (
+        stream_contract.get("version")
+        != PROB4D_CAUSAL_STREAM_CONTRACT_VERSION
+        or stream_contract.get("causal_frame_stop_convention") != "exclusive"
+    ):
+        raise ValueError("claim-bearing Prob4D causal stream contract is invalid")
+
     if (
         validation.get("covariance_semantics") != PROB4D_JOINT_GAUGE_MODEL
         or validation.get("cross_window_covariance_preserved") is not True
