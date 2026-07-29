@@ -41,7 +41,7 @@ def test_strict_claim_bearing_path_is_mandatory_and_fail_closed() -> None:
     assert "bayesian-phystwin/tests/test_prob4d_causal_lineage.py" in text
     assert "causal4d/tests/test_prob4d_stream_contract_version.py" in text
     assert text.count("set -o pipefail") >= 2
-    assert text.count("python\" -m json.tool") >= 2
+    assert text.count('python" -m json.tool') >= 2
     assert text.count('test -s "$RUNNER_TEMP/three-repository-') >= 2
 
 
