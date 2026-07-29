@@ -29,3 +29,23 @@ def test_external_fork_limitation_is_separate_and_explicit() -> None:
     assert "External PR cannot access private providers" in text
     assert "github.event.pull_request.head.repo.full_name != github.repository" in text
     assert "maintainers must run the installed-wheel golden path" in text
+
+
+def test_strict_claim_bearing_path_is_mandatory() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "Run strict claim-bearing provider-v2 admission path" in text
+    assert "three_repository_provider_v2_attestation.py" in text
+    assert "three-repository-provider-v2-summary.json" in text
+    assert "prob4d/tests/test_claim_bearing_observation.py" in text
+    assert "bayesian-phystwin/tests/test_prob4d_causal_lineage.py" in text
+    assert "causal4d/tests/test_prob4d_stream_contract_version.py" in text
+
+
+def test_built_wheels_receive_persistent_content_identities() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "Record wheel SHA-256 identities" in text
+    assert "sha256sum ./*.whl | sort" in text
+    assert "three-repository-wheel-sha256.txt" in text
+    assert "Wheel SHA-256 identities" in text
