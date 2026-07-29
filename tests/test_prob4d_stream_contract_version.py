@@ -97,6 +97,10 @@ def _provider_attestation() -> dict[str, object]:
 def _claim_bearing_metadata() -> dict[str, object]:
     return {
         "prob4d_causal_stream_contract_version": 2,
+        "prob4d_causal_stream_contract": {
+            "version": 2,
+            "causal_frame_stop_convention": "exclusive",
+        },
         "prob4d_provider_attestation": _provider_attestation(),
         "covariance_calibration": {
             "status": "calibrated",
@@ -181,6 +185,10 @@ def test_claim_bearing_provider_attestation_is_validated_independently(
         "point_artifact_id": "2" * 64,
     }
     assert calibration["covariance_fallback_counts"] == {}
+    assert result["claim_bearing_stream_contract"] == {
+        "version": 2,
+        "causal_frame_stop_convention": "exclusive",
+    }
 
 
 def test_strict_provider_validation_rejects_provider_v1_artifact(monkeypatch) -> None:
@@ -301,6 +309,18 @@ def test_claim_bearing_requires_explicit_stream_v2(monkeypatch) -> None:
         lineage.validate_claim_bearing_prob4d_observation_metadata(descriptor, {})
 
 
+def test_claim_bearing_requires_explicit_stream_contract_metadata(monkeypatch) -> None:
+    monkeypatch.setattr(
+        lineage,
+        "_validate_prob4d_semantics",
+        lambda descriptor, arrays: _semantic_result(lineage.PROB4D_JOINT_GAUGE_MODEL),
+    )
+    descriptor = _claim_bearing_descriptor()
+    descriptor["metadata"].pop("prob4d_causal_stream_contract")
+    with pytest.raises(ValueError, match="causal stream contract"):
+        lineage.validate_claim_bearing_prob4d_observation_metadata(descriptor, {})
+
+
 def test_claim_bearing_lineage_wrapper_requires_validated_summary() -> None:
     provider = {
         "claim_bearing": True,
@@ -319,6 +339,10 @@ def test_claim_bearing_lineage_wrapper_requires_validated_summary() -> None:
             "stream_contract_version_inferred": False,
             "covariance_semantics": lineage.PROB4D_JOINT_GAUGE_MODEL,
             "cross_window_covariance_preserved": True,
+            "claim_bearing_stream_contract": {
+                "version": 2,
+                "causal_frame_stop_convention": "exclusive",
+            },
             "provider_attestation": provider,
             "claim_bearing_covariance_calibration": calibration,
         }
