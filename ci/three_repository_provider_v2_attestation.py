@@ -329,9 +329,9 @@ def _rejection_corpus(artifact: Any, output_dir: Path) -> list[dict[str, str]]:
     results.extend(_consumer_rejections(path, "covariance-fallback"))
 
     def fallback_permission(metadata: dict[str, Any]) -> None:
-        metadata["covariance_calibration"][
-            "pointwise_covariance_fallback_allowed"
-        ] = True
+        metadata["covariance_calibration"]["pointwise_covariance_fallback_allowed"] = (
+            True
+        )
 
     path = output_dir / "rejected-fallback-permission.npz"
     _write_variant(artifact, path, fallback_permission)
