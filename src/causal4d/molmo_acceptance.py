@@ -14,6 +14,7 @@ import numpy as np
 
 from causal4d.molmo_adapter import MolmoForecastBundle, camera_to_world_points
 from causal4d.rollout_bank import JointRolloutBank
+from causal4d.weighting import log_weights_from_probabilities
 
 
 @dataclass(frozen=True)
@@ -385,10 +386,15 @@ def _action_ranking(
     for action_id in sorted(set(action_ids)):
         hypothesis_mask = np.asarray([value == action_id for value in action_ids])
         selected_prior = prior[hypothesis_mask]
-        selected_prior /= np.sum(selected_prior)
-        values = np.log(np.maximum(selected_prior, 1e-300)) + component_scores[
-            hypothesis_mask
-        ]
+        selected_mass = float(np.sum(selected_prior))
+        if selected_mass <= 0.0:
+            scores[action_id] = -np.inf
+            continue
+        selected_prior = selected_prior / selected_mass
+        values = log_weights_from_probabilities(
+            selected_prior,
+            name=f"{action_id} component prior",
+        ) + component_scores[hypothesis_mask]
         scores[action_id] = _logsumexp(values.reshape(-1))
     ranking = sorted(scores, key=lambda action: (-scores[action], action))
     rank = ranking.index(correct_action_id) + 1

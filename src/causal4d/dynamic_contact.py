@@ -16,6 +16,8 @@ from typing import Any
 
 import numpy as np
 
+from causal4d.weighting import log_weights_from_probabilities
+
 
 class ContactRegime(IntEnum):
     """Discrete contact regime used by the dynamic intervention model."""
@@ -591,7 +593,10 @@ def infer_dynamic_contact_posterior(
             )
             score = score + settings.dynamic_likelihood_weight * dynamic_score
 
-    log_prior = np.log(np.maximum(bank.prior_weights, np.finfo(float).tiny))
+    log_prior = log_weights_from_probabilities(
+        bank.prior_weights,
+        name="dynamic contact prior",
+    )
     weights = _normalized_log_weights(log_prior + settings.likelihood_power * score)
     components = bank.trajectories_m
     mean = np.einsum("k,ktnc->tnc", weights, components)

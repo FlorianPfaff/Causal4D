@@ -9,6 +9,7 @@ import numpy as np
 
 from causal4d.contracts import FactualIntervention
 from causal4d.sensor_evidence import ActuatorEvidence, ContactWrenchEvidence
+from causal4d.weighting import log_weights_from_probabilities
 
 
 @dataclass(frozen=True)
@@ -276,7 +277,8 @@ def reweight_factual_intervention_with_independent_sensors(
 
     prior = np.asarray(factual.weights, dtype=float)
     posterior = _normalize_log_weights(
-        np.log(np.maximum(prior, np.finfo(float).tiny)) + total_log_factor
+        log_weights_from_probabilities(prior, name="factual weights")
+        + total_log_factor
     )
     metadata = dict(factual.metadata)
     metadata["independent_sensor_abduction"] = {

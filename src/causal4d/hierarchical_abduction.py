@@ -8,14 +8,22 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from causal4d.immutable_json import validated_json_mapping
 from causal4d.prefix_likelihood import (
     PrefixLikelihoodConfig,
     prefix_component_log_likelihood,
 )
 from causal4d.rollout_bank import JointRolloutBank
+from causal4d.weighting import log_weights_from_probabilities
 
 
 DEFAULT_PHI_NAMES = ("gain_multiplier", "delay_steps", "rotation_degrees")
+
+
+def _readonly_array(values: np.ndarray, *, dtype: Any = float) -> np.ndarray:
+    array = np.asarray(values, dtype=dtype).copy()
+    array.setflags(write=False)
+    return array
 
 
 def _logsumexp(values: np.ndarray, axis: int | None = None) -> np.ndarray:
@@ -121,44 +129,56 @@ class HierarchicalAbductionResult:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        phi = np.asarray(self.phi_values, dtype=float)
-        particles = np.asarray(self.parameter_particles, dtype=float)
-        shared = np.asarray(self.shared_weights, dtype=float)
+        phi = _readonly_array(self.phi_values)
+        particles = _readonly_array(self.parameter_particles)
+        shared = _readonly_array(self.shared_weights)
         if phi.ndim != 2 or phi.shape[1] != len(self.phi_names):
             raise ValueError("phi_values must match phi_names")
         if particles.ndim != 2:
             raise ValueError("parameter_particles must be a matrix")
+        if not np.all(np.isfinite(phi)) or not np.all(np.isfinite(particles)):
+            raise ValueError("hierarchical support arrays must be finite")
         if shared.shape != (len(phi), len(particles)):
             raise ValueError("shared_weights must have shape (Phi, P)")
-        if np.any(shared < 0.0) or not np.isclose(np.sum(shared), 1.0):
-            raise ValueError("shared_weights must be nonnegative and sum to one")
+        if (
+            not np.all(np.isfinite(shared))
+            or np.any(shared < 0.0)
+            or not np.isclose(np.sum(shared), 1.0)
+        ):
+            raise ValueError(
+                "shared_weights must be finite, nonnegative, and sum to one"
+            )
         if len(self.execution_joint_weights) != len(self.execution_log_evidence):
             raise ValueError("execution posterior and evidence counts differ")
-        for weights in self.execution_joint_weights:
-            supplied = np.asarray(weights, dtype=float)
+        execution_weights = []
+        execution_evidence = []
+        for weights, evidence in zip(
+            self.execution_joint_weights,
+            self.execution_log_evidence,
+            strict=True,
+        ):
+            supplied = _readonly_array(weights)
+            log_evidence = _readonly_array(evidence)
             if supplied.ndim != 2 or supplied.shape[1] != len(particles):
                 raise ValueError("execution weights must have shape (H_e, P)")
-            if np.any(supplied < 0.0) or not np.isclose(np.sum(supplied), 1.0):
-                raise ValueError("execution weights must sum to one")
+            if (
+                not np.all(np.isfinite(supplied))
+                or np.any(supplied < 0.0)
+                or not np.isclose(np.sum(supplied), 1.0)
+            ):
+                raise ValueError("execution weights must be finite and sum to one")
+            if log_evidence.shape != shared.shape:
+                raise ValueError("execution log evidence must have shape (Phi, P)")
+            if np.any(np.isnan(log_evidence)) or np.any(np.isposinf(log_evidence)):
+                raise ValueError("execution log evidence must not contain NaN or +inf")
+            execution_weights.append(supplied)
+            execution_evidence.append(log_evidence)
         object.__setattr__(self, "phi_values", phi)
         object.__setattr__(self, "parameter_particles", particles)
         object.__setattr__(self, "shared_weights", shared)
-        object.__setattr__(
-            self,
-            "execution_joint_weights",
-            tuple(
-                np.asarray(value, dtype=float)
-                for value in self.execution_joint_weights
-            ),
-        )
-        object.__setattr__(
-            self,
-            "execution_log_evidence",
-            tuple(
-                np.asarray(value, dtype=float)
-                for value in self.execution_log_evidence
-            ),
-        )
+        object.__setattr__(self, "execution_joint_weights", tuple(execution_weights))
+        object.__setattr__(self, "execution_log_evidence", tuple(execution_evidence))
+        object.__setattr__(self, "metadata", validated_json_mapping(self.metadata))
 
     @property
     def phi_marginal(self) -> np.ndarray:
@@ -298,7 +318,10 @@ def abduct_hierarchical_interventions(
                 "every execution must assign prior mass to every phi value"
             )
         conditional_prior = bank.hypothesis_prior_weights / group_mass[groups]
-        local_log_prior = np.log(np.maximum(conditional_prior, 1e-300))
+        local_log_prior = log_weights_from_probabilities(
+            conditional_prior,
+            name="conditional hypothesis prior",
+        )
         local_log_priors.append(local_log_prior)
         log_likelihood = prefix_component_log_likelihood(
             bank,
@@ -320,8 +343,11 @@ def abduct_hierarchical_interventions(
         execution_log_evidence.append(evidence)
 
     shared_log_weights = (
-        np.log(np.maximum(phi_prior, 1e-300))[:, None]
-        + np.log(np.maximum(reference.parameter_weights, 1e-300))[None]
+        log_weights_from_probabilities(phi_prior, name="shared phi prior")[:, None]
+        + log_weights_from_probabilities(
+            reference.parameter_weights,
+            name="shared parameter prior",
+        )[None]
     )
     for power, evidence in zip(evidence_powers, execution_log_evidence, strict=True):
         shared_log_weights += float(power) * evidence

@@ -38,6 +38,7 @@ from causal4d.contact_metrics import (
     contact_recovery_metrics,
 )
 from causal4d.metrics import intervention_metrics
+from causal4d.weighting import log_weights_from_probabilities
 
 
 @dataclass(frozen=True)
@@ -170,7 +171,12 @@ def _interval_variance_multiplier(
 
 
 def _temper_joint_weights(weights: np.ndarray, temperature: float) -> np.ndarray:
-    log_weights = np.log(np.maximum(np.asarray(weights, dtype=float), 1e-300))
+    if not np.isfinite(temperature) or temperature <= 0.0:
+        raise ValueError("temperature must be finite and positive")
+    log_weights = log_weights_from_probabilities(
+        np.asarray(weights, dtype=float),
+        name="joint weights",
+    )
     log_weights *= temperature
     log_weights -= float(np.max(log_weights))
     tempered = np.exp(log_weights)
