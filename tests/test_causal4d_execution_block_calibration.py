@@ -180,3 +180,25 @@ def test_execution_block_calibration_artifact_is_checksummed(tmp_path: Path) -> 
     path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(ValueError, match="canonical"):
         load_execution_block_conformal_calibration(path)
+
+
+def test_calibration_content_address_cannot_be_changed_by_nested_mutation() -> None:
+    metadata = {"protocol": {"ids": ["locked-protocol"]}}
+    calibration = fit_execution_block_conformal_calibration(
+        _fit_cases(),
+        _calibration_cases(),
+        expected_fit_units=3,
+        metadata=metadata,
+    )
+    calibration_id = calibration.calibration_id
+
+    metadata["protocol"]["ids"].append("changed")
+    assert calibration.metadata["protocol"]["ids"] == ["locked-protocol"]
+    assert calibration.calibration_id == calibration_id
+
+    with pytest.raises(TypeError, match="immutable"):
+        calibration.metadata["protocol"]["ids"].append("mutated")
+    with pytest.raises(TypeError, match="immutable"):
+        calibration.fragility_diagnostics["leave_one_calibration_session_out"].append(
+            {}
+        )

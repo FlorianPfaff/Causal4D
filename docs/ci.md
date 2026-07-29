@@ -42,6 +42,8 @@ does not need to change. Trusted same-repository pull requests, pushes,
 scheduled runs, and manual dispatches now **fail** when the secret is absent.
 The three-repository workflow is not allowed to report success after skipping
 its checkouts, wheel builds, and compatibility tests.
+Tag releases also fail in the main CI workflow when the credential is absent,
+so a skipped pinned-provider job cannot authorize release publication.
 
 GitHub does not expose repository secrets to pull requests from external forks.
 Those events receive a dedicated `External PR cannot access private providers`

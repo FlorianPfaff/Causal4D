@@ -7,14 +7,7 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-
-def _validated_metadata(values: Mapping[str, Any]) -> dict[str, Any]:
-    import json
-
-    try:
-        return json.loads(json.dumps(dict(values), sort_keys=True, allow_nan=False))
-    except (TypeError, ValueError) as error:
-        raise ValueError("metadata must contain finite JSON values") from error
+from causal4d.immutable_json import validated_json_mapping
 
 
 @dataclass(frozen=True)
@@ -46,7 +39,14 @@ class CausalSufficiencyResult:
             raise ValueError("permutation_p_value must lie in [0, 1]")
         if min(self.execution_count, self.group_count, self.command_count) < 1:
             raise ValueError("counts must be positive")
-        object.__setattr__(self, "metadata", _validated_metadata(self.metadata))
+        object.__setattr__(
+            self,
+            "metadata",
+            validated_json_mapping(
+                self.metadata,
+                error_message="metadata must contain finite JSON values",
+            ),
+        )
 
     def as_dict(self) -> dict[str, Any]:
         return {

@@ -10,6 +10,7 @@ from typing import Any, Mapping
 import numpy as np
 
 from .contracts import TwinBelief
+from .immutable_json import plain_json, validated_json_mapping
 from .observation_contract_bundle import (
     observation_contract_array_sha256,
     observation_contract_artifact_id,
@@ -62,23 +63,6 @@ def _bounded_probability(
     return result
 
 
-def _validated_json_mapping(
-    values: Mapping[str, Any],
-    *,
-    name: str,
-) -> dict[str, Any]:
-    try:
-        return json.loads(
-            json.dumps(
-                dict(values),
-                sort_keys=True,
-                allow_nan=False,
-            )
-        )
-    except (TypeError, ValueError) as error:
-        raise ValueError(f"{name} must be finite JSON data") from error
-
-
 @dataclass(frozen=True)
 class ObservationLineage:
     """Small immutable view of a validated ObservationBeliefV1 archive."""
@@ -120,9 +104,9 @@ class ObservationLineage:
         object.__setattr__(
             self,
             "provider_validation",
-            _validated_json_mapping(
+            validated_json_mapping(
                 self.provider_validation,
-                name="provider validation",
+                error_message="provider validation must be finite JSON data",
             ),
         )
 
@@ -139,7 +123,7 @@ class ObservationLineage:
             "source_observation_artifact_sha256": (self.source_artifact_sha256),
         }
         if self.provider_validation:
-            metadata["source_observation_provider_validation"] = dict(
+            metadata["source_observation_provider_validation"] = plain_json(
                 self.provider_validation
             )
         return metadata

@@ -10,6 +10,8 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
+from causal4d.immutable_json import validated_json_mapping
+
 from causal4d.contracts import array_sha256
 from causal4d.observation_evidence import GroupedObservationEvidence
 
@@ -26,13 +28,6 @@ def _readonly(values: np.ndarray, *, dtype: type | None = float) -> np.ndarray:
 def _validate_sha256(value: str, *, name: str) -> None:
     if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
         raise ValueError(f"{name} must be a lowercase SHA-256 digest")
-
-
-def _json_metadata(values: Mapping[str, Any]) -> dict[str, Any]:
-    try:
-        return json.loads(json.dumps(dict(values), sort_keys=True, allow_nan=False))
-    except (TypeError, ValueError) as error:
-        raise ValueError("metadata must contain finite JSON values") from error
 
 
 def _file_sha256(path: Path) -> str:
@@ -103,8 +98,7 @@ class GraphDiscrepancyBelief:
         if projection.shape != (3,):
             raise ValueError("projection_variance_m2 must have shape (3,)")
         if not all(
-            np.all(np.isfinite(value))
-            for value in (mean, covariance, projection)
+            np.all(np.isfinite(value)) for value in (mean, covariance, projection)
         ):
             raise ValueError("discrepancy belief arrays must be finite")
         if np.any(projection < 0.0):
@@ -114,7 +108,14 @@ class GraphDiscrepancyBelief:
         object.__setattr__(self, "coefficient_mean_m", mean)
         object.__setattr__(self, "coefficient_covariance_m2", covariance)
         object.__setattr__(self, "projection_variance_m2", projection)
-        object.__setattr__(self, "metadata", _json_metadata(self.metadata))
+        object.__setattr__(
+            self,
+            "metadata",
+            validated_json_mapping(
+                self.metadata,
+                error_message="metadata must contain finite JSON values",
+            ),
+        )
 
     @property
     def rank(self) -> int:

@@ -17,6 +17,8 @@ from typing import Any, Literal
 
 import numpy as np
 
+from causal4d.immutable_json import validated_json_mapping
+
 
 EXECUTION_BLOCK_CALIBRATION_SCHEMA_VERSION = 1
 EXECUTION_BLOCK_SCORE_KIND = "max_abs_standardized_coordinate_v1"
@@ -31,13 +33,6 @@ def _canonical_json(value: Any) -> str:
         separators=(",", ":"),
         allow_nan=False,
     )
-
-
-def _validated_json_mapping(values: Mapping[str, Any]) -> dict[str, Any]:
-    try:
-        return json.loads(_canonical_json(dict(values)))
-    except (TypeError, ValueError) as error:
-        raise ValueError("metadata must be finite JSON data") from error
 
 
 def _readonly_array(
@@ -484,9 +479,9 @@ class ExecutionBlockConformalCalibration:
         object.__setattr__(
             self,
             "fragility_diagnostics",
-            _validated_json_mapping(self.fragility_diagnostics),
+            validated_json_mapping(self.fragility_diagnostics),
         )
-        object.__setattr__(self, "metadata", _validated_json_mapping(self.metadata))
+        object.__setattr__(self, "metadata", validated_json_mapping(self.metadata))
 
     @property
     def source_execution_ids(self) -> tuple[str, ...]:

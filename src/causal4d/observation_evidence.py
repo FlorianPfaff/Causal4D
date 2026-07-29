@@ -7,20 +7,13 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
+from causal4d.immutable_json import validated_json_mapping
+
 
 def _readonly(values: np.ndarray, *, dtype: Any = float) -> np.ndarray:
     result = np.asarray(values, dtype=dtype).copy()
     result.setflags(write=False)
     return result
-
-
-def _json_metadata(values: Mapping[str, Any]) -> dict[str, Any]:
-    import json
-
-    try:
-        return json.loads(json.dumps(dict(values), sort_keys=True, allow_nan=False))
-    except (TypeError, ValueError) as error:
-        raise ValueError("metadata must contain finite JSON data") from error
 
 
 @dataclass(frozen=True)
@@ -59,7 +52,11 @@ class ObservationGroup:
         count = len(values)
         if values.ndim != 1 or count == 0:
             raise ValueError("values_m must be a nonempty vector")
-        if frames.shape != (count,) or nodes.shape != (count,) or coordinates.shape != (count,):
+        if (
+            frames.shape != (count,)
+            or nodes.shape != (count,)
+            or coordinates.shape != (count,)
+        ):
             raise ValueError("frame, node, and coordinate indices must match values_m")
         if np.any(frames < 0) or np.any(nodes < 0) or np.any(coordinates < 0):
             raise ValueError("observation indices must be nonnegative")
@@ -92,7 +89,14 @@ class ObservationGroup:
         object.__setattr__(self, "coordinate_indices", coordinates)
         object.__setattr__(self, "covariance_m2", covariance)
         object.__setattr__(self, "contributor_ids", tuple(self.contributor_ids))
-        object.__setattr__(self, "metadata", _json_metadata(self.metadata))
+        object.__setattr__(
+            self,
+            "metadata",
+            validated_json_mapping(
+                self.metadata,
+                error_message="metadata must contain finite JSON data",
+            ),
+        )
 
     @property
     def coordinate_count(self) -> int:
@@ -107,7 +111,9 @@ class ObservationGroup:
         if np.any(self.node_indices >= node_count):
             raise ValueError(f"group {self.group_id!r} references an unavailable node")
         if np.any(self.coordinate_indices >= coordinate_count):
-            raise ValueError(f"group {self.group_id!r} references an unavailable coordinate")
+            raise ValueError(
+                f"group {self.group_id!r} references an unavailable coordinate"
+            )
 
     def selected_predictions(self, trajectories_m: np.ndarray) -> np.ndarray:
         trajectories = np.asarray(trajectories_m, dtype=float)
@@ -138,12 +144,21 @@ class GroupedObservationEvidence:
     def __post_init__(self) -> None:
         groups = tuple(self.groups)
         if not groups or not self.evidence_id:
-            raise ValueError("grouped evidence must have an identity and at least one group")
+            raise ValueError(
+                "grouped evidence must have an identity and at least one group"
+            )
         identifiers = [group.group_id for group in groups]
         if len(set(identifiers)) != len(identifiers):
             raise ValueError("observation group IDs must be unique")
         object.__setattr__(self, "groups", groups)
-        object.__setattr__(self, "metadata", _json_metadata(self.metadata))
+        object.__setattr__(
+            self,
+            "metadata",
+            validated_json_mapping(
+                self.metadata,
+                error_message="metadata must contain finite JSON data",
+            ),
+        )
 
     @property
     def contributor_multiplicity(self) -> dict[str, int]:
@@ -162,13 +177,17 @@ class GroupedObservationEvidence:
             for group in self.groups
         )
 
-    def validate_prefix(self, *, prefix_frame_count: int, rollout_shape: Sequence[int]) -> None:
+    def validate_prefix(
+        self, *, prefix_frame_count: int, rollout_shape: Sequence[int]
+    ) -> None:
         if prefix_frame_count < 2:
             raise ValueError("prefix_frame_count must reveal at least one O-plus frame")
         for group in self.groups:
             group.validate_rollout_shape(rollout_shape)
             if np.any(group.frame_indices <= 0):
-                raise ValueError("grouped O-plus evidence may not reuse the endpoint frame")
+                raise ValueError(
+                    "grouped O-plus evidence may not reuse the endpoint frame"
+                )
             if np.any(group.frame_indices >= prefix_frame_count):
                 raise ValueError("grouped evidence crosses the declared O-plus prefix")
 

@@ -8,13 +8,12 @@ import pytest
 from causal4d.observation_lineage import (
     bind_twin_belief_observation_lineage,
     compute_observation_artifact_id,
+    ObservationLineage,
     load_observation_lineage,
     validate_twin_belief_observation_lineage,
 )
 
-GOLDEN_ARTIFACT_ID = (
-    "9c02e638f60424cca7738d347d1258acd208eb562f422efacd077db4edb2fe80"
-)
+GOLDEN_ARTIFACT_ID = "9c02e638f60424cca7738d347d1258acd208eb562f422efacd077db4edb2fe80"
 
 
 @dataclass(frozen=True)
@@ -109,9 +108,7 @@ def test_binding_is_content_addressed_and_then_required(tmp_path: Path) -> None:
     twin = _TwinBelief(_Context("case-1", _Window(12)), {})
 
     with pytest.raises(ValueError, match="no source observation binding"):
-        validate_twin_belief_observation_lineage(
-            twin, lineage, require_bound=True
-        )
+        validate_twin_belief_observation_lineage(twin, lineage, require_bound=True)
     bound = bind_twin_belief_observation_lineage(twin, lineage)
     result = validate_twin_belief_observation_lineage(
         bound, lineage, require_bound=True
@@ -126,9 +123,7 @@ def test_lineage_rejects_observation_beyond_twin_o_minus(tmp_path: Path) -> None
     lineage = load_observation_lineage(path)
     twin = _TwinBelief(_Context("case-1", _Window(10)), {})
     with pytest.raises(ValueError, match="beyond the TwinBelief O- boundary"):
-        validate_twin_belief_observation_lineage(
-            twin, lineage, require_bound=False
-        )
+        validate_twin_belief_observation_lineage(twin, lineage, require_bound=False)
 
 
 def test_lineage_rejects_observation_before_twin_o_minus(tmp_path: Path) -> None:
@@ -137,6 +132,34 @@ def test_lineage_rejects_observation_before_twin_o_minus(tmp_path: Path) -> None
     lineage = load_observation_lineage(path)
     twin = _TwinBelief(_Context("case-1", _Window(12, frame_start=9)), {})
     with pytest.raises(ValueError, match="before the TwinBelief O- boundary"):
-        validate_twin_belief_observation_lineage(
-            twin, lineage, require_bound=False
-        )
+        validate_twin_belief_observation_lineage(twin, lineage, require_bound=False)
+
+
+def test_lineage_provider_validation_is_deeply_immutable() -> None:
+    validation = {"provider": {"checks": ["schema", {"passed": True}]}}
+    lineage = ObservationLineage(
+        artifact_id="a" * 64,
+        case_id="case-1",
+        stream_id="prob4d:points",
+        causal_frame_stop=12,
+        minimum_frame_id=8,
+        maximum_frame_id=9,
+        observation_count=4,
+        group_count=2,
+        factor_rank=2,
+        source_repository="FlorianPfaff/Prob4D",
+        source_revision="b" * 40,
+        source_artifact_sha256="c" * 64,
+        provider_validation=validation,
+    )
+
+    validation["provider"]["checks"][1]["passed"] = False
+    assert lineage.provider_validation["provider"]["checks"][1]["passed"] is True
+    with pytest.raises(TypeError, match="immutable"):
+        lineage.provider_validation["provider"]["checks"].append("mutated")
+
+    metadata = lineage.metadata()
+    metadata["source_observation_provider_validation"]["provider"]["checks"].append(
+        "copy-only"
+    )
+    assert "copy-only" not in lineage.provider_validation["provider"]["checks"]

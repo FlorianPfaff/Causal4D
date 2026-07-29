@@ -10,6 +10,8 @@ from typing import Any, Mapping, Sequence
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
+from causal4d.immutable_json import validated_json_mapping
+
 
 PHYSICAL_BELIEF_PROVIDER_SCHEMA_VERSION = 1
 BAYESIAN_PHYSTWIN_COMPATIBILITY_RANGE = ">=0.4,<0.5"
@@ -36,13 +38,6 @@ BAYESIAN_PHYSTWIN_ARTIFACT_SCHEMA_VERSIONS = {
     "GraphBelief": 1,
     "TwinBelief": 1,
 }
-
-
-def _json_metadata(values: Mapping[str, Any]) -> dict[str, Any]:
-    try:
-        return json.loads(json.dumps(dict(values), sort_keys=True, allow_nan=False))
-    except (TypeError, ValueError) as error:
-        raise ValueError("metadata must contain finite JSON values") from error
 
 
 @dataclass(frozen=True)
@@ -80,8 +75,22 @@ class PhysicalBeliefProviderManifest:
         ):
             raise ValueError("artifact schema versions must be positive and named")
         object.__setattr__(self, "capabilities", capabilities)
-        object.__setattr__(self, "artifact_schema_versions", artifact_versions)
-        object.__setattr__(self, "metadata", _json_metadata(self.metadata))
+        object.__setattr__(
+            self,
+            "artifact_schema_versions",
+            validated_json_mapping(
+                artifact_versions,
+                error_message="artifact schema versions must be finite JSON data",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "metadata",
+            validated_json_mapping(
+                self.metadata,
+                error_message="metadata must contain finite JSON values",
+            ),
+        )
 
     @property
     def manifest_id(self) -> str:
