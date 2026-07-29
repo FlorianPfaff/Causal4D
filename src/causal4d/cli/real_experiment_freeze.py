@@ -1,4 +1,4 @@
-"""Seal or validate the frozen Causal4D confirmatory real-experiment method."""
+"""Seal, attest, or validate the frozen Causal4D real-experiment method."""
 
 from __future__ import annotations
 
@@ -6,6 +6,10 @@ import argparse
 import json
 from collections.abc import Sequence
 
+from causal4d.real_evidence_contract_v2 import (
+    build_method_freeze_validation_attestation,
+    write_method_freeze_validation_attestation,
+)
 from causal4d.real_experiment_freeze import (
     build_method_freeze_manifest,
     load_method_freeze_manifest,
@@ -14,6 +18,7 @@ from causal4d.real_experiment_freeze import (
     validate_repository_checkout,
     write_method_freeze_manifest,
 )
+from causal4d.real_protocol import load_protocol
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -28,6 +33,17 @@ def build_parser() -> argparse.ArgumentParser:
     seal.add_argument("output_json")
     seal.add_argument("--frozen-by", required=True)
     seal.add_argument("--frozen-at-utc")
+
+    attest = subparsers.add_parser(
+        "attest",
+        help="independently verify and bind the exact method-freeze file",
+    )
+    attest.add_argument("manifest_json")
+    attest.add_argument("protocol_json")
+    attest.add_argument("repository_root")
+    attest.add_argument("output_json")
+    attest.add_argument("--verified-by", required=True)
+    attest.add_argument("--verified-at-utc")
 
     validate = subparsers.add_parser(
         "validate",
@@ -60,6 +76,28 @@ def main(argv: Sequence[str] | None = None) -> int:
                     args.repository_root,
                     expected_causal4d_commit_sha=git_state["commit_sha"],
                 ),
+                "output": str(output.resolve()),
+            }
+        elif args.command == "attest":
+            attestation = build_method_freeze_validation_attestation(
+                load_protocol(args.protocol_json),
+                args.manifest_json,
+                args.repository_root,
+                verified_by=args.verified_by,
+                verified_at_utc=args.verified_at_utc,
+            )
+            output = write_method_freeze_validation_attestation(
+                args.output_json,
+                attestation,
+            )
+            result = {
+                "passed": True,
+                "method_freeze_sha256": attestation["method_freeze_sha256"],
+                "causal4d_commit_sha": attestation["causal4d_commit_sha"],
+                "bayesian_phystwin_commit_sha": attestation[
+                    "bayesian_phystwin_commit_sha"
+                ],
+                "verifier_id": attestation["verifier_id"],
                 "output": str(output.resolve()),
             }
         else:
