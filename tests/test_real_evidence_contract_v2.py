@@ -365,9 +365,7 @@ def test_preacquisition_chronology_rejects_postdated_prerequisites() -> None:
     )
 
     assert not result["passed"]
-    assert result["blockers"] == [
-        "preacquisition_chronology:method_freeze_verified"
-    ]
+    assert result["blockers"] == ["preacquisition_chronology:method_freeze_verified"]
     assert result["earliest_execution_started_at_utc"] == "2026-07-27T08:00:00Z"
 
 
