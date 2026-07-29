@@ -6,15 +6,16 @@ import argparse
 import json
 from collections.abc import Sequence
 
-from causal4d.real_evidence_status import (
+from causal4d.real_evidence_contract_v2 import (
     build_real_evidence_status,
+    scaffold_real_evidence_v2_templates,
+    validate_real_dataset_v2,
     write_real_evidence_status,
 )
 from causal4d.real_protocol import (
     build_same_object_real_protocol,
     load_protocol,
     scaffold_dataset,
-    validate_dataset,
     validate_protocol,
     write_acquisition_schedule,
     write_protocol,
@@ -45,17 +46,24 @@ def build_parser() -> argparse.ArgumentParser:
 
     scaffold = subparsers.add_parser(
         "scaffold",
-        help="create non-overwriting session and execution templates",
+        help="create non-overwriting session, execution, and evidence templates",
     )
     scaffold.add_argument("protocol_json")
     scaffold.add_argument("output_root")
 
     status = subparsers.add_parser(
         "status",
-        help="report acquired, validated, and claim-ready execution evidence",
+        help="report acquisition, evidence, analysis, and claim readiness",
     )
     status.add_argument("protocol_json")
     status.add_argument("dataset_root")
+    status.add_argument(
+        "--repository-root",
+        help=(
+            "clean checkout at the sealed Causal4D commit; required to verify "
+            "method_freeze.json before claim readiness"
+        ),
+    )
     status.add_argument(
         "--verify-file-hashes",
         action="store_true",
@@ -69,21 +77,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--require-complete",
         action="store_true",
         help=(
-            "return exit code 3 until all 36 executions and artifact hashes "
-            "are claim-ready"
+            "return exit code 3 until the freeze, registration, timebase, "
+            "sessions, executions, and hashes are claim-ready"
         ),
     )
 
     dataset = subparsers.add_parser(
         "validate-dataset",
-        help="validate a completed 36-execution acquisition tree",
+        help="validate a completed version-2 acquisition evidence tree",
     )
     dataset.add_argument("protocol_json")
     dataset.add_argument("dataset_root")
     dataset.add_argument(
+        "--repository-root",
+        help="clean checkout at the method-freeze Causal4D commit",
+    )
+    dataset.add_argument(
         "--skip-file-hashes",
         action="store_true",
-        help="validate descriptors without rehashing recorded files",
+        help="validate structure without declaring the evidence claim-ready",
     )
     return parser
 
@@ -102,13 +114,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "validate-protocol":
             result = validate_protocol(load_protocol(args.protocol_json))
         elif args.command == "scaffold":
-            result = scaffold_dataset(
-                load_protocol(args.protocol_json), args.output_root
-            )
+            protocol = load_protocol(args.protocol_json)
+            result = scaffold_dataset(protocol, args.output_root)
+            result = {
+                **result,
+                **scaffold_real_evidence_v2_templates(protocol, args.output_root),
+            }
         elif args.command == "status":
             result = build_real_evidence_status(
                 load_protocol(args.protocol_json),
                 args.dataset_root,
+                repository_root=args.repository_root,
                 verify_file_hashes=args.verify_file_hashes,
             )
             if args.output_json:
@@ -117,9 +133,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.require_complete and not result["claim_ready"]:
                 exit_code = INCOMPLETE_EVIDENCE_EXIT_CODE
         else:
-            result = validate_dataset(
+            result = validate_real_dataset_v2(
                 load_protocol(args.protocol_json),
                 args.dataset_root,
+                repository_root=args.repository_root,
                 verify_files=not args.skip_file_hashes,
             )
     except (OSError, KeyError, TypeError, ValueError) as error:

@@ -158,6 +158,17 @@ causal4d-real-experiment-freeze seal \
   --frozen-by "<operator-or-principal-investigator>"
 ```
 
+Independently validate and attest that exact freeze before collection:
+
+```bash
+causal4d-real-experiment-freeze attest \
+  /data/causal4d-sloth-multi-action-v1/method_freeze.json \
+  configs/causal4d/sloth_multi_action_v1.json \
+  /opt/causal4d-frozen \
+  /data/causal4d-sloth-multi-action-v1/method_freeze_validation.json \
+  --verified-by "<independent-verifier>"
+```
+
 Track acquisition progress without counting templates as evidence:
 
 ```bash
@@ -168,9 +179,12 @@ causal4d-real-protocol status \
   /data/causal4d-sloth-multi-action-v1/evidence-status.json
 ```
 
-Before analysis, add `--verify-file-hashes --require-complete`. The command
-returns exit code 3 until all 36 executions and every registered artifact are
-claim-ready. See
+Before analysis, add
+`--repository-root <frozen-checkout> --verify-file-hashes --require-complete`.
+The version-2 gate remains closed until the approved timebase, schema-3 physical
+contact registration, sealed and independently attested method freeze, all 18
+same-grasp session manifests, all 36 execution manifests, and every registered
+artifact hash validate. See
 [docs/causal4d_real_evidence_status.md](docs/causal4d_real_evidence_status.md)
 for the exact accounting and exit-code contract.
 
