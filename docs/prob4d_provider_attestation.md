@@ -32,6 +32,10 @@ The independent checks cover:
 - covariance-root and composition-Jacobian modes; and
 - matched, independently verified runtime revision evidence.
 
+An artifact that labels itself claim-bearing is checked against the complete
+strict boundary even when it enters through the compatibility loader. It cannot
+use the looser entry point to bypass calibration or fallback checks.
+
 ## Prospective claim-bearing boundary
 
 New Prob4D-to-Bayesian-PhysTwin-to-Causal4D evidence should use the strict loader:
@@ -56,14 +60,38 @@ from causal4d.claim_bearing_observation_lineage import (
 lineage = require_claim_bearing_prob4d_lineage(lineage)
 ```
 
-The strict boundary rejects:
+The strict boundary requires all of the following:
+
+- an explicitly declared causal stream contract version 2 using the exclusive
+  frame-stop convention; inferred legacy or joint-stream versions are
+  insufficient;
+- the sequential joint spanning-tree covariance model, canonical shared factor
+  names, one shared factor group, and preserved cross-window covariance;
+- metric-anchor uncertainty represented inside the joint factor;
+- calibrated covariance metadata with valid gauge and point calibration IDs
+  identical to the IDs embedded in the provider attestation;
+- `gauge_calibrated_alignment_count == alignment_count`;
+- both uncalibrated covariance and pointwise fallback permissions set to false;
+- an empty covariance-fallback count, proving that no fallback was used; and
+- matched, independently verified runtime revision evidence.
+
+It therefore rejects:
 
 - provider-v1 artifacts without a provider-v2 attestation;
 - exploratory provider-v2 exports;
 - fixed-lag products without the strict causal-stream contract;
 - missing or incompatible covariance calibrations;
+- partially calibrated gauge alignments;
+- calibration-identity drift between metadata and attestation;
+- permission for uncalibrated or pointwise covariance fallback;
+- any recorded covariance fallback use;
 - legacy covariance roots or composition derivatives; and
 - environment-only, mismatched, unavailable, or dirty runtime provenance.
+
+The installed-wheel three-repository workflow exercises the same artifact
+through Prob4D's strict loader, Bayesian-PhysTwin's claim-bearing adapter and
+update, and Causal4D's strict lineage loader. It also requires all three layers
+to reject the same tampered and fallback-bearing variants.
 
 This validation establishes provenance and contract consistency, not empirical
 observation quality, covariance calibration, or downstream physical-prediction
