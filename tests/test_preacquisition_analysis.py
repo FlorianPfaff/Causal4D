@@ -49,6 +49,30 @@ def test_cluster_robust_regression_recovers_linear_coefficients() -> None:
     assert result["parameters"]["speed"]["coefficient"] == pytest.approx(3.0)
 
 
+def test_cluster_robust_regression_uses_linear_solves(monkeypatch) -> None:
+    def forbidden_inverse(*_args, **_kwargs):
+        raise AssertionError("cluster regression must not form an explicit inverse")
+
+    monkeypatch.setattr(np.linalg, "inv", forbidden_inverse)
+    features = np.column_stack(
+        [
+            np.arange(12, dtype=float),
+            np.tile(np.asarray([0.0, 1.0]), 6),
+        ]
+    )
+    response = 1.5 + 0.75 * features[:, 0] - 2.0 * features[:, 1]
+    result = cluster_robust_linear_regression(
+        response,
+        features,
+        [f"session-{index // 2}" for index in range(len(response))],
+        feature_names=["speed", "direction"],
+    )
+
+    assert result["parameters"]["intercept"]["coefficient"] == pytest.approx(1.5)
+    assert result["parameters"]["speed"]["coefficient"] == pytest.approx(0.75)
+    assert result["parameters"]["direction"]["coefficient"] == pytest.approx(-2.0)
+
+
 def test_conformal_rank_exposes_nine_session_minimum_at_90_percent() -> None:
     too_small = conformal_rank_plan(2, coverage=0.90)
     finite = conformal_rank_plan(9, coverage=0.90)
