@@ -33,7 +33,10 @@ jobs:
           from pathlib import Path
           import zlib
 
-          encoded = Path('.github/agent-pr67-chronology.patch.z.b64').read_text().strip()
+          parts = sorted(Path('.github/agent-pr77-chronology-parts').glob('*.part'))
+          if [path.name for path in parts] != [f'{index:02d}.part' for index in range(7)]:
+              raise SystemExit('chronology patch part set is incomplete')
+          encoded = ''.join(path.read_text(encoding='utf-8') for path in parts)
           patch = zlib.decompress(base64.b64decode(encoded, validate=True))
           expected = '16d683d73f1e5f243e25b0e7d8136e5d849452d8dc5a8151d18a092c781f6165'
           actual = hashlib.sha256(patch).hexdigest()
@@ -44,6 +47,7 @@ jobs:
           git apply --check /tmp/preacquisition-chronology.patch
           git apply --index /tmp/preacquisition-chronology.patch
           git rm .github/agent-pr67-chronology.patch.z.b64
+          git rm -r .github/agent-pr77-chronology-parts
           git rm .github/workflows/apply-preacquisition-chronology.patch.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
