@@ -35,7 +35,7 @@ jobs:
 
           encoded = Path('.github/agent-pr67-chronology.patch.z.b64').read_text().strip()
           patch = zlib.decompress(base64.b64decode(encoded, validate=True))
-          expected = '0ca28bb0af8c54862be7098a5726a938cb49364ea321964798d68d1162e9ff19'
+          expected = '16d683d73f1e5f243e25b0e7d8136e5d849452d8dc5a8151d18a092c781f6165'
           actual = hashlib.sha256(patch).hexdigest()
           if actual != expected:
               raise SystemExit(f'patch digest mismatch: {actual} != {expected}')
