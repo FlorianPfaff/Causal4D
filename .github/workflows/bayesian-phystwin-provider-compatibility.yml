@@ -8,14 +8,18 @@ on:
       - "ci/three_repository_*.py"
       - "docs/ci.md"
       - "docs/molmo_visual_inputs_v2.md"
+      - "docs/prob4d_provider_attestation.md"
       - "pyproject.toml"
       - "src/causal4d/bpt_belief.py"
+      - "src/causal4d/claim_bearing_observation_lineage.py"
       - "src/causal4d/cli/molmo_phystwin_forecast_v2.py"
       - "src/causal4d/molmo_visual_inputs_v2.py"
       - "src/causal4d/observation_lineage.py"
       - "src/causal4d/phystwin_backend.py"
       - "src/causal4d/phystwin_resumable.py"
       - "src/causal4d/prob4d_observation_contract.py"
+      - "src/causal4d/prob4d_observation_lineage.py"
+      - "src/causal4d/prob4d_provider_attestation.py"
       - "src/causal4d/provider_contract.py"
       - "src/causal4d/replay_provider_contract.py"
       - "src/causal4d/rollout_cache.py"
@@ -25,8 +29,10 @@ on:
       - "tests/test_causal4d_molmo_visual_inputs_v2.py"
       - "tests/test_causal4d_phystwin_backend.py"
       - "tests/test_phystwin_resumable.py"
+      - "tests/test_prob4d_stream_contract_version.py"
       - "tests/test_replay_provider_contract.py"
       - "tests/test_rollout_cache.py"
+      - "tests/test_three_repository_workflow_policy.py"
   push:
     branches: [main]
     paths:
@@ -34,14 +40,18 @@ on:
       - "ci/three_repository_*.py"
       - "docs/ci.md"
       - "docs/molmo_visual_inputs_v2.md"
+      - "docs/prob4d_provider_attestation.md"
       - "pyproject.toml"
       - "src/causal4d/bpt_belief.py"
+      - "src/causal4d/claim_bearing_observation_lineage.py"
       - "src/causal4d/cli/molmo_phystwin_forecast_v2.py"
       - "src/causal4d/molmo_visual_inputs_v2.py"
       - "src/causal4d/observation_lineage.py"
       - "src/causal4d/phystwin_backend.py"
       - "src/causal4d/phystwin_resumable.py"
       - "src/causal4d/prob4d_observation_contract.py"
+      - "src/causal4d/prob4d_observation_lineage.py"
+      - "src/causal4d/prob4d_provider_attestation.py"
       - "src/causal4d/provider_contract.py"
       - "src/causal4d/replay_provider_contract.py"
       - "src/causal4d/rollout_cache.py"
@@ -51,8 +61,10 @@ on:
       - "tests/test_causal4d_molmo_visual_inputs_v2.py"
       - "tests/test_causal4d_phystwin_backend.py"
       - "tests/test_phystwin_resumable.py"
+      - "tests/test_prob4d_stream_contract_version.py"
       - "tests/test_replay_provider_contract.py"
       - "tests/test_rollout_cache.py"
+      - "tests/test_three_repository_workflow_policy.py"
   workflow_dispatch:
     inputs:
       bpt_ref:
@@ -188,6 +200,14 @@ jobs:
           python -m build --wheel --outdir "$wheelhouse" causal4d
           test "$(find "$wheelhouse" -maxdepth 1 -name '*.whl' | wc -l)" -eq 3
 
+      - name: Record wheel SHA-256 identities
+        run: |
+          wheelhouse="$RUNNER_TEMP/three-repository-wheelhouse"
+          (
+            cd "$wheelhouse"
+            sha256sum ./*.whl | sort
+          ) | tee "$RUNNER_TEMP/three-repository-wheel-sha256.txt"
+
       - name: Install wheels in a clean virtual environment
         run: |
           venv="$RUNNER_TEMP/three-repository-venv"
@@ -201,7 +221,7 @@ jobs:
             opencv-python-headless
           "$venv/bin/python" -m pip check
 
-      - name: Run the isolated three-repository golden path
+      - name: Run the isolated three-repository compatibility path
         run: |
           run_dir="$RUNNER_TEMP/three-repository-run"
           mkdir -p "$run_dir"
@@ -221,6 +241,19 @@ jobs:
               --output "$RUNNER_TEMP/three-repository-summary.json" \
             | tee "$RUNNER_TEMP/three-repository-golden-path.log"
 
+      - name: Run strict claim-bearing provider-v2 admission path
+        run: |
+          cd "$RUNNER_TEMP/three-repository-run"
+          env -u PYTHONPATH \
+            "$RUNNER_TEMP/three-repository-venv/bin/python" \
+            three_repository_provider_v2_attestation.py \
+              --prob4d-fixture \
+                "$GITHUB_WORKSPACE/prob4d/tests/fixtures/prob4d_joint_observation_v1.json" \
+              --prob4d-revision "${{ steps.revisions.outputs.prob4d }}" \
+              --output-dir "$RUNNER_TEMP/three-repository-provider-v2-work" \
+              --output "$RUNNER_TEMP/three-repository-provider-v2-summary.json" \
+            | tee "$RUNNER_TEMP/three-repository-provider-v2.log"
+
       - name: Run cross-repository contract tests against installed wheels
         env:
           CAUSAL4D_REQUIRE_BPT_PROVIDER: "1"
@@ -229,11 +262,13 @@ jobs:
           env -u PYTHONPATH \
             "$RUNNER_TEMP/three-repository-venv/bin/python" -m pytest -q \
               --import-mode=importlib \
+              "$GITHUB_WORKSPACE/prob4d/tests/test_claim_bearing_observation.py" \
               "$GITHUB_WORKSPACE/prob4d/tests/test_joint_observation_contract_fixture.py" \
               "$GITHUB_WORKSPACE/bayesian-phystwin/tests/test_causal4d_provider_v1.py" \
               "$GITHUB_WORKSPACE/bayesian-phystwin/tests/test_causal4d_provider_v2.py" \
               "$GITHUB_WORKSPACE/bayesian-phystwin/tests/test_causal4d_artifacts_v2.py" \
               "$GITHUB_WORKSPACE/bayesian-phystwin/tests/test_observation_belief_gauge_adapter.py" \
+              "$GITHUB_WORKSPACE/bayesian-phystwin/tests/test_prob4d_causal_lineage.py" \
               "$GITHUB_WORKSPACE/bayesian-phystwin/tests/test_run_manifest_v2.py" \
               "$GITHUB_WORKSPACE/causal4d/tests/test_bpt_provider_import_boundary.py" \
               "$GITHUB_WORKSPACE/causal4d/tests/test_bpt_provider_integration.py" \
@@ -253,10 +288,28 @@ jobs:
         run: |
           if [[ -f "$RUNNER_TEMP/three-repository-summary.json" ]]; then
             {
-              echo "### Three-repository installed-wheel compatibility"
+              echo "### Compatibility path"
               echo
               echo '```json'
               cat "$RUNNER_TEMP/three-repository-summary.json"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [[ -f "$RUNNER_TEMP/three-repository-provider-v2-summary.json" ]]; then
+            {
+              echo "### Strict claim-bearing provider-v2 path"
+              echo
+              echo '```json'
+              cat "$RUNNER_TEMP/three-repository-provider-v2-summary.json"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [[ -f "$RUNNER_TEMP/three-repository-wheel-sha256.txt" ]]; then
+            {
+              echo "### Wheel SHA-256 identities"
+              echo
+              echo '```text'
+              cat "$RUNNER_TEMP/three-repository-wheel-sha256.txt"
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -269,5 +322,8 @@ jobs:
           path: |
             ${{ runner.temp }}/three-repository-summary.json
             ${{ runner.temp }}/three-repository-golden-path.log
+            ${{ runner.temp }}/three-repository-provider-v2-summary.json
+            ${{ runner.temp }}/three-repository-provider-v2.log
+            ${{ runner.temp }}/three-repository-wheel-sha256.txt
           if-no-files-found: warn
           retention-days: 7
