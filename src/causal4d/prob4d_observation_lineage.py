@@ -125,9 +125,7 @@ def _provider_attestation_summary(
         "covariance_root_mode": validated["covariance_root_mode"],
         "composition_jacobian_mode": validated["composition_jacobian_mode"],
         "runtime_revision_source": runtime["source"],
-        "runtime_revision_independently_verified": runtime[
-            "independently_verified"
-        ],
+        "runtime_revision_independently_verified": runtime["independently_verified"],
     }
 
 
@@ -139,9 +137,7 @@ def _claim_bearing_stream_contract_summary(
         name="claim-bearing Prob4D causal stream contract",
     )
     if contract.get("version") != PROB4D_CAUSAL_STREAM_CONTRACT_VERSION:
-        raise ValueError(
-            "claim-bearing Prob4D causal stream contract changed version"
-        )
+        raise ValueError("claim-bearing Prob4D causal stream contract changed version")
     if contract.get("causal_frame_stop_convention") != "exclusive":
         raise ValueError(
             "claim-bearing Prob4D causal stream must use an exclusive frame stop"
