@@ -1,0 +1,151 @@
+name: Extended compatibility
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compatibility-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  remaining-python-minors:
+    name: Core-only / Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install core and development dependencies only
+        run: python -m pip install -e ".[dev]"
+      - name: Assert optional runtimes are absent
+        run: |
+          python - <<'PY'
+          import importlib.util
+
+          forbidden = ("bayesian_phystwin", "cv2", "torch", "warp")
+          present = [name for name in forbidden if importlib.util.find_spec(name)]
+          if present:
+              raise SystemExit(f"optional dependencies leaked into core job: {present}")
+          PY
+      - name: Run core-compatible default suite
+        run: |
+          python -m pytest \
+            --junitxml="pytest-extended-${{ matrix.python-version }}.xml"
+      - name: Upload pytest report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-extended-${{ matrix.python-version }}
+          path: pytest-extended-${{ matrix.python-version }}.xml
+
+  minimum-dependencies:
+    name: Declared dependency floors / Python 3.10
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+          cache: pip
+      - name: Build the package in an isolated build environment
+        run: |
+          python -m venv build-venv
+          build-venv/bin/python -m pip install build
+          build-venv/bin/python -m build --wheel --outdir dist-floor
+      - name: Install exact declared runtime floors
+        run: |
+          python -m venv floor-venv
+          floor-venv/bin/python -m pip install \
+            "numpy==1.24.0" \
+            "packaging==23.0" \
+            "scipy==1.10.0" \
+            "pytest==8.0.0"
+          artifact=$(find dist-floor -maxdepth 1 -name '*.whl' -print -quit)
+          test -n "$artifact"
+          floor-venv/bin/python -m pip install --no-deps "$artifact"
+          floor-venv/bin/python -m pip check
+      - name: Verify exact floor versions
+        run: |
+          floor-venv/bin/python - <<'PY'
+          from importlib.metadata import version
+
+          expected = {
+              "numpy": "1.24.0",
+              "packaging": "23.0",
+              "scipy": "1.10.0",
+              "pytest": "8.0.0",
+          }
+          actual = {name: version(name) for name in expected}
+          if actual != expected:
+              raise SystemExit(
+                  f"minimum-dependency environment drifted: {actual!r} != {expected!r}"
+              )
+          PY
+      - name: Assert optional runtimes are absent
+        run: |
+          floor-venv/bin/python - <<'PY'
+          import importlib.util
+
+          forbidden = ("bayesian_phystwin", "cv2", "torch", "warp")
+          present = [name for name in forbidden if importlib.util.find_spec(name)]
+          if present:
+              raise SystemExit(f"optional dependencies leaked into floor job: {present}")
+          PY
+      - name: Run core-compatible suite at dependency floors
+        run: |
+          floor-venv/bin/python -m pytest \
+            --junitxml="pytest-minimum-dependencies.xml"
+      - name: Record resolved minimum environment
+        if: always()
+        run: |
+          floor-venv/bin/python -m pip freeze --all > minimum-environment.txt
+          floor-venv/bin/python - <<'PY' > minimum-platform.json
+          import json
+          import platform
+          import sys
+
+          print(
+              json.dumps(
+                  {
+                      "implementation": platform.python_implementation(),
+                      "machine": platform.machine(),
+                      "platform": platform.platform(),
+                      "python": platform.python_version(),
+                      "python_executable": sys.executable,
+                  },
+                  indent=2,
+                  sort_keys=True,
+              )
+          )
+          PY
+      - name: Upload floor-environment evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: minimum-dependency-evidence
+          path: |
+            minimum-environment.txt
+            minimum-platform.json
+            pytest-minimum-dependencies.xml
