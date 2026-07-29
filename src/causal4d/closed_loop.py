@@ -10,6 +10,7 @@ import numpy as np
 from causal4d.contracts import PhysicalPosterior, TaskPosterior
 from causal4d.graph_temporal_discrepancy import GraphTemporalDiscrepancyModel
 from causal4d.physical_validation import physical_posterior_moments
+from causal4d.weighting import log_weights_from_probabilities
 
 
 def _validated_graph_discrepancy_state(
@@ -442,9 +443,10 @@ class RecedingHorizonPlanner:
         applied_beta = 0.0
         if plan.task is not None:
             applied_beta = float(plan.task.beta)
-            log_terms = np.log(np.maximum(plan.physical.weights, 1e-300)) + (
-                applied_beta * plan.task.semantic_log_scores
-            )
+            log_terms = log_weights_from_probabilities(
+                plan.physical.weights,
+                name="plan physical weights",
+            ) + (applied_beta * plan.task.semantic_log_scores)
             semantic_log_evidence = _logsumexp(log_terms)
         score = (
             semantic_log_evidence
@@ -712,9 +714,10 @@ class RecedingHorizonPlanner:
             )
         # The update starts from the physical posterior. Language never enters
         # state, theta, phi, or kappa inference.
-        log_weights = np.log(np.maximum(plan.physical.weights, 1e-300)) + (
-            self.observation_likelihood_power * scores
-        )
+        log_weights = log_weights_from_probabilities(
+            plan.physical.weights,
+            name="plan physical weights",
+        ) + (self.observation_likelihood_power * scores)
         maximum = float(np.max(log_weights))
         weights = np.exp(log_weights - maximum)
         weights /= np.sum(weights)
@@ -888,9 +891,10 @@ def condition_plan_on_recursive_belief(
         if plan.task.beta == 0.0:
             task_weights = physical.weights.copy()
         else:
-            log_weights = np.log(np.maximum(physical.weights, 1e-300)) + (
-                plan.task.beta * plan.task.semantic_log_scores
-            )
+            log_weights = log_weights_from_probabilities(
+                physical.weights,
+                name="recursive physical weights",
+            ) + (plan.task.beta * plan.task.semantic_log_scores)
             maximum = float(np.max(log_weights))
             task_weights = np.exp(log_weights - maximum)
             task_weights /= np.sum(task_weights)

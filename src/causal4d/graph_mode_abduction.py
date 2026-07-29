@@ -11,6 +11,7 @@ import numpy as np
 from causal4d.contracts import FactualIntervention, TwinBelief, array_sha256
 from causal4d.intervention_abduction import physical_readout_components
 from causal4d.rollout_bank import JointRolloutBank
+from causal4d.weighting import log_weights_from_probabilities
 
 
 def _readonly(values: np.ndarray) -> np.ndarray:
@@ -157,8 +158,8 @@ def _multivariate_student_t_score(
     whitened = np.einsum("ij,hptjc->hptic", inverse_root, coefficients)
     squared = np.sum(np.square(whitened), axis=3)
     dimension = covariance_m2.shape[0]
-    terms = -0.5 * (degrees_of_freedom + dimension) * np.log1p(
-        squared / degrees_of_freedom
+    terms = (
+        -0.5 * (degrees_of_freedom + dimension) * np.log1p(squared / degrees_of_freedom)
     )
     return np.mean(terms, axis=(2, 3))
 
@@ -189,8 +190,7 @@ def graph_mode_joint_weights(
         )
     if (
         settings.mode_covariance_m2 is not None
-        and settings.mode_covariance_m2.shape
-        != (basis.shape[1], basis.shape[1])
+        and settings.mode_covariance_m2.shape != (basis.shape[1], basis.shape[1])
     ):
         raise ValueError("mode covariance rank differs from graph basis")
 
@@ -236,16 +236,21 @@ def graph_mode_joint_weights(
         )
         score = score + settings.dynamic_likelihood_weight * dynamic_score
 
-    prior = bank.prior_joint_weights if base_weights is None else np.asarray(
-        base_weights,
-        dtype=float,
+    prior = (
+        bank.prior_joint_weights
+        if base_weights is None
+        else np.asarray(
+            base_weights,
+            dtype=float,
+        )
     )
     if prior.shape != bank.prior_joint_weights.shape:
         raise ValueError("base_weights must match the rollout bank")
     if np.any(prior < 0.0) or not np.isclose(np.sum(prior), 1.0):
         raise ValueError("base_weights must be nonnegative and sum to one")
     return _normalize_log_weights(
-        np.log(np.maximum(prior, 1e-300)) + settings.likelihood_temperature * score
+        log_weights_from_probabilities(prior, name="base_weights")
+        + settings.likelihood_temperature * score
     )
 
 

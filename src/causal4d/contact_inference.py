@@ -20,6 +20,29 @@ from causal4d.simulator import (
     simulate,
     simulate_particles,
 )
+from causal4d.weighting import log_weights_from_probabilities
+
+
+def _readonly_array(values: np.ndarray, *, dtype: Any = float) -> np.ndarray:
+    array = np.asarray(values, dtype=dtype).copy()
+    array.setflags(write=False)
+    return array
+
+
+def _validated_probability_weights(
+    values: np.ndarray,
+    *,
+    expected_shape: tuple[int, ...],
+    name: str,
+) -> np.ndarray:
+    weights = _readonly_array(values)
+    if weights.shape != expected_shape:
+        raise ValueError(f"{name} have invalid shape")
+    if not np.all(np.isfinite(weights)) or np.any(weights < 0.0):
+        raise ValueError(f"{name} must be finite and nonnegative")
+    if not np.isclose(np.sum(weights), 1.0):
+        raise ValueError(f"{name} must sum to one")
+    return weights
 
 
 @dataclass(frozen=True)
@@ -445,30 +468,44 @@ class ContactRolloutBank:
     confidence_level: float
 
     def __post_init__(self) -> None:
-        contact_weights = np.asarray(self.contact_prior_weights, dtype=float)
-        parameter_weights = np.asarray(self.parameter_weights, dtype=float)
-        trajectories = np.asarray(self.trajectories, dtype=float)
+        particles = _readonly_array(self.parameter_particles)
+        if particles.ndim != 2 or particles.shape[1] != 3:
+            raise ValueError("parameter_particles must have shape (particle, 3)")
+        if not np.all(np.isfinite(particles)):
+            raise ValueError("parameter_particles must be finite")
+        contact_weights = _validated_probability_weights(
+            self.contact_prior_weights,
+            expected_shape=(len(self.contact_states),),
+            name="contact prior weights",
+        )
+        parameter_weights = _validated_probability_weights(
+            self.parameter_weights,
+            expected_shape=(len(particles),),
+            name="parameter weights",
+        )
+        trajectories = _readonly_array(self.trajectories)
         expected = (
             len(self.contact_states),
-            self.parameter_particles.shape[0],
+            len(particles),
             self.action.frame_count,
             self.graph_object.node_count,
             2,
         )
         if trajectories.shape != expected:
             raise ValueError(f"trajectory bank must have shape {expected}")
-        if contact_weights.shape != (len(self.contact_states),):
-            raise ValueError("contact prior weights have invalid shape")
-        if parameter_weights.shape != (self.parameter_particles.shape[0],):
-            raise ValueError("parameter weights have invalid shape")
-        if not np.isclose(np.sum(contact_weights), 1.0) or not np.isclose(
-            np.sum(parameter_weights), 1.0
+        if not np.all(np.isfinite(trajectories)):
+            raise ValueError("trajectory bank must be finite")
+        if not np.isfinite(self.variance_floor_m2) or self.variance_floor_m2 <= 0.0:
+            raise ValueError("variance_floor_m2 must be finite and positive")
+        if (
+            not np.isfinite(self.confidence_level)
+            or not 0.0 < self.confidence_level < 1.0
         ):
-            raise ValueError("rollout-bank priors must sum to one")
-        if self.variance_floor_m2 <= 0.0:
-            raise ValueError("variance_floor_m2 must be positive")
-        if not 0.0 < self.confidence_level < 1.0:
-            raise ValueError("confidence_level must be in (0, 1)")
+            raise ValueError("confidence_level must be finite and in (0, 1)")
+        object.__setattr__(self, "contact_prior_weights", contact_weights)
+        object.__setattr__(self, "parameter_particles", particles)
+        object.__setattr__(self, "parameter_weights", parameter_weights)
+        object.__setattr__(self, "trajectories", trajectories)
 
     @property
     def prior_joint_weights(self) -> np.ndarray:
@@ -486,6 +523,20 @@ class ContactRolloutBank:
     ) -> np.ndarray:
         """Update the joint contact/physics posterior using only an early prefix."""
 
+        for name, value in (
+            ("likelihood_scale_m", likelihood_scale_m),
+            ("likelihood_power", likelihood_power),
+            ("dynamic_likelihood_weight", dynamic_likelihood_weight),
+        ):
+            if not np.isfinite(value):
+                raise ValueError(f"{name} must be finite")
+        if likelihood_scale_m <= 0.0:
+            raise ValueError("likelihood_scale_m must be positive")
+        if likelihood_power < 0.0 or dynamic_likelihood_weight < 0.0:
+            raise ValueError("likelihood weights must be nonnegative")
+        if likelihood_power == 0.0:
+            return self.prior_joint_weights.copy()
+
         observations = np.asarray(observations, dtype=float)
         expected_shape = (
             self.action.frame_count,
@@ -494,6 +545,8 @@ class ContactRolloutBank:
         )
         if observations.shape != expected_shape:
             raise ValueError(f"observations must have shape {expected_shape}")
+        if not np.all(np.isfinite(observations)):
+            raise ValueError("observations must be finite")
         if not 2 <= prefix_frame_count < self.action.frame_count:
             raise ValueError("prefix_frame_count must leave at least one future frame")
         nodes = np.asarray(
@@ -502,6 +555,14 @@ class ContactRolloutBank:
             else tuple(range(self.graph_object.node_count)),
             dtype=int,
         )
+        if (
+            nodes.ndim != 1
+            or len(nodes) == 0
+            or np.any(nodes < 0)
+            or np.any(nodes >= self.graph_object.node_count)
+            or len(np.unique(nodes)) != len(nodes)
+        ):
+            raise ValueError("observed_nodes must be unique valid node indices")
         predicted = self.trajectories[:, :, 1:prefix_frame_count, :, :]
         predicted = predicted[:, :, :, nodes, :]
         observed = observations[1:prefix_frame_count, nodes, :]
@@ -527,7 +588,10 @@ class ContactRolloutBank:
             squared_error += dynamic_likelihood_weight * (
                 0.5 * velocity_error + acceleration_error / 6.0
             )
-        log_weights = np.log(np.maximum(self.prior_joint_weights, 1e-300))
+        log_weights = log_weights_from_probabilities(
+            self.prior_joint_weights,
+            name="rollout-bank prior weights",
+        )
         log_weights -= 0.5 * likelihood_power * squared_error / likelihood_scale_m**2
         log_weights -= float(np.max(log_weights))
         weights = np.exp(log_weights)
@@ -542,15 +606,13 @@ class ContactRolloutBank:
         variance_multiplier: float = 1.0,
         include_intervals: bool = True,
     ) -> PredictiveDistribution:
-        weights = (
-            self.prior_joint_weights
-            if joint_weights is None
-            else np.asarray(joint_weights, dtype=float)
+        weights = _validated_probability_weights(
+            self.prior_joint_weights if joint_weights is None else joint_weights,
+            expected_shape=self.prior_joint_weights.shape,
+            name="joint_weights",
         )
-        if weights.shape != self.prior_joint_weights.shape or not np.isclose(
-            np.sum(weights), 1.0
-        ):
-            raise ValueError("joint_weights must match the bank and sum to one")
+        if not np.isfinite(variance_multiplier) or variance_multiplier <= 0.0:
+            raise ValueError("variance_multiplier must be finite and positive")
         mean = np.sum(weights[:, :, None, None, None] * self.trajectories, axis=(0, 1))
         variance = np.sum(
             weights[:, :, None, None, None]
@@ -585,20 +647,20 @@ class ContactRolloutBank:
         )
 
     def contact_marginal(self, joint_weights: np.ndarray) -> np.ndarray:
-        weights = np.asarray(joint_weights, dtype=float)
-        if weights.shape != self.prior_joint_weights.shape:
-            raise ValueError("joint_weights have invalid shape")
-        marginal = np.sum(weights, axis=1)
-        marginal /= np.sum(marginal)
-        return marginal
+        weights = _validated_probability_weights(
+            joint_weights,
+            expected_shape=self.prior_joint_weights.shape,
+            name="joint_weights",
+        )
+        return np.sum(weights, axis=1)
 
     def parameter_marginal(self, joint_weights: np.ndarray) -> np.ndarray:
-        weights = np.asarray(joint_weights, dtype=float)
-        if weights.shape != self.prior_joint_weights.shape:
-            raise ValueError("joint_weights have invalid shape")
-        marginal = np.sum(weights, axis=0)
-        marginal /= np.sum(marginal)
-        return marginal
+        weights = _validated_probability_weights(
+            joint_weights,
+            expected_shape=self.prior_joint_weights.shape,
+            name="joint_weights",
+        )
+        return np.sum(weights, axis=0)
 
 
 def build_rollout_bank(
@@ -705,7 +767,10 @@ def posterior_predictive_for_state(
             squared_error += dynamic_likelihood_weight * (
                 0.5 * velocity_error + acceleration_error / 6.0
             )
-        log_weights = np.log(np.maximum(particle_weights, 1e-300))
+        log_weights = log_weights_from_probabilities(
+            particle_weights,
+            name="parameter posterior weights",
+        )
         log_weights -= 0.5 * likelihood_power * squared_error / likelihood_scale_m**2
         log_weights *= posterior_temperature
         log_weights -= float(np.max(log_weights))
