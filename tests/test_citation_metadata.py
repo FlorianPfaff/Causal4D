@@ -30,7 +30,6 @@ def test_citation_metadata_matches_package_version_and_repository() -> None:
     assert "family-names: Pfaff" in citation
     assert "given-names: Florian" in citation
     assert (
-        'Citation = "https://github.com/FlorianPfaff/Causal4D/blob/main/'
-        'CITATION.cff"'
+        'Citation = "https://github.com/FlorianPfaff/Causal4D/blob/main/CITATION.cff"'
     ) in pyproject
     assert "\t" not in citation
