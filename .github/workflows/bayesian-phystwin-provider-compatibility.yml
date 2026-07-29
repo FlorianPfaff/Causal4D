@@ -223,6 +223,7 @@ jobs:
 
       - name: Run the isolated three-repository compatibility path
         run: |
+          set -o pipefail
           run_dir="$RUNNER_TEMP/three-repository-run"
           mkdir -p "$run_dir"
           cp causal4d/ci/three_repository_*.py "$run_dir/"
@@ -240,9 +241,13 @@ jobs:
               --checkout-root "$GITHUB_WORKSPACE/causal4d" \
               --output "$RUNNER_TEMP/three-repository-summary.json" \
             | tee "$RUNNER_TEMP/three-repository-golden-path.log"
+          test -s "$RUNNER_TEMP/three-repository-summary.json"
+          "$RUNNER_TEMP/three-repository-venv/bin/python" -m json.tool \
+            "$RUNNER_TEMP/three-repository-summary.json" >/dev/null
 
       - name: Run strict claim-bearing provider-v2 admission path
         run: |
+          set -o pipefail
           cd "$RUNNER_TEMP/three-repository-run"
           env -u PYTHONPATH \
             "$RUNNER_TEMP/three-repository-venv/bin/python" \
@@ -253,6 +258,9 @@ jobs:
               --output-dir "$RUNNER_TEMP/three-repository-provider-v2-work" \
               --output "$RUNNER_TEMP/three-repository-provider-v2-summary.json" \
             | tee "$RUNNER_TEMP/three-repository-provider-v2.log"
+          test -s "$RUNNER_TEMP/three-repository-provider-v2-summary.json"
+          "$RUNNER_TEMP/three-repository-venv/bin/python" -m json.tool \
+            "$RUNNER_TEMP/three-repository-provider-v2-summary.json" >/dev/null
 
       - name: Run cross-repository contract tests against installed wheels
         env:
