@@ -21,6 +21,7 @@ dependencies = [
 Repository = "https://github.com/FlorianPfaff/Causal4D"
 Documentation = "https://github.com/FlorianPfaff/Causal4D/tree/main/docs"
 Issues = "https://github.com/FlorianPfaff/Causal4D/issues"
+Citation = "https://github.com/FlorianPfaff/Causal4D/blob/main/CITATION.cff"
 
 [project.optional-dependencies]
 dev = [
