@@ -15,6 +15,18 @@ from causal4d.simulator import (
 )
 
 
+def _readonly_array(
+    values: np.ndarray,
+    *,
+    dtype: np.dtype | type = float,
+) -> np.ndarray:
+    """Return an owned, immutable NumPy array."""
+
+    array = np.asarray(values, dtype=dtype).copy()
+    array.setflags(write=False)
+    return array
+
+
 @dataclass(frozen=True)
 class ParameterPosterior:
     particles: np.ndarray
@@ -22,9 +34,9 @@ class ParameterPosterior:
     log_likelihood: np.ndarray
 
     def __post_init__(self) -> None:
-        particles = np.asarray(self.particles, dtype=float)
-        weights = np.asarray(self.weights, dtype=float)
-        log_likelihood = np.asarray(self.log_likelihood, dtype=float)
+        particles = _readonly_array(self.particles)
+        weights = _readonly_array(self.weights)
+        log_likelihood = _readonly_array(self.log_likelihood)
         if particles.ndim != 2 or particles.shape[1] != 3:
             raise ValueError("particles must have shape (particle, 3)")
         if weights.shape != (particles.shape[0],):
@@ -32,8 +44,19 @@ class ParameterPosterior:
         if log_likelihood.shape != weights.shape:
             raise ValueError("log_likelihood must match particle count")
         if not np.all(np.isfinite(particles)) or not np.all(np.isfinite(weights)):
-            raise ValueError("posterior arrays must be finite")
-        if np.any(weights < 0.0) or not np.isclose(np.sum(weights), 1.0):
+            raise ValueError("posterior particles and weights must be finite")
+        if np.any(np.isnan(log_likelihood)) or np.any(np.isposinf(log_likelihood)):
+            raise ValueError("log_likelihood must not contain NaN or positive infinity")
+        if np.any(np.isneginf(log_likelihood) & (weights > 0.0)):
+            raise ValueError(
+                "negative-infinite likelihood requires zero posterior mass"
+            )
+        if np.any(weights < 0.0) or not np.isclose(
+            np.sum(weights),
+            1.0,
+            atol=1e-10,
+            rtol=1e-10,
+        ):
             raise ValueError("weights must be non-negative and sum to one")
         object.__setattr__(self, "particles", particles)
         object.__setattr__(self, "weights", weights)
@@ -57,8 +80,10 @@ class PredictiveDistribution:
     interval_upper: np.ndarray | None = None
 
     def __post_init__(self) -> None:
-        mean = np.asarray(self.mean, dtype=float)
-        variance = np.asarray(self.variance, dtype=float)
+        if not self.method:
+            raise ValueError("predictive method must be nonempty")
+        mean = _readonly_array(self.mean)
+        variance = _readonly_array(self.variance)
         if mean.ndim != 3 or mean.shape[-1] != 2:
             raise ValueError("predictive mean must have shape (frame, node, 2)")
         if variance.shape != mean.shape:
@@ -70,8 +95,8 @@ class PredictiveDistribution:
         if (self.interval_lower is None) != (self.interval_upper is None):
             raise ValueError("predictive interval bounds must be provided together")
         if self.interval_lower is not None and self.interval_upper is not None:
-            lower = np.asarray(self.interval_lower, dtype=float)
-            upper = np.asarray(self.interval_upper, dtype=float)
+            lower = _readonly_array(self.interval_lower)
+            upper = _readonly_array(self.interval_upper)
             if lower.shape != mean.shape or upper.shape != mean.shape:
                 raise ValueError("predictive interval bounds must match the mean")
             if not np.all(np.isfinite(lower)) or not np.all(np.isfinite(upper)):
@@ -89,18 +114,80 @@ class RidgeTrajectoryModel:
     feature_mean: np.ndarray
     feature_scale: np.ndarray
     coefficients: np.ndarray
-    gram_inverse: np.ndarray
+    gram_inverse: np.ndarray | None
     residual_variance: np.ndarray
     output_shape: tuple[int, int, int]
+    gram_matrix: np.ndarray | None = None
+
+    def __post_init__(self) -> None:
+        feature_mean = _readonly_array(self.feature_mean)
+        feature_scale = _readonly_array(self.feature_scale)
+        coefficients = _readonly_array(self.coefficients)
+        residual_variance = _readonly_array(self.residual_variance)
+        if feature_mean.ndim != 1 or feature_scale.shape != feature_mean.shape:
+            raise ValueError("feature statistics must be aligned vectors")
+        if not np.all(np.isfinite(feature_mean)) or not np.all(
+            np.isfinite(feature_scale)
+        ):
+            raise ValueError("feature statistics must be finite")
+        if np.any(feature_scale <= 0.0):
+            raise ValueError("feature scales must be positive")
+        feature_count = len(feature_mean) + 1
+        output_size = int(np.prod(self.output_shape))
+        if coefficients.shape != (feature_count, output_size):
+            raise ValueError("coefficients do not match features and output shape")
+        if residual_variance.shape != (output_size,):
+            raise ValueError("residual_variance does not match output shape")
+        if not np.all(np.isfinite(coefficients)) or not np.all(
+            np.isfinite(residual_variance)
+        ):
+            raise ValueError("ridge model arrays must be finite")
+        if np.any(residual_variance <= 0.0):
+            raise ValueError("residual variances must be positive")
+        if (self.gram_inverse is None) == (self.gram_matrix is None):
+            raise ValueError("provide exactly one of gram_inverse or gram_matrix")
+        gram_inverse = None
+        gram_matrix = None
+        if self.gram_inverse is not None:
+            gram_inverse = _readonly_array(self.gram_inverse)
+            if gram_inverse.shape != (feature_count, feature_count):
+                raise ValueError("gram_inverse has incompatible shape")
+            if not np.all(np.isfinite(gram_inverse)):
+                raise ValueError("gram_inverse must be finite")
+        if self.gram_matrix is not None:
+            gram_matrix = _readonly_array(self.gram_matrix)
+            if gram_matrix.shape != (feature_count, feature_count):
+                raise ValueError("gram_matrix has incompatible shape")
+            if not np.all(np.isfinite(gram_matrix)):
+                raise ValueError("gram_matrix must be finite")
+            if not np.allclose(gram_matrix, gram_matrix.T, atol=1e-12, rtol=1e-12):
+                raise ValueError("gram_matrix must be symmetric")
+            try:
+                np.linalg.cholesky(gram_matrix)
+            except np.linalg.LinAlgError as error:
+                raise ValueError("gram_matrix must be positive definite") from error
+        object.__setattr__(self, "feature_mean", feature_mean)
+        object.__setattr__(self, "feature_scale", feature_scale)
+        object.__setattr__(self, "coefficients", coefficients)
+        object.__setattr__(self, "gram_inverse", gram_inverse)
+        object.__setattr__(self, "gram_matrix", gram_matrix)
+        object.__setattr__(self, "residual_variance", residual_variance)
 
     def predict(self, descriptor: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         descriptor = np.asarray(descriptor, dtype=float)
         if descriptor.shape != self.feature_mean.shape:
             raise ValueError("descriptor shape does not match fitted features")
+        if not np.all(np.isfinite(descriptor)):
+            raise ValueError("descriptor must be finite")
         standardized = (descriptor - self.feature_mean) / self.feature_scale
         feature = np.concatenate(([1.0], standardized))
         mean = feature @ self.coefficients
-        leverage = max(float(feature @ self.gram_inverse @ feature), 0.0)
+        if self.gram_matrix is not None:
+            leverage_vector = np.linalg.solve(self.gram_matrix, feature)
+            leverage = max(float(feature @ leverage_vector), 0.0)
+        else:
+            assert self.gram_inverse is not None
+            leverage = max(float(feature @ self.gram_inverse @ feature), 0.0)
         variance = self.residual_variance * (1.0 + min(leverage, 25.0))
         return mean.reshape(self.output_shape), variance.reshape(self.output_shape)
 
@@ -244,6 +331,12 @@ def _fit_ridge_trajectory(
         raise ValueError("descriptors and trajectory targets have invalid rank")
     if descriptors.shape[0] != targets.shape[0] or descriptors.shape[0] < 2:
         raise ValueError("at least two aligned training examples are required")
+    if not np.all(np.isfinite(descriptors)) or not np.all(np.isfinite(targets)):
+        raise ValueError("descriptors and trajectory targets must be finite")
+    if not np.isfinite(ridge) or ridge <= 0.0:
+        raise ValueError("ridge must be finite and positive")
+    if not np.isfinite(variance_floor) or variance_floor <= 0.0:
+        raise ValueError("variance_floor must be finite and positive")
 
     feature_mean = np.mean(descriptors, axis=0)
     feature_scale = np.std(descriptors, axis=0)
@@ -254,8 +347,7 @@ def _fit_ridge_trajectory(
     penalty = np.eye(design.shape[1]) * ridge
     penalty[0, 0] = ridge * 1e-3
     gram = design.T @ design + penalty
-    gram_inverse = np.linalg.inv(gram)
-    coefficients = gram_inverse @ design.T @ flat_targets
+    coefficients = np.linalg.solve(gram, design.T @ flat_targets)
 
     # Leave-one-out errors provide a non-degenerate uncertainty estimate even
     # when the feature dimension approaches the number of interactions.
@@ -274,9 +366,10 @@ def _fit_ridge_trajectory(
         feature_mean=feature_mean,
         feature_scale=feature_scale,
         coefficients=coefficients,
-        gram_inverse=gram_inverse,
+        gram_inverse=None,
         residual_variance=residual_variance,
         output_shape=tuple(targets.shape[1:]),
+        gram_matrix=gram,
     )
 
 
