@@ -3,7 +3,8 @@
 The same-object multi-action protocol contains 18 same-grasp sessions and 36
 preregistered executions. Scaffolded files are acquisition templates, not
 evidence. The version-2 status contract therefore separates acquisition
-progress, evidence completeness, statistical analysability, and claim readiness.
+progress, evidence completeness, statistical analysability, pre-acquisition
+chronology, and claim readiness.
 
 ## Required evidence tree
 
@@ -23,6 +24,10 @@ A claim-ready dataset contains the locked protocol and acquisition schedule plus
 - one completed `sessions/<session-id>/session.json` for each of the 18 sessions;
 - one completed and hash-verified execution manifest for each of the 36 locked
   executions.
+
+The calibrated and approved timebase, physical contact approval, method freeze,
+and independent freeze attestation must not postdate the first validated
+execution.
 
 Create the independent freeze attestation from a second operator account or
 review step after sealing:
@@ -44,7 +49,9 @@ The physical registration uses `PhysicalContactRegistration` schema 3 as the
 authoritative contact record. Its `source_checksums` mapping must include
 `object_registration.json` and `contact_node_set:<region-id>` entries. The
 simpler registration remains as a compact acquisition index and is checked
-against the authoritative artifact.
+against the authoritative artifact. Every region must have distinct independent
+reviewer identities, every review and approval timestamp must be valid UTC, and
+the registration approval must not predate any independent review.
 
 ## Scaffold
 
@@ -80,7 +87,8 @@ members under `acquisition`:
 All timestamps must be UTC. Every present timestamped artifact must use the same
 clock domain. Numeric quality values must be finite and nonnegative, and
 `dropped_rgbd_frames` must be a nonnegative integer; JSON `NaN` and infinities
-are rejected before validation.
+are rejected before validation. Timebase approval must not predate timebase
+calibration.
 
 Each session manifest binds:
 
@@ -113,12 +121,17 @@ uses separate decisions:
 - `acquisition_complete`: the original protocol, schedule, simple registration,
   slip pilot, and all 36 executions are present, valid, and accounted for;
 - `evidence_complete`: every version-2 prerequisite and all 18 session records
-  also validate, there are no unexpected directories, and all requested hashes
-  were checked;
+  also validate, there are no unexpected directories, all requested hashes were
+  checked, and no chronology blocker remains;
 - `analysis_ready`: every registered fold still contains at least one included
   fit, calibration, and target execution and at least one same-grasp pair remains;
 - `full_registered_power`: no execution was excluded;
-- `claim_ready`: the evidence tree is complete and hash verified.
+- `preacquisition_chronology`: the calibrated and approved timebase, contact
+  approval, method freeze, and independent attestation do not postdate the
+  earliest validated execution; before any execution validates, the report has
+  no earliest execution timestamp;
+- `claim_ready`: the evidence tree is complete, hash verified, and passes the
+  pre-acquisition chronology gate.
 
 `claim_ready` does not silently discard a negative or exclusion-limited result.
 It can be true while `analysis_ready` or `full_registered_power` is false, so the
@@ -145,6 +158,10 @@ The command returns:
 - `0` when the report is produced and, with `--require-complete`, is claim-ready;
 - `2` when an input or locked contract cannot be interpreted;
 - `3` when `--require-complete` is requested but any evidence blocker remains.
+
+The gate rejects timebase approval before calibration, duplicate contact
+reviewers, contact approval before an independent review, and any timestamped
+method prerequisite after the first validated execution.
 
 `validate-dataset` applies the same version-2 contract. Without
 `--skip-file-hashes`, it fails unless the complete evidence tree is claim-ready.
