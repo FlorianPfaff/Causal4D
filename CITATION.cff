@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: >-
+  If you use Causal4D in research, please cite this software and the associated
+  paper or frozen milestone used in your experiment.
+title: Causal4D
+type: software
+version: 0.4.1
+authors:
+  - family-names: Pfaff
+    given-names: Florian
+repository-code: https://github.com/FlorianPfaff/Causal4D
+url: https://github.com/FlorianPfaff/Causal4D
+abstract: >-
+  A research framework for Bayesian abduction of realized interventions and
+  held-out interventional prediction for deformable-object dynamics.
+keywords:
+  - Bayesian inference
+  - causal inference
+  - counterfactual prediction
+  - deformable objects
+  - physical digital twins
