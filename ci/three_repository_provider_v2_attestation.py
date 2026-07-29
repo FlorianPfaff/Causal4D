@@ -1,17 +1,19 @@
-"""Installed-wheel compatibility for the self-contained Prob4D provider-v2 contract."""
+"""Installed-wheel compatibility for the strict Prob4D provider-v2 boundary."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from three_repository_common import require
+import numpy as np
+
+from three_repository_common import array_digest, require
 from three_repository_observation import fixture_artifact
 
 
@@ -51,6 +53,43 @@ def _build_attested_fixture(artifact: Any, *, prob4d_revision: str) -> Any:
         "point_artifact_id": _digest("contract-test-point-calibration-v1"),
     }
     metadata = deepcopy(dict(artifact.metadata))
+    posterior = metadata.get("gauge_posterior")
+    require(isinstance(posterior, dict), "fixture gauge posterior is missing")
+    alignments = posterior.get("alignments")
+    require(isinstance(alignments, list), "fixture gauge alignments are missing")
+    alignment_count = len(alignments)
+
+    metadata["prob4d_causal_stream_contract_version"] = 2
+    metadata["prob4d_causal_stream_contract"] = {
+        "version": 2,
+        "causal_frame_stop_convention": "exclusive",
+    }
+    metadata["metric_anchor_covariance_in_joint_factor"] = True
+    anchor = metadata.get("metric_gauge_anchor")
+    require(isinstance(anchor, dict), "fixture metric anchor is missing")
+    anchor.update(
+        {
+            "schema_name": "prob4d.metric-gauge-anchor",
+            "schema_version": 1,
+            "case_id": artifact.case_id,
+            "coordinate_frame": metadata["coordinate_frame"],
+            "world_frame_id": metadata["coordinate_frame"],
+            "metric_units": "m",
+            "calibration_artifact_sha256": _digest(
+                "contract-test-metric-anchor-calibration-v1"
+            ),
+            "covariance_treatment": "propagated_external_prior",
+        }
+    )
+    metadata["covariance_calibration"] = {
+        "status": "calibrated",
+        **calibration_ids,
+        "alignment_count": alignment_count,
+        "gauge_calibrated_alignment_count": alignment_count,
+        "covariance_fallback_counts": {},
+        "uncalibrated_exploratory_covariance_allowed": False,
+        "pointwise_covariance_fallback_allowed": False,
+    }
     metadata["prob4d_provider_attestation"] = build_provider_attestation(
         provider_manifest=prob4d_provider_manifest(
             provider_revision=prob4d_revision,
@@ -68,8 +107,9 @@ def _build_attested_fixture(artifact: Any, *, prob4d_revision: str) -> Any:
         "fixture_only": True,
         "synthetic_calibration_ids": True,
         "purpose": (
-            "installed-wheel schema and independent consumer validation; not "
-            "prospective covariance calibration or physical-prediction evidence"
+            "installed-wheel schema, strict update admission, and independent "
+            "consumer validation; not prospective covariance calibration or "
+            "physical-prediction evidence"
         ),
     }
     return replace(
@@ -79,46 +119,231 @@ def _build_attested_fixture(artifact: Any, *, prob4d_revision: str) -> Any:
     )
 
 
+def _validate_prob4d(path: Path) -> dict[str, object]:
+    from prob4d.provider_v2_loading import load_claim_bearing_observation_belief
+
+    validated = load_claim_bearing_observation_belief(path)
+    return {
+        "artifact_id": validated.artifact_id,
+        "provider_manifest_id": validated.provider_manifest_id,
+        "gauge_calibration_id": validated.gauge_calibration_id,
+        "point_calibration_id": validated.point_calibration_id,
+        "runtime_revision": validated.runtime_revision,
+    }
+
+
+def _state_design(observation_count: int) -> np.ndarray:
+    require(observation_count == 6, "claim-bearing fixture observation count changed")
+    design = np.zeros((observation_count, 3, 1), dtype=np.float64)
+    design[0, 1, 0] = 1.0
+    design[0, 2, 0] = -1.0
+    design[1, 0, 0] = 1.0
+    design[2, 1, 0] = -1.0
+    design[3, 2, 0] = 1.0
+    design[5, 0, 0] = -1.0
+    return design
+
+
 def _validate_bpt(path: Path) -> dict[str, object]:
+    from bayesian_phystwin.claim_bearing_prob4d import (
+        build_claim_bearing_gauge_aware_batch_from_observation_belief,
+    )
+    from bayesian_phystwin.gauge_aware_belief import (
+        GaugeAwareBeliefConfig,
+        update_gauge_aware_belief,
+    )
     from bayesian_phystwin.observation_belief import load_observation_belief
     from bayesian_phystwin.prob4d_causal_lineage import (
         validate_claim_bearing_prob4d_observation_belief,
     )
 
     belief = load_observation_belief(path)
-    result = validate_claim_bearing_prob4d_observation_belief(belief)
-    provider = result.get("provider_attestation")
-    require(isinstance(provider, dict), "BPT lost the provider-attestation summary")
-    require(
-        provider.get("claim_bearing") is True, "BPT did not require calibrated mode"
+    validation = validate_claim_bearing_prob4d_observation_belief(belief)
+    state = _state_design(belief.observation_count)
+    injected_coefficient_m = 0.004
+    prediction = belief.mean_xyz_m - injected_coefficient_m * state[:, :, 0]
+    query = np.zeros((1, 3, 1), dtype=np.float64)
+    query[0, 0, 0] = 1.0
+    adapted = build_claim_bearing_gauge_aware_batch_from_observation_belief(
+        belief,
+        physical_prediction_xyz_m=prediction,
+        state_jacobian=state,
+        query_state_jacobian=query,
+        physical_response_scale_m=0.02,
+        state_prior_covariance_m2=np.asarray([[4e-4]], dtype=np.float64),
+    )
+    metadata = adapted.batch.metadata
+    require(isinstance(metadata, Mapping), "BPT adapted batch metadata is missing")
+    np.testing.assert_array_equal(
+        adapted.batch.observation_covariance_m2,
+        belief.local_covariance_m2,
     )
     require(
-        provider.get("runtime_revision_independently_verified") is True,
-        "BPT did not require independently verified runtime provenance",
+        metadata.get("low_rank_covariance_double_counted") is False,
+        "BPT strict adapter double-counted explicit gauge covariance",
     )
-    return result
+    require(
+        metadata.get("prob4d_claim_bearing_provider_v2_validated") is True,
+        "BPT strict adapter did not retain claim-bearing validation",
+    )
+    provider = validation.get("provider_attestation")
+    require(isinstance(provider, Mapping), "BPT lost the provider-attestation summary")
+    require(
+        metadata.get("prob4d_claim_bearing_provider_manifest_id")
+        == provider.get("provider_manifest_id"),
+        "BPT strict adapter bound a different provider manifest",
+    )
+
+    config = GaugeAwareBeliefConfig(maximum_iterations=20)
+    first = update_gauge_aware_belief(adapted.batch, config=config)
+    second = update_gauge_aware_belief(adapted.batch, config=config)
+    require(first.accepted, f"BPT claim-bearing update abstained: {first.reason}")
+    require(second.accepted, f"repeated BPT update abstained: {second.reason}")
+    require(
+        first.input_lineage.get("observation_artifact_id") == belief.artifact_id,
+        "BPT claim-bearing update lost its observation artifact binding",
+    )
+    np.testing.assert_array_equal(first.state_coefficients, second.state_coefficients)
+    np.testing.assert_array_equal(
+        first.posterior_covariance,
+        second.posterior_covariance,
+    )
+    coefficient = float(first.state_coefficients[0])
+    require(
+        0.002 <= coefficient <= 0.006,
+        f"BPT claim-bearing update left the deterministic interval: {coefficient}",
+    )
+    return {
+        "claim_bearing_provider_v2_validated": validation[
+            "claim_bearing_provider_v2_validated"
+        ],
+        "provider_manifest_id": provider["provider_manifest_id"],
+        "calibration": validation["claim_bearing_covariance_calibration"],
+        "state_coefficient_m": coefficient,
+        "injected_coefficient_m": injected_coefficient_m,
+        "update_id": array_digest(
+            first.state_coefficients,
+            first.posterior_covariance,
+            first.robust_weights,
+        ),
+        "adapter": adapted.summary(),
+        "low_rank_covariance_double_counted": False,
+    }
 
 
-def _validate_causal4d(path: Path) -> Any:
+def _validate_causal4d(path: Path) -> dict[str, object]:
     from causal4d.claim_bearing_observation_lineage import (
         load_claim_bearing_prob4d_observation_lineage,
     )
 
     lineage = load_claim_bearing_prob4d_observation_lineage(path)
-    provider = lineage.provider_validation.get("provider_attestation")
+    validation = lineage.provider_validation
+    provider = validation.get("provider_attestation")
+    calibration = validation.get("claim_bearing_covariance_calibration")
     require(
-        isinstance(provider, dict),
+        validation.get("claim_bearing_provider_v2_validated") is True,
+        "Causal4D did not complete claim-bearing provider-v2 validation",
+    )
+    require(
+        isinstance(provider, Mapping),
         "Causal4D lost the provider-attestation summary",
     )
     require(
-        provider.get("claim_bearing") is True,
-        "Causal4D did not require calibrated mode",
+        isinstance(calibration, Mapping),
+        "Causal4D lost the covariance-calibration summary",
     )
-    require(
-        provider.get("runtime_revision_independently_verified") is True,
-        "Causal4D did not require independently verified runtime provenance",
-    )
-    return lineage
+    return {
+        "artifact_id": lineage.artifact_id,
+        "provider_manifest_id": provider["provider_manifest_id"],
+        "calibration": calibration,
+        "stream_contract_version": validation["stream_contract_version"],
+        "stream_contract_version_inferred": validation[
+            "stream_contract_version_inferred"
+        ],
+        "covariance_semantics": validation["covariance_semantics"],
+    }
+
+
+def _write_variant(
+    artifact: Any,
+    target: Path,
+    mutate: Callable[[dict[str, Any]], None],
+) -> None:
+    from prob4d.provider_v2 import save_observation_belief_export
+
+    metadata = deepcopy(dict(artifact.metadata))
+    mutate(metadata)
+    save_observation_belief_export(target, replace(artifact, metadata=metadata))
+
+
+def _consumer_rejections(path: Path, label: str) -> list[dict[str, str]]:
+    return [
+        _expect_failure(
+            f"prob4d:{label}",
+            lambda: _validate_prob4d(path),
+        ),
+        _expect_failure(
+            f"bpt:{label}",
+            lambda: _validate_bpt(path),
+        ),
+        _expect_failure(
+            f"causal4d:{label}",
+            lambda: _validate_causal4d(path),
+        ),
+    ]
+
+
+def _rejection_corpus(artifact: Any, output_dir: Path) -> list[dict[str, str]]:
+    results: list[dict[str, str]] = []
+
+    def provider_manifest_tamper(metadata: dict[str, Any]) -> None:
+        metadata["prob4d_provider_attestation"]["provider_manifest"][
+            "provider_version"
+        ] = "tampered"
+
+    path = output_dir / "rejected-provider-manifest-tamper.npz"
+    _write_variant(artifact, path, provider_manifest_tamper)
+    results.extend(_consumer_rejections(path, "provider-manifest-tamper"))
+
+    def calibration_identity_drift(metadata: dict[str, Any]) -> None:
+        metadata["covariance_calibration"]["gauge_artifact_id"] = "3" * 64
+
+    path = output_dir / "rejected-calibration-identity-drift.npz"
+    _write_variant(artifact, path, calibration_identity_drift)
+    results.extend(_consumer_rejections(path, "calibration-identity-drift"))
+
+    def incomplete_gauge_calibration(metadata: dict[str, Any]) -> None:
+        metadata["covariance_calibration"]["gauge_calibrated_alignment_count"] -= 1
+
+    path = output_dir / "rejected-incomplete-gauge-calibration.npz"
+    _write_variant(artifact, path, incomplete_gauge_calibration)
+    results.extend(_consumer_rejections(path, "incomplete-gauge-calibration"))
+
+    def covariance_fallback(metadata: dict[str, Any]) -> None:
+        metadata["covariance_calibration"]["covariance_fallback_counts"] = {
+            "pointwise": 1
+        }
+
+    path = output_dir / "rejected-covariance-fallback.npz"
+    _write_variant(artifact, path, covariance_fallback)
+    results.extend(_consumer_rejections(path, "covariance-fallback"))
+
+    def fallback_permission(metadata: dict[str, Any]) -> None:
+        metadata["covariance_calibration"]["pointwise_covariance_fallback_allowed"] = (
+            True
+        )
+
+    path = output_dir / "rejected-fallback-permission.npz"
+    _write_variant(artifact, path, fallback_permission)
+    results.extend(_consumer_rejections(path, "fallback-permission"))
+
+    def inferred_stream_version(metadata: dict[str, Any]) -> None:
+        metadata.pop("prob4d_causal_stream_contract_version")
+
+    path = output_dir / "rejected-inferred-stream-version.npz"
+    _write_variant(artifact, path, inferred_stream_version)
+    results.extend(_consumer_rejections(path, "inferred-stream-version"))
+    return results
 
 
 def run(
@@ -138,54 +363,39 @@ def run(
     observation_path = output_dir / "provider-v2-observation.npz"
     save_observation_belief_export(observation_path, attested)
 
+    producer = _validate_prob4d(observation_path)
     bpt = _validate_bpt(observation_path)
     causal4d = _validate_causal4d(observation_path)
-    producer = attested.metadata["prob4d_provider_attestation"]
-    producer_manifest_id = producer["provider_manifest_id"]
+    provider_manifest_id = producer["provider_manifest_id"]
     require(
-        bpt["provider_attestation"]["provider_manifest_id"] == producer_manifest_id,
+        bpt["provider_manifest_id"] == provider_manifest_id,
         "BPT validated a different provider manifest",
     )
     require(
-        causal4d.provider_validation["provider_attestation"]["provider_manifest_id"]
-        == producer_manifest_id,
+        causal4d["provider_manifest_id"] == provider_manifest_id,
         "Causal4D validated a different provider manifest",
     )
-
-    tampered_metadata = deepcopy(dict(attested.metadata))
-    tampered_metadata["prob4d_provider_attestation"]["provider_manifest"][
-        "provider_version"
-    ] = "tampered"
-    tampered = replace(attested, metadata=tampered_metadata)
-    tampered_path = output_dir / "rejected-provider-manifest-tamper.npz"
-    save_observation_belief_export(tampered_path, tampered)
-    rejections = [
-        _expect_failure(
-            "bpt:provider-manifest-tamper", lambda: _validate_bpt(tampered_path)
-        ),
-        _expect_failure(
-            "causal4d:provider-manifest-tamper",
-            lambda: _validate_causal4d(tampered_path),
-        ),
-    ]
+    require(
+        producer["artifact_id"] == bpt["adapter"]["observation_artifact_id"],
+        "BPT strict adapter lost the claim-bearing observation identity",
+    )
+    require(
+        producer["artifact_id"] == causal4d["artifact_id"],
+        "Causal4D validated a different observation artifact",
+    )
 
     return {
-        "schema": producer["schema_name"],
-        "schema_version": producer["schema_version"],
+        "status": "passed",
+        "schema_version": 2,
         "prob4d_revision": prob4d_revision,
         "observation_artifact_id": attested.artifact_id,
-        "provider_manifest_id": producer_manifest_id,
-        "export_mode": producer["export_mode"],
-        "covariance_root_mode": producer["covariance_root_mode"],
-        "composition_jacobian_mode": producer["composition_jacobian_mode"],
-        "runtime_revision": producer["runtime_revision"],
-        "bpt_provider_attestation_validated": bpt["provider_attestation_validated"],
-        "causal4d_provider_attestation_validated": (
-            causal4d.provider_validation["provider_attestation_validated"]
-        ),
+        "provider_manifest_id": provider_manifest_id,
+        "producer": producer,
+        "bpt": bpt,
+        "causal4d": causal4d,
         "fixture_only": True,
         "claim_evidence": False,
-        "rejections": rejections,
+        "rejections": _rejection_corpus(attested, output_dir),
     }
 
 
