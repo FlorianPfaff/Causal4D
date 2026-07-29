@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/preserve-finite-support-invariants
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -12,9 +15,12 @@ jobs:
   apply:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
+    env:
+      HEAD_BRANCH: ${{ github.head_ref || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.HEAD_BRANCH }}
           fetch-depth: 0
       - name: Decode, verify, and apply reviewed patch
         shell: bash
@@ -41,4 +47,4 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'Preserve exact support across inference paths'
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "HEAD:${HEAD_BRANCH}"
