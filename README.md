@@ -99,6 +99,21 @@ with `requirements/frozen/causal4d-0.3.0.txt`. Visual, Warp-runtime, and
 actuator-calibration dependencies remain separate so the controlled benchmark
 stays lightweight.
 
+## Command-line interface
+
+The package now provides a grouped, lazily imported command surface while
+retaining every historical `causal4d-*` executable for frozen manifests:
+
+```bash
+causal4d --help
+causal4d commands list
+causal4d commands migrate causal4d-real-protocol
+causal4d benchmark counterfactual --output-dir runs/causal4d-counterfactual-v1
+```
+
+See [the command-line interface](docs/command_line.md) for lifecycle and
+compatibility rules.
+
 ## Quick Start
 
 Run the controlled counterfactual benchmark:
