@@ -20,6 +20,9 @@ def _semantic_result(value: str) -> dict[str, object]:
     return {
         "validated": True,
         "covariance_semantics": value,
+        "cross_window_covariance_preserved": (
+            value == lineage.PROB4D_JOINT_GAUGE_MODEL
+        ),
     }
 
 
@@ -91,6 +94,30 @@ def _provider_attestation() -> dict[str, object]:
     }
 
 
+def _claim_bearing_metadata() -> dict[str, object]:
+    return {
+        "prob4d_causal_stream_contract_version": 2,
+        "prob4d_provider_attestation": _provider_attestation(),
+        "covariance_calibration": {
+            "status": "calibrated",
+            "gauge_artifact_id": "1" * 64,
+            "point_artifact_id": "2" * 64,
+            "alignment_count": 2,
+            "gauge_calibrated_alignment_count": 2,
+            "covariance_fallback_counts": {},
+            "uncalibrated_exploratory_covariance_allowed": False,
+            "pointwise_covariance_fallback_allowed": False,
+        },
+    }
+
+
+def _claim_bearing_descriptor() -> dict[str, object]:
+    return {
+        "source_revision": "a" * 40,
+        "metadata": _claim_bearing_metadata(),
+    }
+
+
 def test_legacy_stream_version_is_inferred(monkeypatch) -> None:
     monkeypatch.setattr(
         lineage,
@@ -137,22 +164,23 @@ def test_claim_bearing_provider_attestation_is_validated_independently(
         lambda descriptor, arrays: _semantic_result(lineage.PROB4D_JOINT_GAUGE_MODEL),
     )
     result = lineage.validate_claim_bearing_prob4d_observation_metadata(
-        {
-            "source_revision": "a" * 40,
-            "metadata": {
-                "prob4d_causal_stream_contract_version": 2,
-                "prob4d_provider_attestation": _provider_attestation(),
-            },
-        },
+        _claim_bearing_descriptor(),
         {},
     )
 
     provider = result["provider_attestation"]
+    calibration = result["claim_bearing_covariance_calibration"]
     assert result["provider_attestation_present"] is True
     assert result["provider_attestation_validated"] is True
+    assert result["claim_bearing_provider_v2_validated"] is True
     assert provider["provider_api_version"] == 2
     assert provider["claim_bearing"] is True
     assert provider["runtime_revision_independently_verified"] is True
+    assert calibration["calibration_artifact_ids"] == {
+        "gauge_artifact_id": "1" * 64,
+        "point_artifact_id": "2" * 64,
+    }
+    assert calibration["covariance_fallback_counts"] == {}
 
 
 def test_strict_provider_validation_rejects_provider_v1_artifact(monkeypatch) -> None:
@@ -216,28 +244,99 @@ def test_rehashed_provider_capability_removal_is_rejected(monkeypatch) -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (
+            lambda metadata: metadata["covariance_calibration"].__setitem__(
+                "gauge_artifact_id", "3" * 64
+            ),
+            "gauge calibration metadata differs",
+        ),
+        (
+            lambda metadata: metadata["covariance_calibration"].__setitem__(
+                "gauge_calibrated_alignment_count", 1
+            ),
+            "uncalibrated gauge alignments",
+        ),
+        (
+            lambda metadata: metadata["covariance_calibration"].__setitem__(
+                "covariance_fallback_counts", {"pointwise": 1}
+            ),
+            "reports covariance fallback use",
+        ),
+        (
+            lambda metadata: metadata["covariance_calibration"].__setitem__(
+                "pointwise_covariance_fallback_allowed", True
+            ),
+            "cannot allow pointwise covariance fallback",
+        ),
+    ],
+)
+def test_claim_bearing_calibration_failures_are_rejected(
+    monkeypatch,
+    mutation,
+    message: str,
+) -> None:
+    monkeypatch.setattr(
+        lineage,
+        "_validate_prob4d_semantics",
+        lambda descriptor, arrays: _semantic_result(lineage.PROB4D_JOINT_GAUGE_MODEL),
+    )
+    descriptor = _claim_bearing_descriptor()
+    mutation(descriptor["metadata"])
+    with pytest.raises(ValueError, match=message):
+        lineage.validate_prob4d_causal_observation_metadata(descriptor, {})
+
+
+def test_claim_bearing_requires_explicit_stream_v2(monkeypatch) -> None:
+    monkeypatch.setattr(
+        lineage,
+        "_validate_prob4d_semantics",
+        lambda descriptor, arrays: _semantic_result(lineage.PROB4D_JOINT_GAUGE_MODEL),
+    )
+    descriptor = _claim_bearing_descriptor()
+    descriptor["metadata"].pop("prob4d_causal_stream_contract_version")
+    with pytest.raises(ValueError, match="requires explicit causal stream contract"):
+        lineage.validate_claim_bearing_prob4d_observation_metadata(descriptor, {})
+
+
 def test_claim_bearing_lineage_wrapper_requires_validated_summary() -> None:
     provider = {
         "claim_bearing": True,
         "calibration_compatibility_validated": True,
         "runtime_revision_independently_verified": True,
     }
+    calibration = {
+        "status": "calibrated",
+        "covariance_fallback_counts": {},
+    }
     candidate = SimpleNamespace(
         provider_validation={
+            "claim_bearing_provider_v2_validated": True,
             "strict_causal_stream_contract": True,
+            "stream_contract_version": 2,
+            "stream_contract_version_inferred": False,
+            "covariance_semantics": lineage.PROB4D_JOINT_GAUGE_MODEL,
+            "cross_window_covariance_preserved": True,
             "provider_attestation": provider,
+            "claim_bearing_covariance_calibration": calibration,
         }
     )
     assert require_claim_bearing_prob4d_lineage(candidate) is candidate
 
-    with pytest.raises(ValueError, match="provider-v2 attestation is required"):
+    incomplete = copy.deepcopy(candidate.provider_validation)
+    incomplete["claim_bearing_provider_v2_validated"] = False
+    with pytest.raises(ValueError, match="complete claim-bearing"):
         require_claim_bearing_prob4d_lineage(
-            SimpleNamespace(
-                provider_validation={
-                    "strict_causal_stream_contract": True,
-                    "provider_attestation": None,
-                }
-            )
+            SimpleNamespace(provider_validation=incomplete)
+        )
+
+    missing_calibration = copy.deepcopy(candidate.provider_validation)
+    missing_calibration.pop("claim_bearing_covariance_calibration")
+    with pytest.raises(ValueError, match="covariance calibration"):
+        require_claim_bearing_prob4d_lineage(
+            SimpleNamespace(provider_validation=missing_calibration)
         )
 
 
