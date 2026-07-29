@@ -164,8 +164,8 @@ def cluster_robust_linear_regression(
     if np.linalg.matrix_rank(design) < parameter_count:
         raise ValueError("regression design is rank deficient")
 
-    gram_inverse = np.linalg.inv(design.T @ design)
-    coefficients = gram_inverse @ design.T @ y
+    gram = design.T @ design
+    coefficients = np.linalg.solve(gram, design.T @ y)
     residual = y - design @ coefficients
     meat = np.zeros((parameter_count, parameter_count), dtype=float)
     for cluster in clusters:
@@ -177,7 +177,9 @@ def cluster_robust_linear_regression(
     correction = (len(clusters) / (len(clusters) - 1.0)) * (
         (n - 1.0) / (n - parameter_count)
     )
-    covariance = correction * gram_inverse @ meat @ gram_inverse
+    left_sandwich = np.linalg.solve(gram, meat)
+    covariance = correction * np.linalg.solve(gram, left_sandwich.T).T
+    covariance = 0.5 * (covariance + covariance.T)
     standard_errors = np.sqrt(np.maximum(np.diag(covariance), 0.0))
     t_statistics = np.divide(
         coefficients,
