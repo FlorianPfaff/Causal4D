@@ -29,7 +29,7 @@ def _installed_scripts(distribution: str) -> dict[str, str]:
         entry_point.name: entry_point.value
         for entry_point in installed.entry_points
         if entry_point.group == "console_scripts"
-        and entry_point.name.startswith("causal4d-")
+        and (entry_point.name == "causal4d" or entry_point.name.startswith("causal4d-"))
     }
 
 

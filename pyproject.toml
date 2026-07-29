@@ -47,6 +47,7 @@ pyrecest = [
 ]
 
 [project.scripts]
+causal4d = "causal4d.cli.root:main"
 causal4d-counterfactual-benchmark = "causal4d.cli.counterfactual_benchmark:main"
 causal4d-latent-contact-benchmark = "causal4d.cli.latent_contact_benchmark:main"
 causal4d-dynamic-contact-benchmark = "causal4d.cli.dynamic_contact_benchmark:main"
