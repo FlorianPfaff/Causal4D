@@ -31,7 +31,7 @@ def test_external_fork_limitation_is_separate_and_explicit() -> None:
     assert "maintainers must run the installed-wheel golden path" in text
 
 
-def test_strict_claim_bearing_path_is_mandatory() -> None:
+def test_strict_claim_bearing_path_is_mandatory_and_fail_closed() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
     assert "Run strict claim-bearing provider-v2 admission path" in text
@@ -40,6 +40,9 @@ def test_strict_claim_bearing_path_is_mandatory() -> None:
     assert "prob4d/tests/test_claim_bearing_observation.py" in text
     assert "bayesian-phystwin/tests/test_prob4d_causal_lineage.py" in text
     assert "causal4d/tests/test_prob4d_stream_contract_version.py" in text
+    assert text.count("set -o pipefail") >= 2
+    assert text.count("python\" -m json.tool") >= 2
+    assert text.count('test -s "$RUNNER_TEMP/three-repository-') >= 2
 
 
 def test_built_wheels_receive_persistent_content_identities() -> None:
