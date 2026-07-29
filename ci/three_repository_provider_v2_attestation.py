@@ -363,7 +363,7 @@ def run(
         "Causal4D validated a different provider manifest",
     )
     require(
-        producer["artifact_id"] == bpt["adapter"]["source_observation_belief_id"],
+        producer["artifact_id"] == bpt["adapter"]["observation_artifact_id"],
         "BPT strict adapter lost the claim-bearing observation identity",
     )
     require(
