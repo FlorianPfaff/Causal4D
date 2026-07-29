@@ -39,8 +39,7 @@ def require_claim_bearing_prob4d_lineage(
             "claim-bearing Prob4D causal stream contract was not validated"
         )
     if (
-        stream_contract.get("version")
-        != PROB4D_CAUSAL_STREAM_CONTRACT_VERSION
+        stream_contract.get("version") != PROB4D_CAUSAL_STREAM_CONTRACT_VERSION
         or stream_contract.get("causal_frame_stop_convention") != "exclusive"
     ):
         raise ValueError("claim-bearing Prob4D causal stream contract is invalid")
