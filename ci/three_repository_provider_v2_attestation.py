@@ -174,6 +174,14 @@ def _validate_bpt(path: Path) -> dict[str, object]:
     )
     metadata = adapted.batch.metadata
     require(isinstance(metadata, Mapping), "BPT adapted batch metadata is missing")
+    np.testing.assert_array_equal(
+        adapted.batch.observation_covariance_m2,
+        belief.local_covariance_m2,
+    )
+    require(
+        metadata.get("low_rank_covariance_double_counted") is False,
+        "BPT strict adapter double-counted explicit gauge covariance",
+    )
     require(
         metadata.get("prob4d_claim_bearing_provider_v2_validated") is True,
         "BPT strict adapter did not retain claim-bearing validation",
@@ -191,6 +199,10 @@ def _validate_bpt(path: Path) -> dict[str, object]:
     second = update_gauge_aware_belief(adapted.batch, config=config)
     require(first.accepted, f"BPT claim-bearing update abstained: {first.reason}")
     require(second.accepted, f"repeated BPT update abstained: {second.reason}")
+    require(
+        first.input_lineage.get("observation_artifact_id") == belief.artifact_id,
+        "BPT claim-bearing update lost its observation artifact binding",
+    )
     np.testing.assert_array_equal(first.state_coefficients, second.state_coefficients)
     np.testing.assert_array_equal(
         first.posterior_covariance,
@@ -215,6 +227,7 @@ def _validate_bpt(path: Path) -> dict[str, object]:
             first.robust_weights,
         ),
         "adapter": adapted.summary(),
+        "low_rank_covariance_double_counted": False,
     }
 
 
