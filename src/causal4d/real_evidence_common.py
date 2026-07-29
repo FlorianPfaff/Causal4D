@@ -348,7 +348,7 @@ def validate_timebase_calibration(
     _require(
         measured <= maximum, "timebase synchronization error exceeds the locked gate"
     )
-    _parse_utc_timestamp(
+    calibrated_at = _parse_utc_timestamp(
         calibration.get("calibrated_at_utc"), name="timebase calibrated_at_utc"
     )
     _require(
@@ -361,8 +361,12 @@ def validate_timebase_calibration(
         isinstance(approval.get("approver_id"), str) and bool(approval["approver_id"]),
         "timebase approver id is missing",
     )
-    _parse_utc_timestamp(
+    approved_at = _parse_utc_timestamp(
         approval.get("approved_at_utc"), name="timebase approved_at_utc"
+    )
+    _require(
+        approved_at >= calibrated_at,
+        "timebase approval predates calibration",
     )
     root = Path(dataset_root) if dataset_root is not None else Path(".")
     _validate_file_descriptor(
@@ -375,6 +379,8 @@ def validate_timebase_calibration(
         "passed": True,
         "clock_domain_id": clock_domain_id,
         "measured_max_sync_error_ms": measured,
+        "calibrated_at_utc": calibration["calibrated_at_utc"],
+        "approved_at_utc": approval["approved_at_utc"],
         "file_hashes_verified": verify_file_hashes,
     }
 

@@ -184,7 +184,9 @@ Before analysis, add
 The version-2 gate remains closed until the approved timebase, schema-3 physical
 contact registration, sealed and independently attested method freeze, all 18
 same-grasp session manifests, all 36 execution manifests, and every registered
-artifact hash validate. See
+artifact hash validate. The gate also proves that the timebase, contact
+approval, method freeze, and independent attestation do not postdate the first
+valid execution. See
 [docs/causal4d_real_evidence_status.md](docs/causal4d_real_evidence_status.md)
 for the exact accounting and exit-code contract.
 

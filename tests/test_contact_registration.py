@@ -174,6 +174,22 @@ def test_contact_registration_requires_rejected_candidate_provenance() -> None:
         validate_contact_registration(mutated, protocol)
 
 
+def test_contact_registration_requires_distinct_chronological_reviews() -> None:
+    protocol, artifact = _approved_artifact()
+    duplicate = deepcopy(artifact)
+    reviews = duplicate["contact_regions"]["left_forepaw"]["independent_reviews"]
+    reviews[1]["reviewer_id"] = reviews[0]["reviewer_id"].upper()
+    with pytest.raises(ValueError, match="reviewers must be distinct"):
+        validate_contact_registration(duplicate, protocol)
+
+    postdated = deepcopy(artifact)
+    postdated["contact_regions"]["left_forepaw"]["independent_reviews"][1][
+        "reviewed_at_utc"
+    ] = "2026-07-12T12:11:00Z"
+    with pytest.raises(ValueError, match="approval predates an independent review"):
+        validate_contact_registration(postdated, protocol)
+
+
 def test_contact_registration_keeps_approved_schema2_artifacts_readable() -> None:
     protocol, artifact = _approved_artifact()
     legacy = deepcopy(artifact)

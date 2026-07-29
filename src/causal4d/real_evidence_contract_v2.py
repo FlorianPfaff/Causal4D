@@ -15,6 +15,7 @@ from causal4d.real_evidence_common import (
     SESSION_MANIFEST_SCHEMA_VERSION,
     TIMEBASE_CALIBRATION_SCHEMA_VERSION,
     _load_json_mapping,
+    _parse_utc_timestamp,
     _require,
     _validate_acquisition_schedule,
     _validate_contact_registration_prerequisite,
@@ -45,6 +46,51 @@ from causal4d.real_session_evidence import (
     _unexpected_directories,
     _validate_session_manifest,
 )
+
+
+def _preacquisition_chronology(
+    prerequisites: Mapping[str, Mapping[str, Any]],
+    execution_results: list[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Prove that timestamped method prerequisites do not postdate acquisition."""
+
+    starts = [
+        result["_started_at"]
+        for result in execution_results
+        if result.get("validated") and result.get("_started_at") is not None
+    ]
+    earliest = min(starts) if starts else None
+    event_fields = {
+        "timebase_calibrated": ("timebase_calibration", "calibrated_at_utc"),
+        "timebase_approved": ("timebase_calibration", "approved_at_utc"),
+        "contact_registration_approved": (
+            "contact_registration",
+            "approved_at_utc",
+        ),
+        "method_frozen": ("method_freeze", "frozen_at_utc"),
+        "method_freeze_verified": (
+            "method_freeze_validation",
+            "verified_at_utc",
+        ),
+    }
+    events: dict[str, str | None] = {}
+    blockers: list[str] = []
+    for event_name, (prerequisite_name, field_name) in event_fields.items():
+        prerequisite = prerequisites[prerequisite_name]
+        value = prerequisite.get(field_name) if prerequisite.get("valid") else None
+        events[event_name] = str(value) if value is not None else None
+        if earliest is not None and value is not None:
+            event_time = _parse_utc_timestamp(value, name=event_name)
+            if event_time > earliest:
+                blockers.append(f"preacquisition_chronology:{event_name}")
+    return {
+        "passed": not blockers,
+        "earliest_execution_started_at_utc": (
+            None if earliest is None else earliest.isoformat().replace("+00:00", "Z")
+        ),
+        "events": events,
+        "blockers": blockers,
+    }
 
 
 def build_real_evidence_status(
@@ -198,6 +244,7 @@ def build_real_evidence_status(
         and not unexpected_executions
     )
 
+    chronology = _preacquisition_chronology(prerequisites, execution_results)
     blockers = _claim_blockers(
         prerequisites,
         execution_results,
@@ -206,6 +253,7 @@ def build_real_evidence_status(
         unexpected_session_directories=unexpected_sessions,
         verify_file_hashes=verify_file_hashes,
     )
+    blockers.extend(chronology["blockers"])
     evidence_complete = not blockers
     analysis = _analysis_readiness(protocol, execution_results)
     claim_ready = evidence_complete
@@ -289,6 +337,7 @@ def build_real_evidence_status(
         "analysis_ready": analysis["analysis_ready"],
         "full_registered_power": analysis["full_registered_power"],
         "analysis_readiness": analysis,
+        "preacquisition_chronology": chronology,
         "complete": evidence_complete,
         "claim_ready": claim_ready,
         "passed": claim_ready,
@@ -367,6 +416,7 @@ __all__ = [
     "TIMEBASE_CALIBRATION_SCHEMA_VERSION",
     "_analysis_readiness",
     "_load_json_mapping",
+    "_preacquisition_chronology",
     "_validate_execution_contract_v2",
     "_validate_method_freeze_attestation",
     "_validate_session_manifest",

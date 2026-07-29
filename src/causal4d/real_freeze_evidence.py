@@ -185,7 +185,11 @@ def _validate_method_freeze_attestation(
         _require(
             attestation.get(field) is True, f"freeze attestation gate failed: {field}"
         )
-    return {"passed": True, "verifier_id": verifier_id.strip()}
+    return {
+        "passed": True,
+        "verifier_id": verifier_id.strip(),
+        "verified_at_utc": attestation["verified_at_utc"],
+    }
 
 
 def _validate_method_freeze_prerequisites(
@@ -226,6 +230,7 @@ def _validate_method_freeze_prerequisites(
                 "dirty_worktree"
             ]
             freeze_result["file_hashes_verified"] = True if verify_file_hashes else None
+            freeze_result["frozen_at_utc"] = method_freeze["frozen_at_utc"]
             freeze_result["valid"] = True
             freeze_result["sha256"], freeze_result["bytes"] = _sha256_file(freeze_path)
         except (OSError, KeyError, TypeError, ValueError) as error:
