@@ -9,9 +9,7 @@ def _bank(offset: float = 0.0) -> JointRolloutBank:
     trajectories = np.zeros((4, 1, 5, 1, 3), dtype=float)
     slopes = [0.0, 0.10, 0.12, 0.24]
     for index, slope in enumerate(slopes):
-        trajectories[index, 0, :, 0, 0] = (
-            slope * np.arange(5, dtype=float) + offset
-        )
+        trajectories[index, 0, :, 0, 0] = slope * np.arange(5, dtype=float) + offset
     metadata = (
         {
             "contact": {
@@ -115,3 +113,19 @@ def test_hierarchical_abduction_is_future_blind_per_execution() -> None:
         first.execution_joint_weights[0],
         second.execution_joint_weights[0],
     )
+
+
+def test_shared_zero_phi_prior_remains_excluded() -> None:
+    bank = _bank()
+    observation = bank.trajectories[3, 0].copy()
+    result = abduct_hierarchical_interventions(
+        [bank],
+        [observation],
+        prefix_frame_counts=[4],
+        config=PrefixLikelihoodConfig(
+            observation_scale_m=1e-4,
+            likelihood_power=100.0,
+        ),
+        shared_phi_prior=np.asarray([1.0, 0.0]),
+    )
+    np.testing.assert_array_equal(result.phi_marginal, [1.0, 0.0])

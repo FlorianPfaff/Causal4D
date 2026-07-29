@@ -13,6 +13,7 @@ from causal4d.prefix_likelihood import (
     prefix_component_log_likelihood,
 )
 from causal4d.rollout_bank import JointRolloutBank
+from causal4d.weighting import log_weights_from_probabilities
 
 
 DEFAULT_PHI_NAMES = ("gain_multiplier", "delay_steps", "rotation_degrees")
@@ -147,16 +148,14 @@ class HierarchicalAbductionResult:
             self,
             "execution_joint_weights",
             tuple(
-                np.asarray(value, dtype=float)
-                for value in self.execution_joint_weights
+                np.asarray(value, dtype=float) for value in self.execution_joint_weights
             ),
         )
         object.__setattr__(
             self,
             "execution_log_evidence",
             tuple(
-                np.asarray(value, dtype=float)
-                for value in self.execution_log_evidence
+                np.asarray(value, dtype=float) for value in self.execution_log_evidence
             ),
         )
 
@@ -217,10 +216,7 @@ def abduct_hierarchical_interventions(
         else (None,) * len(bank_list)
     )
     if not (
-        len(mask_list)
-        == len(discrepancy_list)
-        == len(variance_list)
-        == len(bank_list)
+        len(mask_list) == len(discrepancy_list) == len(variance_list) == len(bank_list)
     ):
         raise ValueError("execution-specific optional inputs must align")
     session_identifiers, evidence_powers, evidence_mode = _session_evidence_powers(
@@ -298,7 +294,10 @@ def abduct_hierarchical_interventions(
                 "every execution must assign prior mass to every phi value"
             )
         conditional_prior = bank.hypothesis_prior_weights / group_mass[groups]
-        local_log_prior = np.log(np.maximum(conditional_prior, 1e-300))
+        local_log_prior = log_weights_from_probabilities(
+            conditional_prior,
+            name="conditional hypothesis prior",
+        )
         local_log_priors.append(local_log_prior)
         log_likelihood = prefix_component_log_likelihood(
             bank,
@@ -320,8 +319,11 @@ def abduct_hierarchical_interventions(
         execution_log_evidence.append(evidence)
 
     shared_log_weights = (
-        np.log(np.maximum(phi_prior, 1e-300))[:, None]
-        + np.log(np.maximum(reference.parameter_weights, 1e-300))[None]
+        log_weights_from_probabilities(phi_prior, name="shared phi prior")[:, None]
+        + log_weights_from_probabilities(
+            reference.parameter_weights,
+            name="parameter prior",
+        )[None]
     )
     for power, evidence in zip(evidence_powers, execution_log_evidence, strict=True):
         shared_log_weights += float(power) * evidence
@@ -335,11 +337,7 @@ def abduct_hierarchical_interventions(
         execution_log_evidence,
         strict=True,
     ):
-        conditional = np.exp(
-            local_prior[:, None]
-            + log_likelihood
-            - evidence[groups]
-        )
+        conditional = np.exp(local_prior[:, None] + log_likelihood - evidence[groups])
         joint = shared_weights[groups] * conditional
         joint /= np.sum(joint)
         execution_joint_weights.append(joint)

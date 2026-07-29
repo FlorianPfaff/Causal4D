@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
@@ -111,6 +113,21 @@ def test_actuator_factor_prefers_matching_realization() -> None:
     assert diagnostics["future_object_frames_read"] == 0
 
 
+def test_actuator_factor_cannot_resurrect_zero_prior_component() -> None:
+    factual = replace(_factual(), weights=np.asarray([1.0, 0.0]))
+    evidence = _actuator_evidence()
+    predictions = np.stack(
+        (evidence.positions_m + 0.2, evidence.positions_m),
+        axis=0,
+    )
+    updated = reweight_factual_intervention_with_independent_sensors(
+        factual,
+        actuator_evidence=evidence,
+        predicted_actuator_positions_m=predictions,
+    )
+    np.testing.assert_array_equal(updated.weights, [1.0, 0.0])
+
+
 def test_component_invariant_sensor_factor_returns_input_exactly() -> None:
     factual = _factual()
     evidence = _actuator_evidence()
@@ -176,7 +193,9 @@ def test_sensor_factor_rejects_evidence_from_another_case() -> None:
     factual = _factual()
     evidence = _actuator_evidence(case_id="other_case")
     predictions = np.zeros((2,) + evidence.positions_m.shape)
-    with pytest.raises(ValueError, match="different protocol, case, or observed action"):
+    with pytest.raises(
+        ValueError, match="different protocol, case, or observed action"
+    ):
         reweight_factual_intervention_with_independent_sensors(
             factual,
             actuator_evidence=evidence,
