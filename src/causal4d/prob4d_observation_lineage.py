@@ -131,6 +131,27 @@ def _provider_attestation_summary(
     }
 
 
+def _claim_bearing_stream_contract_summary(
+    metadata: Mapping[str, Any],
+) -> dict[str, object]:
+    contract = _require_mapping(
+        metadata.get("prob4d_causal_stream_contract"),
+        name="claim-bearing Prob4D causal stream contract",
+    )
+    if contract.get("version") != PROB4D_CAUSAL_STREAM_CONTRACT_VERSION:
+        raise ValueError(
+            "claim-bearing Prob4D causal stream contract changed version"
+        )
+    if contract.get("causal_frame_stop_convention") != "exclusive":
+        raise ValueError(
+            "claim-bearing Prob4D causal stream must use an exclusive frame stop"
+        )
+    return {
+        "version": PROB4D_CAUSAL_STREAM_CONTRACT_VERSION,
+        "causal_frame_stop_convention": "exclusive",
+    }
+
+
 def _claim_bearing_calibration_summary(
     metadata: Mapping[str, Any],
     provider: Mapping[str, Any],
@@ -269,9 +290,11 @@ def validate_prob4d_causal_observation_metadata(
                 "claim-bearing Prob4D observation requires the full joint cross-window "
                 "gauge covariance"
             )
+        stream_contract = _claim_bearing_stream_contract_summary(metadata)
         calibration = _claim_bearing_calibration_summary(metadata, provider)
         result.update(
             claim_bearing_provider_v2_validated=True,
+            claim_bearing_stream_contract=stream_contract,
             claim_bearing_covariance_calibration=calibration,
         )
     return result
