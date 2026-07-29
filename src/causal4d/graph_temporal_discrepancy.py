@@ -56,6 +56,93 @@ class GraphTemporalDiscrepancyModel:
         object.__setattr__(self, "projection_variance_m2", projection)
 
 
+def _canonicalize_eigenspace(cluster_basis: np.ndarray) -> np.ndarray:
+    """Choose a node-order-deterministic basis for one repeated eigenspace."""
+
+    orthonormal, _ = np.linalg.qr(np.asarray(cluster_basis, dtype=float))
+    width = orthonormal.shape[1]
+    residual_coefficients = orthonormal.copy()
+    canonical = np.empty_like(orthonormal)
+    tolerance = (
+        128.0 * np.finfo(float).eps * max(1, orthonormal.shape[0], orthonormal.shape[1])
+    )
+    for column in range(width):
+        leverage = np.einsum(
+            "ij,ij->i",
+            residual_coefficients,
+            residual_coefficients,
+        )
+        pivot = int(np.argmax(leverage))
+        pivot_leverage = float(leverage[pivot])
+        if pivot_leverage <= tolerance:
+            raise RuntimeError("degenerate eigenspace canonicalization lost rank")
+        coefficient = residual_coefficients[pivot] / np.sqrt(pivot_leverage)
+        vector = orthonormal @ coefficient
+        if vector[pivot] < 0.0:
+            coefficient = -coefficient
+            vector = -vector
+        canonical[:, column] = vector
+        residual_coefficients -= np.outer(
+            residual_coefficients @ coefficient,
+            coefficient,
+        )
+    return canonical
+
+
+def canonicalize_graph_eigenbasis(
+    eigenvalues: np.ndarray,
+    basis: np.ndarray,
+    *,
+    degeneracy_atol: float = 1e-10,
+    degeneracy_rtol: float = 1e-10,
+) -> np.ndarray:
+    """Canonicalize signs and numerically repeated graph eigenspaces.
+
+    Sign fixing alone is insufficient when an eigensolver may return an arbitrary
+    rotation within a repeated eigenspace. Repeated clusters are therefore rebuilt
+    from their invariant subspace using graph-node order as the deterministic
+    pivot rule. Singleton modes retain the historical largest-entry sign rule.
+    """
+
+    values = np.asarray(eigenvalues, dtype=float)
+    vectors = np.asarray(basis, dtype=float)
+    if values.ndim != 1 or vectors.ndim != 2 or vectors.shape[1] != len(values):
+        raise ValueError("basis columns must match the eigenvalue vector")
+    if not np.all(np.isfinite(values)) or not np.all(np.isfinite(vectors)):
+        raise ValueError("eigenvalues and basis must be finite")
+    if (
+        not np.isfinite(degeneracy_atol)
+        or degeneracy_atol < 0.0
+        or not np.isfinite(degeneracy_rtol)
+        or degeneracy_rtol < 0.0
+    ):
+        raise ValueError("degeneracy tolerances must be finite and nonnegative")
+    if len(values) > 1 and np.any(np.diff(values) < -degeneracy_atol):
+        raise ValueError("eigenvalues must be sorted in nondecreasing order")
+
+    canonical = vectors.copy()
+    start = 0
+    while start < len(values):
+        stop = start + 1
+        while stop < len(values) and np.isclose(
+            values[stop],
+            values[start],
+            atol=degeneracy_atol,
+            rtol=degeneracy_rtol,
+        ):
+            stop += 1
+        if stop - start == 1:
+            pivot = int(np.argmax(np.abs(canonical[:, start])))
+            if canonical[pivot, start] < 0.0:
+                canonical[:, start] *= -1.0
+        else:
+            canonical[:, start:stop] = _canonicalize_eigenspace(
+                canonical[:, start:stop]
+            )
+        start = stop
+    return canonical
+
+
 def graph_laplacian_basis(
     node_count: int,
     springs: np.ndarray,
@@ -107,11 +194,31 @@ def graph_laplacian_basis(
         order = np.argsort(eigenvalues, kind="mergesort")
         eigenvalues = eigenvalues[order]
         basis = basis[:, order]
-    for mode in range(rank):
-        pivot = int(np.argmax(np.abs(basis[:, mode])))
-        if basis[pivot, mode] < 0.0:
-            basis[:, mode] *= -1.0
+    basis = canonicalize_graph_eigenbasis(eigenvalues, basis)
     return basis, np.maximum(eigenvalues, 0.0)
+
+
+def _validated_node_indices(
+    values: np.ndarray | Sequence[int] | None,
+    *,
+    observed_node_count: int,
+    basis_node_count: int,
+) -> np.ndarray:
+    if observed_node_count > basis_node_count:
+        raise ValueError("basis does not cover the observed residual nodes")
+    if values is None:
+        return np.arange(observed_node_count, dtype=np.int64)
+    supplied = np.asarray(values)
+    if supplied.shape != (observed_node_count,):
+        raise ValueError("node_indices must identify every observed residual node")
+    if supplied.dtype.kind not in {"i", "u"}:
+        raise ValueError("node_indices must contain integers")
+    indices = np.asarray(supplied, dtype=np.int64)
+    if np.any(indices < 0) or np.any(indices >= basis_node_count):
+        raise ValueError("node_indices exceed the graph basis")
+    if len(np.unique(indices)) != len(indices):
+        raise ValueError("node_indices must be unique")
+    return indices
 
 
 def project_graph_coefficients(
@@ -120,8 +227,14 @@ def project_graph_coefficients(
     basis: np.ndarray,
     *,
     ridge: float,
+    node_indices: np.ndarray | Sequence[int] | None = None,
 ) -> np.ndarray:
-    """Project partially observed residual fields onto fixed graph modes."""
+    """Project partially observed residual fields onto fixed graph modes.
+
+    ``node_indices`` binds each residual column to an explicit graph node. Omitting
+    it retains the historical convention that observed columns are nodes
+    ``0, ..., observed_node_count - 1``.
+    """
 
     residual = np.asarray(residual_m, dtype=float)
     mask = np.asarray(valid, dtype=bool)
@@ -130,13 +243,18 @@ def project_graph_coefficients(
         raise ValueError("residual_m must have shape (T, observed_node, 3)")
     if mask.shape != residual.shape[:2]:
         raise ValueError("valid must have shape (T, observed_node)")
-    if modes.ndim != 2 or residual.shape[1] > modes.shape[0]:
-        raise ValueError("basis does not cover the observed residual nodes")
-    if ridge <= 0.0:
-        raise ValueError("projection ridge must be positive")
+    if modes.ndim != 2:
+        raise ValueError("basis must have shape (node, rank)")
+    if not np.isfinite(ridge) or ridge <= 0.0:
+        raise ValueError("projection ridge must be finite and positive")
+    indices = _validated_node_indices(
+        node_indices,
+        observed_node_count=residual.shape[1],
+        basis_node_count=modes.shape[0],
+    )
     rank = modes.shape[1]
     coefficients = np.zeros((len(residual), rank, 3), dtype=float)
-    observed_basis = modes[: residual.shape[1]]
+    observed_basis = modes[indices]
     identity = np.eye(rank)
     for frame in range(len(residual)):
         selected = mask[frame] & np.all(np.isfinite(residual[frame]), axis=1)
@@ -160,12 +278,17 @@ def _fit_transition(
     values = np.asarray(coefficients, dtype=float)
     if values.ndim != 3 or values.shape[2] != 3 or len(values) < 3:
         raise ValueError("coefficients must have shape (T>=3, rank, 3)")
+    if not np.all(np.isfinite(values)):
+        raise ValueError("coefficients must be finite")
+    if not np.isfinite(ridge) or ridge <= 0.0:
+        raise ValueError("dynamics ridge must be finite and positive")
+    if not 0.0 < maximum_spectral_radius <= 1.0:
+        raise ValueError("maximum_spectral_radius must lie in (0, 1]")
     rank = values.shape[1]
     source = values[:-1].transpose(1, 0, 2).reshape(rank, -1)
     target = values[1:].transpose(1, 0, 2).reshape(rank, -1)
     gram = source @ source.T + ridge * np.eye(rank)
-    cross = target @ source.T
-    transition = np.linalg.solve(gram, cross.T).T
+    transition = np.linalg.solve(gram, source @ target.T).T
     radius_before = float(np.max(np.abs(np.linalg.eigvals(transition))))
     if radius_before > maximum_spectral_radius:
         transition *= maximum_spectral_radius / radius_before
@@ -187,6 +310,7 @@ def fit_graph_temporal_discrepancy(
     projection_ridge: float = 1e-5,
     dynamics_ridge: float = 1e-4,
     maximum_spectral_radius: float = 0.995,
+    node_indices: np.ndarray | Sequence[int] | None = None,
 ) -> GraphTemporalDiscrepancyModel:
     """Select rank on an O-minus suffix and refit stable coefficient dynamics."""
 
@@ -194,6 +318,17 @@ def fit_graph_temporal_discrepancy(
     mask = np.asarray(valid, dtype=bool)
     basis = np.asarray(full_basis, dtype=float)
     eigenvalues = np.asarray(full_eigenvalues, dtype=float)
+    if residual.ndim != 3 or residual.shape[2] != 3:
+        raise ValueError("residual_m must have shape (T, observed_node, 3)")
+    if mask.shape != residual.shape[:2]:
+        raise ValueError("valid must have shape (T, observed_node)")
+    if basis.ndim != 2:
+        raise ValueError("full_basis must have shape (node, rank)")
+    indices = _validated_node_indices(
+        node_indices,
+        observed_node_count=residual.shape[1],
+        basis_node_count=basis.shape[0],
+    )
     candidates = tuple(sorted(set(map(int, rank_candidates))))
     if not candidates or candidates[0] < 1 or candidates[-1] > basis.shape[1]:
         raise ValueError("rank candidates must be covered by full_basis")
@@ -201,6 +336,10 @@ def fit_graph_temporal_discrepancy(
         raise ValueError("full eigenvalues must match full_basis")
     if not 0.0 < validation_fraction < 0.5:
         raise ValueError("validation_fraction must lie in (0, 0.5)")
+    if not np.isfinite(projection_ridge) or projection_ridge <= 0.0:
+        raise ValueError("projection_ridge must be finite and positive")
+    if not np.isfinite(dynamics_ridge) or dynamics_ridge <= 0.0:
+        raise ValueError("dynamics_ridge must be finite and positive")
     if not 0.0 < maximum_spectral_radius <= 1.0:
         raise ValueError("maximum_spectral_radius must lie in (0, 1]")
     split = max(3, int(np.floor(len(residual) * (1.0 - validation_fraction))))
@@ -216,6 +355,7 @@ def fit_graph_temporal_discrepancy(
             mask,
             selected_basis,
             ridge=projection_ridge,
+            node_indices=indices,
         )
         coefficient_cache[rank] = coefficients
         transition, _, _, _ = _fit_transition(
@@ -230,11 +370,13 @@ def fit_graph_temporal_discrepancy(
         )
         predicted = np.einsum(
             "nr,trc->tnc",
-            selected_basis[: residual.shape[1]],
+            selected_basis[indices],
             predicted_coefficients,
         )
         target = residual[split:]
         selected_mask = mask[split:] & np.all(np.isfinite(target), axis=2)
+        if not np.any(selected_mask):
+            raise ValueError("validation suffix contains no finite residual vectors")
         score = float(np.sqrt(np.mean(np.square((predicted - target)[selected_mask]))))
         validation_scores.append((rank, score))
     selected_rank = min(validation_scores, key=lambda value: (value[1], value[0]))[0]
@@ -247,13 +389,16 @@ def fit_graph_temporal_discrepancy(
     )
     reconstructed = np.einsum(
         "nr,trc->tnc",
-        selected_basis[: residual.shape[1]],
+        selected_basis[indices],
         coefficients,
     )
     projection_error = reconstructed - residual
+    projection_mask = mask & np.all(np.isfinite(residual), axis=2)
+    if not np.any(projection_mask):
+        raise ValueError("discrepancy fit contains no finite residual vectors")
     projection_variance = np.asarray(
         [
-            np.mean(np.square(projection_error[:, :, coordinate][mask]))
+            np.mean(np.square(projection_error[:, :, coordinate][projection_mask]))
             for coordinate in range(3)
         ]
     )
@@ -280,6 +425,7 @@ def forecast_graph_temporal_discrepancy(
     *,
     total_frame_count: int,
     dynamics: Literal["learned", "persistence"] = "learned",
+    node_indices: np.ndarray | Sequence[int] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Forecast graph discrepancy using only the supplied prefix residuals."""
 
@@ -292,6 +438,7 @@ def forecast_graph_temporal_discrepancy(
         valid,
         model.basis,
         ridge=model.projection_ridge,
+        node_indices=node_indices,
     )
     node_count = model.basis.shape[0]
     mean = np.zeros((total_frame_count, node_count, 3), dtype=float)
