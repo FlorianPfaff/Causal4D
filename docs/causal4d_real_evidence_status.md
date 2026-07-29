@@ -49,9 +49,10 @@ The physical registration uses `PhysicalContactRegistration` schema 3 as the
 authoritative contact record. Its `source_checksums` mapping must include
 `object_registration.json` and `contact_node_set:<region-id>` entries. The
 simpler registration remains as a compact acquisition index and is checked
-against the authoritative artifact. Every region must have distinct independent
-reviewer identities, every review and approval timestamp must be valid UTC, and
-the registration approval must not predate any independent review.
+against the authoritative artifact. Every region must have case-insensitively
+distinct independent reviewer identities, every review and approval timestamp
+must be valid UTC, and the registration approval must not predate any
+independent review.
 
 ## Scaffold
 
