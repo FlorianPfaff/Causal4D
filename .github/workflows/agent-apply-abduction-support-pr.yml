@@ -36,14 +36,14 @@ jobs:
       - name: Install development tools
         run: python -m pip install -e ".[dev]"
 
-      - name: Validate patch
+      - name: Format and validate patch
         run: |
-          python -m ruff check \
+          python -m ruff format \
             src/causal4d/hierarchical_abduction.py \
             src/causal4d/sensor_factorized_abduction.py \
             tests/test_causal4d_hierarchical_abduction.py \
             tests/test_causal4d_sensor_factorized_abduction.py
-          python -m ruff format --check \
+          python -m ruff check \
             src/causal4d/hierarchical_abduction.py \
             src/causal4d/sensor_factorized_abduction.py \
             tests/test_causal4d_hierarchical_abduction.py \
@@ -59,6 +59,7 @@ jobs:
           git rm \
             .github/workflows/agent-apply-abduction-support.yml \
             .github/workflows/agent-apply-abduction-support-pr.yml
+          git add -A
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "Preserve exact support in abduction updates"
