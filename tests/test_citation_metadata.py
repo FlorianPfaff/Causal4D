@@ -11,7 +11,7 @@ def _required_scalar(text: str, key: str) -> str:
     match = re.search(rf"(?m)^{re.escape(key)}:\s*([^\n]+)$", text)
     if match is None:
         raise AssertionError(f"CITATION.cff is missing {key!r}")
-    return match.group(1).strip().strip('"\'')
+    return match.group(1).strip().strip("\"'")
 
 
 def test_citation_metadata_matches_package_version_and_repository() -> None:
