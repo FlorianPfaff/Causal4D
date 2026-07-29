@@ -8,6 +8,8 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from causal4d.weighting import log_weights_from_probabilities
+
 
 def _readonly_array(
     values: np.ndarray,
@@ -302,18 +304,23 @@ class JointRolloutBank:
     def coordinate_count(self) -> int:
         return int(self.trajectories.shape[4])
 
-    def _base_log_weights(self, base_weights: np.ndarray | None) -> np.ndarray:
+    def _base_weights(self, base_weights: np.ndarray | None) -> np.ndarray:
         weights = (
             self.prior_joint_weights
             if base_weights is None
             else np.asarray(base_weights, dtype=float)
         )
-        weights = _validated_joint_weights(
+        return _validated_joint_weights(
             weights,
             expected_shape=self.prior_joint_weights.shape,
             name="base_weights",
         )
-        return np.log(np.maximum(weights, 1e-300))
+
+    def _base_log_weights(self, base_weights: np.ndarray | None) -> np.ndarray:
+        return log_weights_from_probabilities(
+            self._base_weights(base_weights),
+            name="base_weights",
+        )
 
     def update_from_observations(
         self,
@@ -451,6 +458,8 @@ class JointRolloutBank:
     ) -> np.ndarray:
         """Apply robust product-of-experts evidence over physical rollouts."""
 
+        if evidence.likelihood_weight == 0.0:
+            return self._base_weights(base_weights).copy()
         predicted = self._interpolated_nodes(evidence)
         if (
             evidence.compare_displacements
