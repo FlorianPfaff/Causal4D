@@ -10,6 +10,18 @@ from typing import Any, Mapping
 import numpy as np
 
 
+def _readonly_array(
+    values: np.ndarray,
+    *,
+    dtype: np.dtype | type,
+) -> np.ndarray:
+    """Return an owned, immutable NumPy array."""
+
+    array = np.asarray(values, dtype=dtype).copy()
+    array.setflags(write=False)
+    return array
+
+
 def load_trusted_legacy_phystwin_pickle(*args: Any, **kwargs: Any) -> Any:
     """Load a hash-locked legacy artifact without importing BPT at module import."""
 
@@ -76,13 +88,13 @@ class MolmoPhysTwinQuery:
     calibration_sha256: str | None = None
 
     def __post_init__(self) -> None:
-        history = np.asarray(self.history_frame_indices, dtype=int)
-        nodes = np.asarray(self.node_indices, dtype=int)
-        raw_tracks = np.asarray(self.raw_track_indices, dtype=int)
-        points_2d = np.asarray(self.points_2d_xy, dtype=float)
-        points_3d = np.asarray(self.points_3d_world_history_m, dtype=float)
-        camera_to_world = np.asarray(self.camera_to_world, dtype=float)
-        intrinsics = np.asarray(self.intrinsics, dtype=float)
+        history = _readonly_array(self.history_frame_indices, dtype=int)
+        nodes = _readonly_array(self.node_indices, dtype=int)
+        raw_tracks = _readonly_array(self.raw_track_indices, dtype=int)
+        points_2d = _readonly_array(self.points_2d_xy, dtype=float)
+        points_3d = _readonly_array(self.points_3d_world_history_m, dtype=float)
+        camera_to_world = _readonly_array(self.camera_to_world, dtype=float)
+        intrinsics = _readonly_array(self.intrinsics, dtype=float)
         point_count = len(nodes)
         expected_history = tuple(
             range(
@@ -153,7 +165,9 @@ class MolmoPhysTwinQuery:
             "frame_stride": self.frame_stride,
             "final_data_sha256": self.final_data_sha256,
             "calibration_sha256": self.calibration_sha256,
-            "point_coordinate_contract": "raw row/column tracks converted to x/y pixels",
+            "point_coordinate_contract": (
+                "raw row/column tracks converted to x/y pixels"
+            ),
             "trajectory_coordinate_contract": "metric world coordinates",
             "temporal_contract": "history and future sampled at forecast_fps",
         }
@@ -268,7 +282,8 @@ def prepare_molmo_phystwin_query(
     candidates = candidates_by_camera[camera]
     if len(candidates) < point_count:
         raise ValueError(
-            f"camera {camera} has only {len(candidates)} valid tracks; need {point_count}"
+            f"camera {camera} has only {len(candidates)} valid tracks; "
+            f"need {point_count}"
         )
     selected_local = farthest_point_indices(object_points[t0, candidates], point_count)
     nodes = candidates[selected_local]
@@ -323,8 +338,8 @@ class MolmoForecastBundle:
     checkpoint: str
 
     def __post_init__(self) -> None:
-        camera = np.asarray(self.future_camera_m, dtype=float)
-        world = np.asarray(self.future_world_m, dtype=float)
+        camera = _readonly_array(self.future_camera_m, dtype=float)
+        world = _readonly_array(self.future_world_m, dtype=float)
         expected_prefix = (len(self.forecast_ids), len(self.query.node_indices))
         if (
             camera.ndim != 4
