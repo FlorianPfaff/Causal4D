@@ -158,8 +158,8 @@ def _multivariate_student_t_score(
     whitened = np.einsum("ij,hptjc->hptic", inverse_root, coefficients)
     squared = np.sum(np.square(whitened), axis=3)
     dimension = covariance_m2.shape[0]
-    terms = -0.5 * (degrees_of_freedom + dimension) * np.log1p(
-        squared / degrees_of_freedom
+    terms = (
+        -0.5 * (degrees_of_freedom + dimension) * np.log1p(squared / degrees_of_freedom)
     )
     return np.mean(terms, axis=(2, 3))
 
@@ -190,8 +190,7 @@ def graph_mode_joint_weights(
         )
     if (
         settings.mode_covariance_m2 is not None
-        and settings.mode_covariance_m2.shape
-        != (basis.shape[1], basis.shape[1])
+        and settings.mode_covariance_m2.shape != (basis.shape[1], basis.shape[1])
     ):
         raise ValueError("mode covariance rank differs from graph basis")
 
@@ -237,9 +236,13 @@ def graph_mode_joint_weights(
         )
         score = score + settings.dynamic_likelihood_weight * dynamic_score
 
-    prior = bank.prior_joint_weights if base_weights is None else np.asarray(
-        base_weights,
-        dtype=float,
+    prior = (
+        bank.prior_joint_weights
+        if base_weights is None
+        else np.asarray(
+            base_weights,
+            dtype=float,
+        )
     )
     if prior.shape != bank.prior_joint_weights.shape:
         raise ValueError("base_weights must match the rollout bank")

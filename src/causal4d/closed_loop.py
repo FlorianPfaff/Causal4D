@@ -446,9 +446,7 @@ class RecedingHorizonPlanner:
             log_terms = log_weights_from_probabilities(
                 plan.physical.weights,
                 name="plan physical weights",
-            ) + (
-                applied_beta * plan.task.semantic_log_scores
-            )
+            ) + (applied_beta * plan.task.semantic_log_scores)
             semantic_log_evidence = _logsumexp(log_terms)
         score = (
             semantic_log_evidence
@@ -896,9 +894,7 @@ def condition_plan_on_recursive_belief(
             log_weights = log_weights_from_probabilities(
                 physical.weights,
                 name="recursive physical weights",
-            ) + (
-                plan.task.beta * plan.task.semantic_log_scores
-            )
+            ) + (plan.task.beta * plan.task.semantic_log_scores)
             maximum = float(np.max(log_weights))
             task_weights = np.exp(log_weights - maximum)
             task_weights /= np.sum(task_weights)

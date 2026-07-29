@@ -83,16 +83,12 @@ class MolmoAcceptanceThresholds:
         unknown = set(values) - allowed
         if unknown:
             raise ValueError(
-                "unknown Molmo acceptance thresholds: "
-                + ", ".join(sorted(unknown))
+                "unknown Molmo acceptance thresholds: " + ", ".join(sorted(unknown))
             )
         return cls(**dict(values))
 
     def as_dict(self) -> dict[str, float | int]:
-        return {
-            name: getattr(self, name)
-            for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
 
 def load_molmo_acceptance_result(path: str | Path) -> dict[str, Any]:
@@ -273,7 +269,9 @@ def forecast_competence_diagnostics(
     temporal_contract = bool(
         np.isclose(bundle.query.forecast_fps, thresholds.expected_forecast_fps)
         and np.isclose(expected_stride, bundle.query.frame_stride)
-        and np.all(np.diff(bundle.query.history_frame_indices) == bundle.query.frame_stride)
+        and np.all(
+            np.diff(bundle.query.history_frame_indices) == bundle.query.frame_stride
+        )
     )
     gates = {
         "beats_zero_motion": bool(
@@ -365,8 +363,10 @@ def _component_semantic_scores(
     standardized = (
         predicted_displacement - target_displacement[None, None]
     ) / thresholds.semantic_scale_m
-    terms = -0.5 * (thresholds.semantic_degrees_of_freedom + 1.0) * np.log1p(
-        np.square(standardized) / thresholds.semantic_degrees_of_freedom
+    terms = (
+        -0.5
+        * (thresholds.semantic_degrees_of_freedom + 1.0)
+        * np.log1p(np.square(standardized) / thresholds.semantic_degrees_of_freedom)
     )
     return np.mean(terms, axis=(2, 3, 4))
 
@@ -378,8 +378,7 @@ def _action_ranking(
     top_k: int,
 ) -> dict[str, Any]:
     action_ids = tuple(
-        str(metadata["action"]["proposal_id"])
-        for metadata in bank.hypothesis_metadata
+        str(metadata["action"]["proposal_id"]) for metadata in bank.hypothesis_metadata
     )
     scores: dict[str, float] = {}
     prior = bank.prior_joint_weights
@@ -391,10 +390,13 @@ def _action_ranking(
             scores[action_id] = -np.inf
             continue
         selected_prior = selected_prior / selected_mass
-        values = log_weights_from_probabilities(
-            selected_prior,
-            name=f"{action_id} component prior",
-        ) + component_scores[hypothesis_mask]
+        values = (
+            log_weights_from_probabilities(
+                selected_prior,
+                name=f"{action_id} component prior",
+            )
+            + component_scores[hypothesis_mask]
+        )
         scores[action_id] = _logsumexp(values.reshape(-1))
     ranking = sorted(scores, key=lambda action: (-scores[action], action))
     rank = ranking.index(correct_action_id) + 1
@@ -429,7 +431,9 @@ def ranking_and_stability_diagnostics(
         if bool(entry.get("future_action_observed"))
     ]
     if len(observed) != 1:
-        raise ValueError("ranking benchmark requires exactly one labeled correct action")
+        raise ValueError(
+            "ranking benchmark requires exactly one labeled correct action"
+        )
     correct_action_id = observed[0]
     point_count = len(bundle.query.node_indices)
     subsets = {"all": np.arange(point_count, dtype=int)}
@@ -501,8 +505,14 @@ def ranking_and_stability_diagnostics(
     for left_id, right_id in combinations(prompt_ids, 2):
         left_index = bundle.forecast_ids.index(left_id)
         right_index = bundle.forecast_ids.index(right_id)
-        left = bundle.future_world_m[left_index] - bundle.query.anchor_positions_world_m[:, None]
-        right = bundle.future_world_m[right_index] - bundle.query.anchor_positions_world_m[:, None]
+        left = (
+            bundle.future_world_m[left_index]
+            - bundle.query.anchor_positions_world_m[:, None]
+        )
+        right = (
+            bundle.future_world_m[right_index]
+            - bundle.query.anchor_positions_world_m[:, None]
+        )
         pairwise_rms = float(np.sqrt(np.mean(np.sum(np.square(left - right), axis=2))))
         ratio = pairwise_rms / max(truth_motion_rms_m, 1e-12)
         pairwise[f"{left_id}__{right_id}"] = {
@@ -529,10 +539,8 @@ def ranking_and_stability_diagnostics(
             and prompt_top1_agreement >= thresholds.minimum_prompt_top1_agreement
             and maximum_pairwise_ratio
             <= thresholds.maximum_prompt_pairwise_motion_ratio
-            and minimum_subset_top1
-            >= thresholds.minimum_query_subset_top1_agreement
-            and minimum_subset_top_k
-            >= thresholds.minimum_query_subset_top_k_recall
+            and minimum_subset_top1 >= thresholds.minimum_query_subset_top1_agreement
+            and minimum_subset_top_k >= thresholds.minimum_query_subset_top_k_recall
         ),
     }
     return {

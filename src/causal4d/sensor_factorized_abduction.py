@@ -277,8 +277,7 @@ def reweight_factual_intervention_with_independent_sensors(
 
     prior = np.asarray(factual.weights, dtype=float)
     posterior = _normalize_log_weights(
-        log_weights_from_probabilities(prior, name="factual weights")
-        + total_log_factor
+        log_weights_from_probabilities(prior, name="factual weights") + total_log_factor
     )
     metadata = dict(factual.metadata)
     metadata["independent_sensor_abduction"] = {
@@ -318,9 +317,7 @@ def predict_affine_actuator_realizations(
     commands = np.asarray(commanded_positions_m, dtype=float)
     values = np.asarray(phi, dtype=float)
     if commands.ndim != 3 or commands.shape[2] != 3:
-        raise ValueError(
-            "commanded_positions_m must have shape (frame, controller, 3)"
-        )
+        raise ValueError("commanded_positions_m must have shape (frame, controller, 3)")
     if not np.all(np.isfinite(commands)):
         raise ValueError("commanded_positions_m must be finite")
     if values.ndim != 2 or values.shape[1] != len(phi_names):
@@ -330,8 +327,7 @@ def predict_affine_actuator_realizations(
     required = {"gain_multiplier", "delay_steps", "rotation_degrees"}
     if not required.issubset(phi_names):
         raise ValueError(
-            "phi_names must include gain_multiplier, delay_steps, and "
-            "rotation_degrees"
+            "phi_names must include gain_multiplier, delay_steps, and rotation_degrees"
         )
     axis = np.asarray(rotation_axis, dtype=float).reshape(-1)
     if axis.shape != (3,) or not np.all(np.isfinite(axis)):

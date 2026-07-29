@@ -237,10 +237,7 @@ def abduct_hierarchical_interventions(
         else (None,) * len(bank_list)
     )
     if not (
-        len(mask_list)
-        == len(discrepancy_list)
-        == len(variance_list)
-        == len(bank_list)
+        len(mask_list) == len(discrepancy_list) == len(variance_list) == len(bank_list)
     ):
         raise ValueError("execution-specific optional inputs must align")
     session_identifiers, evidence_powers, evidence_mode = _session_evidence_powers(
@@ -361,11 +358,7 @@ def abduct_hierarchical_interventions(
         execution_log_evidence,
         strict=True,
     ):
-        conditional = np.exp(
-            local_prior[:, None]
-            + log_likelihood
-            - evidence[groups]
-        )
+        conditional = np.exp(local_prior[:, None] + log_likelihood - evidence[groups])
         joint = shared_weights[groups] * conditional
         joint /= np.sum(joint)
         execution_joint_weights.append(joint)

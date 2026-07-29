@@ -107,9 +107,8 @@ class ContactPathPrior:
             raise ValueError("contact paths must contain at least one frame")
         if np.any(paths < 0) or np.any(paths >= len(CONTACT_REGIME_NAMES)):
             raise ValueError("contact paths contain an unknown regime")
-        if (
-            len(self.path_ids) != len(weights)
-            or len(set(self.path_ids)) != len(weights)
+        if len(self.path_ids) != len(weights) or len(set(self.path_ids)) != len(
+            weights
         ):
             raise ValueError("path_ids must uniquely identify every contact path")
         if not np.isfinite(self.retained_prior_mass) or not (
@@ -155,9 +154,7 @@ def contact_transition_matrix(
     )
     matrix[ContactRegime.STICKING, ContactRegime.DETACHED] = p_detach
     matrix[ContactRegime.STICKING, ContactRegime.SLIPPING] = p_slip
-    matrix[ContactRegime.STICKING, ContactRegime.STICKING] = (
-        1.0 - p_detach - p_slip
-    )
+    matrix[ContactRegime.STICKING, ContactRegime.STICKING] = 1.0 - p_detach - p_slip
 
     p_recover = np.clip(
         settings.slip_recovery_probability * current,
@@ -166,9 +163,7 @@ def contact_transition_matrix(
     )
     matrix[ContactRegime.SLIPPING, ContactRegime.DETACHED] = p_detach
     matrix[ContactRegime.SLIPPING, ContactRegime.STICKING] = p_recover
-    matrix[ContactRegime.SLIPPING, ContactRegime.SLIPPING] = (
-        1.0 - p_detach - p_recover
-    )
+    matrix[ContactRegime.SLIPPING, ContactRegime.SLIPPING] = 1.0 - p_detach - p_recover
 
     p_reattach = np.clip(settings.reattachment_gain * current, 0.0, 1.0)
     matrix[ContactRegime.DETACHED, ContactRegime.STICKING] = p_reattach
@@ -247,9 +242,7 @@ def enumerate_contact_paths(
         maximum = max(log_probability for _, log_probability in beam)
         retained_mass = float(
             np.exp(maximum)
-            * np.sum(
-                [np.exp(log_probability - maximum) for _, log_probability in beam]
-            )
+            * np.sum([np.exp(log_probability - maximum) for _, log_probability in beam])
         )
 
     log_weights = np.asarray([value for _, value in beam], dtype=float)
@@ -418,9 +411,7 @@ class DynamicContactPosterior:
 
 
 def _base_variance_schedule(bank: DynamicContactPathBank) -> np.ndarray:
-    path_count, frame_count, node_count, coordinate_count = (
-        bank.trajectories_m.shape
-    )
+    path_count, frame_count, node_count, coordinate_count = bank.trajectories_m.shape
     variance = np.asarray(bank.base_variance_m2, dtype=float)
     if variance.ndim == 0:
         return np.full(bank.trajectories_m.shape, float(variance), dtype=float)
@@ -507,17 +498,22 @@ def _student_t_mean_log_score(
     degrees_of_freedom: float,
 ) -> np.ndarray:
     standardized = residual / scale_m
-    terms = -0.5 * (degrees_of_freedom + 1.0) * np.log1p(
-        np.square(standardized) / degrees_of_freedom
+    terms = (
+        -0.5
+        * (degrees_of_freedom + 1.0)
+        * np.log1p(np.square(standardized) / degrees_of_freedom)
     )
     valid_float = np.asarray(valid, dtype=float)[None]
     count = np.sum(valid_float, axis=(1, 2, 3))
     if np.any(count <= 0.0):
         raise ValueError("dynamic contact update has no valid coordinates")
-    return np.sum(
-        np.where(valid_float > 0.0, terms, 0.0),
-        axis=(1, 2, 3),
-    ) / count
+    return (
+        np.sum(
+            np.where(valid_float > 0.0, terms, 0.0),
+            axis=(1, 2, 3),
+        )
+        / count
+    )
 
 
 def _normalized_log_weights(log_weights: np.ndarray) -> np.ndarray:
@@ -561,8 +557,7 @@ def infer_dynamic_contact_posterior(
         config=settings,
     )
     position_scale = np.sqrt(
-        settings.observation_scale_m**2
-        + conditional_variance[:, :prefix_frame_count]
+        settings.observation_scale_m**2 + conditional_variance[:, :prefix_frame_count]
     )
     position_score = _student_t_mean_log_score(
         bank.trajectories_m[:, :prefix_frame_count]
