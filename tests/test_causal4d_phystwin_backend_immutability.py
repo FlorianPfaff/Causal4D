@@ -1,3 +1,5 @@
+"""Regression tests for immutable PhysTwin backend artifacts."""
+
 from __future__ import annotations
 
 import numpy as np
