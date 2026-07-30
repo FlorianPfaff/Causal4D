@@ -1,0 +1,73 @@
+name: Apply agent hardening patch
+
+on:
+  push:
+    branches:
+      - agent/harden-frozen-artifacts-and-atomic-writes
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-agent-hardening-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Apply focused maintenance patch
+        run: python scripts/ci/apply_agent_hardening.py
+
+      - name: Install development environment
+        run: python -m pip install -e ".[dev]"
+
+      - name: Format changed Python files
+        run: >
+          python -m ruff format
+          src/causal4d/atomic_io.py
+          src/causal4d/immutable_array.py
+          src/causal4d/baselines.py
+          src/causal4d/closed_loop.py
+          src/causal4d/contact_inference.py
+          src/causal4d/contracts.py
+          src/causal4d/execution_block_calibration.py
+          src/causal4d/graph_temporal_discrepancy.py
+          src/causal4d/hierarchical_abduction.py
+          src/causal4d/molmo_adapter.py
+          src/causal4d/phystwin_backend.py
+          src/causal4d/real_calibration.py
+          src/causal4d/rollout_bank.py
+          src/causal4d/semantic_posterior.py
+          src/causal4d/semantic_trust.py
+          tests/test_atomic_io.py
+          tests/test_claim_artifact_immutability.py
+          tests/test_causal4d_phystwin_backend.py
+
+      - name: Run static and core regression checks
+        run: |
+          python -m ruff check .
+          python -m compileall -q src tests
+          python -m pytest -q
+
+      - name: Commit the verified patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Harden frozen artifacts and atomic evidence writes"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
