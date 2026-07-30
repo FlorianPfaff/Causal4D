@@ -39,9 +39,7 @@ def _manifest(
             if metadata is not None
             else {
                 "provider_api": BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_API,
-                "provider_api_version": (
-                    BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_API_VERSION
-                ),
+                "provider_api_version": BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_API_VERSION,
                 "inference_role": BAYESIAN_PHYSTWIN_BELIEF_INFERENCE_ROLE,
             }
         ),
@@ -105,9 +103,7 @@ def test_belief_provider_contract_rejects_metadata_drift(
     metadata = dict(_manifest().metadata)
     metadata[name] = value
     with pytest.raises(ValueError, match="unexpected"):
-        validate_bayesian_phystwin_belief_provider(
-            _manifest(metadata=metadata)
-        )
+        validate_bayesian_phystwin_belief_provider(_manifest(metadata=metadata))
 
 
 def test_belief_provider_contract_rejects_wrong_provider_name() -> None:
