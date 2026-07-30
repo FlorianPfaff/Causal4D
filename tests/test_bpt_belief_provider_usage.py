@@ -25,9 +25,16 @@ def test_belief_export_validates_and_uses_fixed_anchor_provider(
     events: list[str] = []
     received: dict[str, Any] = {}
 
-    def require_provider():
+    class ProviderManifest:
+        def as_dict(self) -> dict[str, object]:
+            return {
+                "manifest_id": "belief-provider-v1",
+                "provider_revision": "a" * 40,
+            }
+
+    def require_provider() -> ProviderManifest:
         events.append("validate-provider")
-        return object()
+        return ProviderManifest()
 
     def infer_endpoint(
         residual_m: np.ndarray,
@@ -104,6 +111,10 @@ def test_belief_export_validates_and_uses_fixed_anchor_provider(
     assert received["config"] == settings.fixed_anchor_config()
     assert belief.metadata["particle_update_counts"] == [2]
     assert belief.metadata["particle_mean_final_inlier_probability"] == [0.8]
+    assert belief.metadata["belief_provider"] == {
+        "manifest_id": "belief-provider-v1",
+        "provider_revision": "a" * 40,
+    }
 
 
 @pytest.mark.parametrize(
@@ -120,3 +131,14 @@ def test_belief_export_config_rejects_nonfinite_or_boolean_settings(
 ) -> None:
     with pytest.raises(ValueError):
         BPTBeliefExportConfig(**kwargs)
+
+
+def test_belief_export_config_normalizes_numpy_scalars() -> None:
+    settings = BPTBeliefExportConfig(
+        process_std_m=np.float32(0.005),
+        interpolation_neighbors=np.int64(2),
+        maximum_discrepancy_m=np.float32(0.01),
+    )
+    assert type(settings.process_std_m) is float
+    assert type(settings.interpolation_neighbors) is int
+    assert type(settings.maximum_discrepancy_m) is float
