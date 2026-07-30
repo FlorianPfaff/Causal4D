@@ -1,16 +1,16 @@
 name: Apply agent hardening patch
 
 on:
-  push:
-    branches:
-      - agent/harden-frozen-artifacts-and-atomic-writes
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: apply-agent-hardening-${{ github.ref }}
+  group: apply-agent-hardening-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -19,9 +19,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Check out branch
+      - name: Check out pull-request branch
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
           fetch-depth: 0
 
       - name: Set up Python 3.12
@@ -64,10 +65,17 @@ jobs:
           python -m compileall -q src tests
           python -m pytest -q
 
+      - name: Remove temporary patch machinery
+        run: |
+          rm scripts/ci/apply_agent_hardening.py
+          rm .github/workflows/apply-agent-hardening.yml
+
       - name: Commit the verified patch
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "Harden frozen artifacts and atomic evidence writes"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "HEAD:${HEAD_BRANCH}"
