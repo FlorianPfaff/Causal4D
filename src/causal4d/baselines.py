@@ -7,24 +7,13 @@ from dataclasses import dataclass
 import numpy as np
 
 from causal4d.benchmark import CounterfactualBenchmarkConfig, Episode
+from causal4d.immutable_array import readonly_array as _readonly_array
 from causal4d.simulator import (
     Action,
     GraphObject,
     WorldCondition,
     simulate_particles,
 )
-
-
-def _readonly_array(
-    values: np.ndarray,
-    *,
-    dtype: np.dtype | type = float,
-) -> np.ndarray:
-    """Return an owned, immutable NumPy array."""
-
-    array = np.asarray(values, dtype=dtype).copy()
-    array.setflags(write=False)
-    return array
 
 
 @dataclass(frozen=True)

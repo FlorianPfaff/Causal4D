@@ -440,3 +440,53 @@ def test_rollout_bank_uses_explicit_replay_v2_requests(
     assert manifest["replay_request_count"] == 1
     assert manifest["replay_requests"][0]["request_id"] == request.request_id
     assert manifest["replay_requests"][0]["velocities_sha256"]
+
+
+def test_particle_artifact_owns_and_freezes_constructor_arrays() -> None:
+    log_scales = np.asarray([[0.0, 0.1], [0.2, 0.3]])
+    weights = np.asarray([0.6, 0.4])
+    grid_indices = np.asarray([[0, 0], [1, 1]])
+    particles = BayesianPhysTwinParticles(
+        log_scales=log_scales,
+        weights=weights,
+        grid_indices=grid_indices,
+        source_weight_key="posterior_weights",
+        retained_probability_mass=1.0,
+    )
+    expected = (
+        particles.log_scales.copy(),
+        particles.weights.copy(),
+        particles.grid_indices.copy(),
+    )
+
+    log_scales[...] = -1.0
+    weights[...] = 0.5
+    grid_indices[...] = 9
+
+    for retained, frozen in zip(
+        (particles.log_scales, particles.weights, particles.grid_indices),
+        expected,
+        strict=True,
+    ):
+        np.testing.assert_array_equal(retained, frozen)
+        assert not retained.flags.writeable
+        with pytest.raises(ValueError, match="read-only"):
+            retained[...] = 0
+
+
+def test_action_proposal_owns_and_freezes_controller_trajectory() -> None:
+    controls = np.arange(18, dtype=float).reshape(3, 2, 3)
+    proposal = PhysTwinActionProposal(
+        proposal_id="proposal",
+        controller_points_m=controls,
+        prior_weight=1.0,
+        future_action_observed=False,
+        provenance="unit",
+    )
+    expected = controls.copy()
+    controls[...] = -1.0
+
+    np.testing.assert_array_equal(proposal.controller_points_m, expected)
+    assert not proposal.controller_points_m.flags.writeable
+    with pytest.raises(ValueError, match="read-only"):
+        proposal.controller_points_m[...] = 0

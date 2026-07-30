@@ -10,6 +10,7 @@ import numpy as np
 from causal4d.weighting import log_weights_from_probabilities
 
 from causal4d.contracts import PhysicalPosterior, TaskPosterior, array_sha256
+from causal4d.immutable_array import readonly_array
 
 if TYPE_CHECKING:
     from causal4d.molmo_adapter import MolmoForecastBundle
@@ -31,9 +32,9 @@ class SparseSemanticEvidence:
     source: str = "semantic_trajectory"
 
     def __post_init__(self) -> None:
-        positions = np.asarray(self.positions_m, dtype=float)
-        nodes = np.asarray(self.node_indices, dtype=np.int64)
-        frames = np.asarray(self.physical_frame_indices, dtype=float)
+        positions = readonly_array(self.positions_m, dtype=float)
+        nodes = readonly_array(self.node_indices, dtype=np.int64)
+        frames = readonly_array(self.physical_frame_indices, dtype=float)
         if positions.ndim != 3 or positions.shape[2] != 3:
             raise ValueError("positions_m must have shape (F, Q, 3)")
         if nodes.shape != (positions.shape[1],):
@@ -64,9 +65,10 @@ class SparseSemanticEvidence:
         if self.compare_displacements:
             if self.anchor_positions_m is None:
                 raise ValueError("displacement evidence requires anchor_positions_m")
-            anchor = np.asarray(self.anchor_positions_m, dtype=float)
+            anchor = readonly_array(self.anchor_positions_m, dtype=float)
             if anchor.shape != positions.shape[1:] or not np.all(np.isfinite(anchor)):
                 raise ValueError("anchor_positions_m must have finite shape (Q, 3)")
+        valid = readonly_array(valid, dtype=bool)
         object.__setattr__(self, "positions_m", positions)
         object.__setattr__(self, "node_indices", nodes)
         object.__setattr__(self, "physical_frame_indices", frames)

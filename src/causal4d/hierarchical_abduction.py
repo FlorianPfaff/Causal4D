@@ -8,6 +8,7 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from causal4d.immutable_array import readonly_array as _readonly_array
 from causal4d.immutable_json import validated_json_mapping
 from causal4d.prefix_likelihood import (
     PrefixLikelihoodConfig,
@@ -18,12 +19,6 @@ from causal4d.weighting import log_weights_from_probabilities
 
 
 DEFAULT_PHI_NAMES = ("gain_multiplier", "delay_steps", "rotation_degrees")
-
-
-def _readonly_array(values: np.ndarray, *, dtype: Any = float) -> np.ndarray:
-    array = np.asarray(values, dtype=dtype).copy()
-    array.setflags(write=False)
-    return array
 
 
 def _logsumexp(values: np.ndarray, axis: int | None = None) -> np.ndarray:

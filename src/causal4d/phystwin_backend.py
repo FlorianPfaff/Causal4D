@@ -36,6 +36,7 @@ from causal4d.contracts import (
     array_sha256,
 )
 from causal4d.graph_provider_contract import require_bayesian_phystwin_graph_provider
+from causal4d.immutable_array import readonly_array as _readonly_array
 from causal4d.parameter_support import SupportMethod, reduce_parameter_support
 from causal4d.provider_contract import require_bayesian_phystwin_provider
 from causal4d.replay_provider_contract import (
@@ -89,9 +90,9 @@ class BayesianPhysTwinParticles:
     bpt_source_weight_key: str | None = None
 
     def __post_init__(self) -> None:
-        particles = np.asarray(self.log_scales, dtype=float)
-        weights = np.asarray(self.weights, dtype=float)
-        indices = np.asarray(self.grid_indices, dtype=int)
+        particles = _readonly_array(self.log_scales, dtype=float)
+        weights = _readonly_array(self.weights, dtype=float)
+        indices = _readonly_array(self.grid_indices, dtype=int)
         if particles.ndim != 2 or particles.shape[1] != 2:
             raise ValueError("log_scales must have shape (P, 2)")
         if weights.shape != (len(particles),) or indices.shape != (len(particles), 2):
@@ -372,7 +373,7 @@ class PhysTwinActionProposal:
     provenance: str
 
     def __post_init__(self) -> None:
-        controls = np.asarray(self.controller_points_m, dtype=float)
+        controls = _readonly_array(self.controller_points_m, dtype=float)
         if controls.ndim != 3 or controls.shape[2] != 3:
             raise ValueError("controller_points_m must have shape (T, C, 3)")
         if not np.all(np.isfinite(controls)):

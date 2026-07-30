@@ -7,6 +7,8 @@ from typing import Literal, Sequence
 
 import numpy as np
 
+from causal4d.immutable_array import readonly_array
+
 
 @dataclass(frozen=True)
 class GraphTemporalDiscrepancyModel:
@@ -26,11 +28,11 @@ class GraphTemporalDiscrepancyModel:
     dynamics_ridge: float
 
     def __post_init__(self) -> None:
-        basis = np.asarray(self.basis, dtype=float)
-        eigenvalues = np.asarray(self.eigenvalues, dtype=float)
-        transition = np.asarray(self.transition, dtype=float)
-        innovation = np.asarray(self.innovation_covariance, dtype=float)
-        projection = np.asarray(self.projection_variance_m2, dtype=float)
+        basis = readonly_array(self.basis, dtype=float)
+        eigenvalues = readonly_array(self.eigenvalues, dtype=float)
+        transition = readonly_array(self.transition, dtype=float)
+        innovation = readonly_array(self.innovation_covariance, dtype=float)
+        projection = readonly_array(self.projection_variance_m2, dtype=float)
         rank = self.selected_rank
         if basis.ndim != 2 or basis.shape[1] != rank:
             raise ValueError("basis must have shape (node, selected_rank)")

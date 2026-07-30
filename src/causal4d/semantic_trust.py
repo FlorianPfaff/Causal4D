@@ -6,11 +6,14 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 
+from causal4d.atomic_io import atomic_write_json
 from causal4d.contracts import PhysicalPosterior, TaskPosterior
+from causal4d.immutable_array import readonly_array
+from causal4d.immutable_json import validated_json_mapping
 from causal4d.semantic_posterior import (
     SparseSemanticEvidence,
     build_task_posterior,
@@ -31,11 +34,13 @@ class SemanticValidationCase:
     start_frame: int = 1
 
     def __post_init__(self) -> None:
-        truth = np.asarray(self.truth_m, dtype=float)
+        truth = readonly_array(self.truth_m, dtype=float)
         if not self.case_id:
             raise ValueError("semantic validation case_id must be nonempty")
         if truth.shape != self.physical.readout_trajectories_m.shape[1:]:
-            raise ValueError("semantic validation truth must match physical trajectories")
+            raise ValueError(
+                "semantic validation truth must match physical trajectories"
+            )
         if not 0 <= self.start_frame < len(truth):
             raise ValueError("semantic validation start_frame is invalid")
         mask = None
@@ -45,6 +50,7 @@ class SemanticValidationCase:
                 mask = np.all(mask, axis=2)
             if mask.shape != truth.shape[:2]:
                 raise ValueError("semantic validation mask has an invalid shape")
+            mask = readonly_array(mask, dtype=bool)
         object.__setattr__(self, "truth_m", truth)
         object.__setattr__(self, "mask", mask)
 
@@ -107,7 +113,22 @@ class SemanticTrustDecision:
     applied_beta: float
     accepted: bool
     reasons: tuple[str, ...]
-    diagnostics: dict[str, float]
+    diagnostics: Mapping[str, float]
+
+    def __post_init__(self) -> None:
+        diagnostics = validated_json_mapping(
+            self.diagnostics,
+            error_message="semantic diagnostics must be finite numeric JSON data",
+        )
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not np.isfinite(float(value))
+            for value in diagnostics.values()
+        ):
+            raise ValueError("semantic diagnostics must contain only finite numbers")
+        object.__setattr__(self, "reasons", tuple(self.reasons))
+        object.__setattr__(self, "diagnostics", diagnostics)
 
 
 def _valid_coordinates(case: SemanticValidationCase) -> np.ndarray:
@@ -116,7 +137,9 @@ def _valid_coordinates(case: SemanticValidationCase) -> np.ndarray:
         valid &= case.mask
     valid[: case.start_frame] = False
     if not np.any(valid):
-        raise ValueError(f"source case {case.case_id!r} has no valid target coordinates")
+        raise ValueError(
+            f"source case {case.case_id!r} has no valid target coordinates"
+        )
     return np.repeat(valid[:, :, None], 3, axis=2)
 
 
@@ -147,9 +170,7 @@ def semantic_ood_diagnostics(
         predicted = predicted - predicted[:, :1]
         semantic = semantic - semantic[:1]
     valid = np.asarray(evidence.valid, dtype=bool)
-    semantic_motion = float(
-        np.sqrt(np.mean(np.square(semantic[valid])))
-    )
+    semantic_motion = float(np.sqrt(np.mean(np.square(semantic[valid]))))
     physical_mean = np.einsum("k,kfqc->fqc", physical.weights, predicted)
     physical_motion = float(np.sqrt(np.mean(np.square(physical_mean[valid]))))
     component_distance = np.empty(len(physical.weights), dtype=float)
@@ -193,7 +214,11 @@ def fit_semantic_trust_calibration(
     candidates = tuple(sorted(set(map(float, beta_candidates))))
     if not cases:
         raise ValueError("semantic trust calibration requires source cases")
-    if not candidates or candidates[0] != 0.0 or any(value < 0.0 for value in candidates):
+    if (
+        not candidates
+        or candidates[0] != 0.0
+        or any(value < 0.0 for value in candidates)
+    ):
         raise ValueError("beta candidates must be nonnegative and include zero")
     if minimum_relative_improvement < 0.0 or support_margin < 1.0:
         raise ValueError("calibration margins are invalid")
@@ -226,9 +251,13 @@ def fit_semantic_trust_calibration(
         if relative_improvement >= minimum_relative_improvement
         else 0.0
     )
-    diagnostics = [semantic_ood_diagnostics(case.physical, case.evidence) for case in cases]
+    diagnostics = [
+        semantic_ood_diagnostics(case.physical, case.evidence) for case in cases
+    ]
     semantic_motion = [value["semantic_motion_rms_m"] for value in diagnostics]
-    motion_ratios = [value["semantic_to_physical_motion_ratio"] for value in diagnostics]
+    motion_ratios = [
+        value["semantic_to_physical_motion_ratio"] for value in diagnostics
+    ]
     support = [value["minimum_physical_support_distance_m"] for value in diagnostics]
     anchor = [value["anchor_error_m"] for value in diagnostics]
     return SemanticTrustCalibration(
@@ -290,13 +319,8 @@ def save_semantic_trust_calibration(
     path: str | Path,
     calibration: SemanticTrustCalibration,
 ) -> None:
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
     payload = {**asdict(calibration), "calibration_id": calibration.calibration_id}
-    target.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(path, payload)
 
 
 def load_semantic_trust_calibration(path: str | Path) -> SemanticTrustCalibration:

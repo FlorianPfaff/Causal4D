@@ -9,6 +9,7 @@ import numpy as np
 
 from causal4d.contracts import PhysicalPosterior, TaskPosterior
 from causal4d.graph_temporal_discrepancy import GraphTemporalDiscrepancyModel
+from causal4d.immutable_array import readonly_array
 from causal4d.physical_validation import physical_posterior_moments
 from causal4d.weighting import log_weights_from_probabilities
 
@@ -92,8 +93,8 @@ class CandidatePlan:
     graph_discrepancy_coefficient_covariance: np.ndarray | None = None
 
     def __post_init__(self) -> None:
-        controls = np.asarray(self.controller_points_m, dtype=float)
-        anchor = np.asarray(self.control_anchor_m, dtype=float)
+        controls = readonly_array(self.controller_points_m, dtype=float)
+        anchor = readonly_array(self.control_anchor_m, dtype=float)
         if not self.action_id:
             raise ValueError("candidate action_id must be nonempty")
         if (

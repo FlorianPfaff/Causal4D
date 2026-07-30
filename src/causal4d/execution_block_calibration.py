@@ -17,6 +17,8 @@ from typing import Any, Literal
 
 import numpy as np
 
+from causal4d.atomic_io import atomic_write_json
+from causal4d.immutable_array import readonly_array as _readonly_array
 from causal4d.immutable_json import validated_json_mapping
 
 
@@ -33,16 +35,6 @@ def _canonical_json(value: Any) -> str:
         separators=(",", ":"),
         allow_nan=False,
     )
-
-
-def _readonly_array(
-    values: np.ndarray,
-    *,
-    dtype: np.dtype[Any] | type | None = None,
-) -> np.ndarray:
-    result = np.asarray(values, dtype=dtype).copy()
-    result.setflags(write=False)
-    return result
 
 
 @dataclass(frozen=True)
@@ -618,12 +610,7 @@ def save_execution_block_conformal_calibration(
 ) -> None:
     payload = calibration.as_dict()
     payload["calibration_id"] = calibration.calibration_id
-    output = Path(path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(
-        json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(path, payload)
 
 
 def load_execution_block_conformal_calibration(
