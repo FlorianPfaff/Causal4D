@@ -57,9 +57,7 @@ def _prerequisites(*, frozen_at: str = "2026-07-30T12:00:00Z") -> dict:
         "method_freeze",
         "method_freeze_validation",
     )
-    values = {
-        name: {"present": True, "valid": True, "error": None} for name in names
-    }
+    values = {name: {"present": True, "valid": True, "error": None} for name in names}
     values["method_freeze"].update(
         {
             "frozen_at_utc": frozen_at,
@@ -225,9 +223,7 @@ def test_signature_gate_validates_all_bound_source_manifests(tmp_path: Path) -> 
     evidence = []
     for execution in v2["preacquisition_signature_panel"]["executions"]:
         execution_id = execution["execution_id"]
-        manifest_relative = SOURCE_PANEL_MANIFEST_PATH.format(
-            execution_id=execution_id
-        )
+        manifest_relative = SOURCE_PANEL_MANIFEST_PATH.format(execution_id=execution_id)
         data_relative = (
             f"preacquisition/source_panel/executions/{execution_id}/measurement.bin"
         )
@@ -290,9 +286,9 @@ def test_software_gate_binds_freeze_attestation_and_distributions(
     gate = gate_evidence_template("software_environment_locked", protocol, v2, v4)
     gate["checks"] = {
         "method_freeze_sha256": prerequisites["method_freeze"]["sha256"],
-        "method_freeze_validation_sha256": prerequisites[
-            "method_freeze_validation"
-        ]["sha256"],
+        "method_freeze_validation_sha256": prerequisites["method_freeze_validation"][
+            "sha256"
+        ],
         "causal4d": {
             "commit_sha": prerequisites["method_freeze"]["causal4d_commit_sha"],
             "version": "0.4.1",
@@ -464,9 +460,7 @@ def test_require_ready_exit_codes(monkeypatch, capsys, status, expected) -> None
         lambda *args, **kwargs: dict(status),
     )
 
-    result = readiness_cli.main(
-        ["status", "repository", "dataset", "--require-ready"]
-    )
+    result = readiness_cli.main(["status", "repository", "dataset", "--require-ready"])
 
     assert result == expected
     assert json.loads(capsys.readouterr().out)["ready"] is status["ready"]

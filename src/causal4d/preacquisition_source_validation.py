@@ -17,6 +17,7 @@ from causal4d.preacquisition_readiness_contracts import (
     _validate_descriptor_list,
 )
 
+
 def _validate_source_execution_manifest(
     dataset_root: Path,
     relative: str,
@@ -27,7 +28,9 @@ def _validate_source_execution_manifest(
     session_id: str,
     verify_file_hashes: bool,
 ) -> None:
-    path = dataset_root / _safe_relative_path(relative, name="source execution manifest")
+    path = dataset_root / _safe_relative_path(
+        relative, name="source execution manifest"
+    )
     manifest = _read_json_mapping(path, name="source execution manifest")
     _require(manifest.get("schema_version") == 1, "unsupported source execution schema")
     _require(
@@ -51,7 +54,9 @@ def _validate_source_execution_manifest(
         manifest.get("preacquisition_amendment_sha256") == v4["amendment_sha256"],
         "source execution v4 digest mismatch",
     )
-    _require(manifest.get("execution_id") == execution_id, "source execution id mismatch")
+    _require(
+        manifest.get("execution_id") == execution_id, "source execution id mismatch"
+    )
     _require(manifest.get("session_id") == session_id, "source session id mismatch")
     _require(
         manifest.get("fresh_reset_and_fresh_grasp") is True,
@@ -97,7 +102,9 @@ def _validate_signature_panel(
 ) -> None:
     expected_execution_ids, expected_session_ids = _expected_source_panel(v2)
     manifest_files = checks.get("manifest_files")
-    _require(isinstance(manifest_files, Mapping), "source-panel manifest map is invalid")
+    _require(
+        isinstance(manifest_files, Mapping), "source-panel manifest map is invalid"
+    )
     _require(
         set(manifest_files) == set(expected_execution_ids)
         and len(manifest_files) == len(expected_execution_ids),
@@ -148,7 +155,9 @@ def _validate_actuator_calibration(
         artifact.get("artifact_kind") == "ActuatorRealizationCalibration",
         "unexpected actuator artifact kind",
     )
-    _require(artifact.get("execution_id") == execution_id, "actuator execution id mismatch")
+    _require(
+        artifact.get("execution_id") == execution_id, "actuator execution id mismatch"
+    )
     _require(artifact.get("pyrecest_version") == "2.4.1", "wrong PyRecEst version")
     boundary = artifact.get("information_boundary")
     _require(isinstance(boundary, Mapping), "actuator information boundary is invalid")
@@ -179,7 +188,9 @@ def _validate_actuator_sync(
 ) -> None:
     expected_execution_ids, _ = _expected_source_panel(v2)
     calibration_files = checks.get("calibration_files")
-    _require(isinstance(calibration_files, Mapping), "actuator calibration map is invalid")
+    _require(
+        isinstance(calibration_files, Mapping), "actuator calibration map is invalid"
+    )
     _require(
         set(calibration_files) == set(expected_execution_ids)
         and len(calibration_files) == len(expected_execution_ids),

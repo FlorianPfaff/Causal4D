@@ -34,6 +34,7 @@ from causal4d.preacquisition_source_validation import (
 )
 from causal4d.real_evidence_contract_v2 import build_real_evidence_status
 
+
 def _validate_common_gate(
     protocol: Mapping[str, Any],
     v4: Mapping[str, Any],
@@ -93,7 +94,9 @@ def _validate_common_gate(
         approval.get("approved_at_utc"),
         name=f"{gate_id} approved_at_utc",
     )
-    _require(approved_at >= completed_at, f"gate approval predates completion: {gate_id}")
+    _require(
+        approved_at >= completed_at, f"gate approval predates completion: {gate_id}"
+    )
     _require(
         gate.get("artifact_sha256") == gate_evidence_sha256(gate),
         f"gate digest mismatch: {gate_id}",
@@ -128,7 +131,9 @@ def _validate_support_registration(
     _require(isinstance(vector, list) and len(vector) == 3, "gravity vector is invalid")
     gravity = [_finite_number(value, name="gravity component") for value in vector]
     magnitude = math.sqrt(sum(value * value for value in gravity))
-    _require(8.0 <= magnitude <= 11.5, "gravity magnitude fails the physical sanity gate")
+    _require(
+        8.0 <= magnitude <= 11.5, "gravity magnitude fails the physical sanity gate"
+    )
     closure = _finite_number(
         checks.get("registration_closure_error_m"),
         name="support registration closure error",
@@ -138,7 +143,9 @@ def _validate_support_registration(
         name="support registration closure threshold",
     )
     _require(closure >= 0.0 and threshold > 0.0, "support closure values are invalid")
-    _require(closure <= threshold, "support registration closure error exceeds its gate")
+    _require(
+        closure <= threshold, "support registration closure error exceeds its gate"
+    )
     relative = checks.get("registration_file")
     _require(
         isinstance(relative, str) and relative in evidence_paths,
@@ -161,7 +168,9 @@ def _validate_dry_run(
         "dry run did not exercise the frozen entrypoints",
     )
     execution_id = checks.get("execution_id")
-    _require(isinstance(execution_id, str) and bool(execution_id), "dry-run id is missing")
+    _require(
+        isinstance(execution_id, str) and bool(execution_id), "dry-run id is missing"
+    )
     confirmatory_ids = {
         str(execution["execution_id"]) for execution in protocol["executions"]
     }
@@ -172,7 +181,9 @@ def _validate_dry_run(
         set(stages) == set(REQUIRED_DRY_RUN_STAGES),
         "dry-run stage set differs from the registered readiness contract",
     )
-    _require(all(stages[name] is True for name in REQUIRED_DRY_RUN_STAGES), "dry run failed")
+    _require(
+        all(stages[name] is True for name in REQUIRED_DRY_RUN_STAGES), "dry run failed"
+    )
     relative = checks.get("output_manifest")
     _require(
         isinstance(relative, str) and relative in evidence_paths,
@@ -207,7 +218,9 @@ def _validate_software_environment(
     verify_file_hashes: bool,
 ) -> None:
     freeze = prerequisites["method_freeze"]
-    _require(freeze.get("valid") is True, "software lock requires a valid method freeze")
+    _require(
+        freeze.get("valid") is True, "software lock requires a valid method freeze"
+    )
     _require(
         checks.get("method_freeze_sha256") == freeze.get("sha256"),
         "software lock binds a different method freeze",
@@ -246,7 +259,9 @@ def _validate_software_environment(
     _require(isinstance(prob4d, Mapping), "Prob4D software declaration is missing")
     _require(isinstance(prob4d.get("used"), bool), "Prob4D used flag is invalid")
     if prob4d["used"]:
-        _require(_is_hex_digest(prob4d.get("commit_sha"), 40), "Prob4D commit is invalid")
+        _require(
+            _is_hex_digest(prob4d.get("commit_sha"), 40), "Prob4D commit is invalid"
+        )
         _require(
             isinstance(prob4d.get("version"), str) and bool(prob4d["version"]),
             "Prob4D version is missing",
@@ -269,7 +284,9 @@ def _validate_software_environment(
             "the unused Prob4D declaration needs a reason",
         )
     producer = checks.get("observation_producer")
-    _require(isinstance(producer, Mapping), "observation producer declaration is missing")
+    _require(
+        isinstance(producer, Mapping), "observation producer declaration is missing"
+    )
     for field in ("name", "version", "artifact_contract"):
         _require(
             isinstance(producer.get(field), str) and bool(producer[field].strip()),
@@ -339,8 +356,14 @@ def _validate_gate_file(
                 gate.get("artifact_sha256") is None,
                 "gate template already contains an artifact digest",
             )
-            _require(isinstance(gate.get("checks"), Mapping), "gate template checks are invalid")
-            _require(isinstance(gate.get("evidence"), list), "gate template evidence is invalid")
+            _require(
+                isinstance(gate.get("checks"), Mapping),
+                "gate template checks are invalid",
+            )
+            _require(
+                isinstance(gate.get("evidence"), list),
+                "gate template evidence is invalid",
+            )
             approval = gate.get("approval")
             _require(
                 isinstance(approval, Mapping) and approval.get("approved") is False,
@@ -395,7 +418,9 @@ def _validate_gate_file(
         result["sha256"], result["bytes"] = _sha256_file(path)
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
         message = str(error).strip()
-        result["error"] = f"{type(error).__name__}: {message}" if message else type(error).__name__
+        result["error"] = (
+            f"{type(error).__name__}: {message}" if message else type(error).__name__
+        )
     return result
 
 

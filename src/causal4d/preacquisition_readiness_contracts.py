@@ -58,6 +58,7 @@ OPERATIONAL_GATES_BEFORE_FREEZE = (
 _SHA40 = frozenset("0123456789abcdef")
 _SHA64 = _SHA40
 
+
 def _require(condition: bool, message: str) -> None:
     if not condition:
         raise ValueError(message)
@@ -135,7 +136,9 @@ def _parse_utc_timestamp(value: Any, *, name: str) -> datetime:
     except ValueError as error:
         raise ValueError(f"{name} is not ISO 8601") from error
     _require(parsed.tzinfo is not None, f"{name} must include a timezone")
-    _require(parsed.utcoffset() == timezone.utc.utcoffset(parsed), f"{name} must be UTC")
+    _require(
+        parsed.utcoffset() == timezone.utc.utcoffset(parsed), f"{name} must be UTC"
+    )
     return parsed
 
 
@@ -160,7 +163,9 @@ def _validate_descriptor(
     _require(_is_hex_digest(descriptor.get("sha256"), 64), f"{name} SHA-256 is invalid")
     byte_count = descriptor.get("bytes")
     _require(
-        isinstance(byte_count, int) and not isinstance(byte_count, bool) and byte_count >= 0,
+        isinstance(byte_count, int)
+        and not isinstance(byte_count, bool)
+        and byte_count >= 0,
         f"{name} byte count is invalid",
     )
     if verify_file_hashes:
@@ -179,7 +184,9 @@ def _validate_descriptor_list(
     name: str,
     verify_file_hashes: bool,
 ) -> set[str]:
-    _require(isinstance(values, list) and bool(values), f"{name} must be a nonempty list")
+    _require(
+        isinstance(values, list) and bool(values), f"{name} must be a nonempty list"
+    )
     paths: set[str] = set()
     for index, descriptor in enumerate(values):
         _require(isinstance(descriptor, Mapping), f"{name}[{index}] is invalid")
@@ -198,9 +205,15 @@ def _expected_source_panel(v2: Mapping[str, Any]) -> tuple[list[str], list[str]]
     executions = list(v2["preacquisition_signature_panel"]["executions"])
     execution_ids = [str(execution["execution_id"]) for execution in executions]
     session_ids = [str(execution["session_id"]) for execution in executions]
-    _require(len(execution_ids) == 12, "registered source panel must contain 12 executions")
-    _require(len(set(execution_ids)) == 12, "registered source execution ids are not unique")
-    _require(len(set(session_ids)) == 12, "registered source sessions are not independent")
+    _require(
+        len(execution_ids) == 12, "registered source panel must contain 12 executions"
+    )
+    _require(
+        len(set(execution_ids)) == 12, "registered source execution ids are not unique"
+    )
+    _require(
+        len(set(session_ids)) == 12, "registered source sessions are not independent"
+    )
     return execution_ids, session_ids
 
 
@@ -213,7 +226,9 @@ def source_panel_execution_manifest_template(
 
     execution_id = str(execution["execution_id"])
     session_id = str(execution["session_id"])
-    _require(bool(execution_id) and bool(session_id), "source execution ids are missing")
+    _require(
+        bool(execution_id) and bool(session_id), "source execution ids are missing"
+    )
     return {
         "schema_version": 1,
         "artifact_kind": "SourcePanelExecutionManifest",

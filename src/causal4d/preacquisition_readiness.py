@@ -31,6 +31,7 @@ from causal4d.preacquisition_readiness_contracts import (
 )
 from causal4d.real_evidence_contract_v2 import build_real_evidence_status
 
+
 def scaffold_preacquisition_readiness(
     repository_root: str | Path,
     dataset_root: str | Path,
@@ -174,7 +175,9 @@ def evaluate_preacquisition_readiness(
                 name="software_environment_locked approved_at_utc",
             )
             if approved < frozen_at:
-                chronology_blockers.append("software_environment_predates_method_freeze")
+                chronology_blockers.append(
+                    "software_environment_predates_method_freeze"
+                )
             if attestation.get("valid"):
                 verified_at = _parse_utc_timestamp(
                     attestation.get("verified_at_utc"),
@@ -205,23 +208,23 @@ def evaluate_preacquisition_readiness(
             "valid", False
         ),
         "actuator_sync_passed": gate_results["actuator_sync_passed"]["valid"],
-        "support_registration_passed": gate_results[
-            "support_registration_passed"
-        ]["valid"],
-        "end_to_end_dry_run_passed": gate_results[
-            "end_to_end_dry_run_passed"
-        ]["valid"],
+        "support_registration_passed": gate_results["support_registration_passed"][
+            "valid"
+        ],
+        "end_to_end_dry_run_passed": gate_results["end_to_end_dry_run_passed"]["valid"],
         "analysis_code_frozen": bool(
             prerequisites["method_freeze"].get("valid")
             and prerequisites["method_freeze_validation"].get("valid")
         ),
-        "software_environment_locked": gate_results[
-            "software_environment_locked"
-        ]["valid"],
+        "software_environment_locked": gate_results["software_environment_locked"][
+            "valid"
+        ],
     }
     ready = not blockers and all(flags.values())
     flags["first_confirmatory_execution_allowed"] = ready
-    valid = not malformed_prerequisites and not malformed_gates and not chronology_blockers
+    valid = (
+        not malformed_prerequisites and not malformed_gates and not chronology_blockers
+    )
     valid = bool(valid and collection_not_started)
 
     status: dict[str, Any] = {
@@ -291,9 +294,7 @@ def write_preacquisition_readiness(
 
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(
-        dict(status), indent=2, sort_keys=True, allow_nan=False
-    ) + "\n"
+    payload = json.dumps(dict(status), indent=2, sort_keys=True, allow_nan=False) + "\n"
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{output.name}.", suffix=".tmp", dir=output.parent
     )
