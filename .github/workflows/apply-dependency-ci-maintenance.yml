@@ -1,0 +1,83 @@
+name: Apply dependency and CI maintenance
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dependency-ci-maintenance-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out pull-request branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Extend the existing mypy boundary
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path(".github/workflows/ci.yml")
+          text = path.read_text(encoding="utf-8")
+          old = '''          python -m mypy \\
+            scripts/ci \\
+            src/causal4d/provider_contract.py \\
+            src/causal4d/replay_provider_contract.py
+          '''
+          new = '''          python -m mypy \\
+            scripts/ci \\
+            src/causal4d/atomic_io.py \\
+            src/causal4d/immutable_array.py \\
+            src/causal4d/immutable_json.py \\
+            src/causal4d/provider_contract.py \\
+            src/causal4d/replay_provider_contract.py
+          '''
+          if text.count(old) != 1:
+              raise SystemExit("stable mypy command did not match exactly once")
+          path.write_text(text.replace(old, new), encoding="utf-8")
+          PY
+
+      - name: Install development environment
+        run: python -m pip install -e ".[dev]"
+
+      - name: Validate maintenance changes
+        run: |
+          python -m mypy \
+            scripts/ci \
+            src/causal4d/atomic_io.py \
+            src/causal4d/immutable_array.py \
+            src/causal4d/immutable_json.py \
+            src/causal4d/provider_contract.py \
+            src/causal4d/replay_provider_contract.py
+          python -m ruff check .
+          python -m compileall -q src tests
+          git diff --check
+
+      - name: Remove temporary workflow and commit
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          rm -f .github/workflows/apply-dependency-ci-maintenance.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Add dependency automation and stable utility type checks"
+          git push origin "HEAD:${HEAD_BRANCH}"
