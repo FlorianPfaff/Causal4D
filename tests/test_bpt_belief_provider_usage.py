@@ -5,12 +5,17 @@ from typing import Any
 import numpy as np
 import pytest
 
+pytest.importorskip("bayesian_phystwin")
+
 import causal4d.bpt_belief as belief_module
 from bayesian_phystwin.causal4d_belief_provider_v1 import (
     FixedBayesianAnchorConfigV1,
     RobustEndpointPosteriorV1,
 )
-from causal4d.bpt_belief import BPTBeliefExportConfig, build_twin_belief_from_replays
+from causal4d.bpt_belief import (
+    BPTBeliefExportConfig,
+    build_twin_belief_from_replays,
+)
 from causal4d.contracts import build_causal_context
 
 
