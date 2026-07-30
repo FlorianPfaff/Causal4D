@@ -51,7 +51,7 @@ class BPTBeliefExportConfig:
     maximum_discrepancy_m: float = 0.01
 
     def __post_init__(self) -> None:
-        FixedBayesianAnchorConfigV1(
+        anchor = FixedBayesianAnchorConfigV1(
             process_std_m=self.process_std_m,
             observation_std_m=self.observation_std_m,
             initial_std_m=self.initial_std_m,
@@ -64,11 +64,20 @@ class BPTBeliefExportConfig:
             or self.interpolation_neighbors < 1
         ):
             raise ValueError("interpolation_neighbors must be a positive integer")
-        if (
-            not np.isfinite(self.maximum_discrepancy_m)
-            or self.maximum_discrepancy_m <= 0.0
-        ):
+        maximum_discrepancy = float(self.maximum_discrepancy_m)
+        if not np.isfinite(maximum_discrepancy) or maximum_discrepancy <= 0.0:
             raise ValueError("maximum_discrepancy_m must be finite and positive")
+        object.__setattr__(self, "process_std_m", anchor.process_std_m)
+        object.__setattr__(self, "observation_std_m", anchor.observation_std_m)
+        object.__setattr__(self, "initial_std_m", anchor.initial_std_m)
+        object.__setattr__(self, "inlier_prior", anchor.inlier_prior)
+        object.__setattr__(
+            self,
+            "outlier_variance_multiplier",
+            anchor.outlier_variance_multiplier,
+        )
+        object.__setattr__(self, "interpolation_neighbors", int(self.interpolation_neighbors))
+        object.__setattr__(self, "maximum_discrepancy_m", maximum_discrepancy)
 
     def fixed_anchor_config(self) -> FixedBayesianAnchorConfigV1:
         """Return the immutable configuration owned by Bayesian-PhysTwin."""
@@ -133,7 +142,7 @@ def build_twin_belief_from_replays(
 ) -> TwinBelief:
     """Build a belief using only the declared pre-intervention prefix."""
 
-    require_bayesian_phystwin_belief_provider()
+    belief_provider_manifest = require_bayesian_phystwin_belief_provider()
     settings = config or BPTBeliefExportConfig()
     anchor_config = settings.fixed_anchor_config()
     positions = np.asarray(replay_positions_m, dtype=float)
@@ -231,6 +240,7 @@ def build_twin_belief_from_replays(
         "maximum_pairwise_endpoint_rmse_m": max(pairwise_rmse, default=0.0),
     }
     diagnostics.update(metadata or {})
+    diagnostics["belief_provider"] = belief_provider_manifest.as_dict()
     identifiers = particle_ids or tuple(
         f"theta_{index:04d}" for index in range(particle_count)
     )
