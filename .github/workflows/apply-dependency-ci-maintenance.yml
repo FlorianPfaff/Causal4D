@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: dependency-ci-maintenance-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   apply:
@@ -36,23 +36,23 @@ jobs:
           from pathlib import Path
 
           path = Path(".github/workflows/ci.yml")
-          text = path.read_text(encoding="utf-8")
-          old = '''          python -m mypy \\
-            scripts/ci \\
-            src/causal4d/provider_contract.py \\
-            src/causal4d/replay_provider_contract.py
-          '''
-          new = '''          python -m mypy \\
-            scripts/ci \\
-            src/causal4d/atomic_io.py \\
-            src/causal4d/immutable_array.py \\
-            src/causal4d/immutable_json.py \\
-            src/causal4d/provider_contract.py \\
-            src/causal4d/replay_provider_contract.py
-          '''
-          if text.count(old) != 1:
-              raise SystemExit("stable mypy command did not match exactly once")
-          path.write_text(text.replace(old, new), encoding="utf-8")
+          lines = path.read_text(encoding="utf-8").splitlines()
+          marker = "            scripts/ci \\"
+          matches = [index for index, line in enumerate(lines) if line == marker]
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"expected one stable mypy scripts/ci marker, found {len(matches)}"
+              )
+          insertion = [
+              "            src/causal4d/atomic_io.py \\",
+              "            src/causal4d/immutable_array.py \\",
+              "            src/causal4d/immutable_json.py \\",
+          ]
+          if any(line in lines for line in insertion):
+              raise SystemExit("stable utility modules are already in the mypy boundary")
+          index = matches[0] + 1
+          lines[index:index] = insertion
+          path.write_text("\n".join(lines) + "\n", encoding="utf-8")
           PY
 
       - name: Install development environment
