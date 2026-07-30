@@ -10,6 +10,7 @@ from typing import Any, Sequence
 import numpy as np
 
 from causal4d.baselines import ParameterPosterior, PredictiveDistribution
+from causal4d.immutable_array import readonly_array as _readonly_array
 from causal4d.benchmark import ObjectProtocol
 from causal4d.simulator import (
     Action,
@@ -21,12 +22,6 @@ from causal4d.simulator import (
     simulate_particles,
 )
 from causal4d.weighting import log_weights_from_probabilities
-
-
-def _readonly_array(values: np.ndarray, *, dtype: Any = float) -> np.ndarray:
-    array = np.asarray(values, dtype=dtype).copy()
-    array.setflags(write=False)
-    return array
 
 
 def _validated_probability_weights(

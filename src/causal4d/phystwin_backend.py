@@ -36,6 +36,7 @@ from causal4d.contracts import (
     array_sha256,
 )
 from causal4d.graph_provider_contract import require_bayesian_phystwin_graph_provider
+from causal4d.immutable_array import readonly_array as _readonly_array
 from causal4d.parameter_support import SupportMethod, reduce_parameter_support
 from causal4d.provider_contract import require_bayesian_phystwin_provider
 from causal4d.replay_provider_contract import (
@@ -49,18 +50,6 @@ from causal4d.rollout_bank import JointRolloutBank
 def _load_pickle(path: str | Path) -> Any:
     with Path(path).open("rb") as handle:
         return pickle.load(handle)
-
-
-def _readonly_array(
-    values: np.ndarray,
-    *,
-    dtype: Any = float,
-) -> np.ndarray:
-    """Return an independent immutable NumPy array."""
-
-    array = np.asarray(values, dtype=dtype).copy()
-    array.setflags(write=False)
-    return array
 
 
 def _graph_replay_descriptor(graph: PhysTwinSpringGraph) -> dict[str, Any]:

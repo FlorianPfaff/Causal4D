@@ -8,17 +8,8 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from causal4d.immutable_array import readonly_array as _readonly_array
 from causal4d.weighting import log_weights_from_probabilities
-
-
-def _readonly_array(
-    values: np.ndarray,
-    *,
-    dtype: np.dtype[Any] | type | None = None,
-) -> np.ndarray:
-    result = np.asarray(values, dtype=dtype).copy()
-    result.setflags(write=False)
-    return result
 
 
 def _normalized_weights(values: np.ndarray, *, name: str) -> np.ndarray:

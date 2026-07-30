@@ -9,17 +9,7 @@ from typing import Any, Mapping
 
 import numpy as np
 
-
-def _readonly_array(
-    values: np.ndarray,
-    *,
-    dtype: np.dtype | type,
-) -> np.ndarray:
-    """Return an owned, immutable NumPy array."""
-
-    array = np.asarray(values, dtype=dtype).copy()
-    array.setflags(write=False)
-    return array
+from causal4d.immutable_array import readonly_array as _readonly_array
 
 
 def load_trusted_legacy_phystwin_pickle(*args: Any, **kwargs: Any) -> Any:

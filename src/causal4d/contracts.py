@@ -10,6 +10,7 @@ from typing import Any, ClassVar, Literal, Mapping
 
 import numpy as np
 
+from causal4d.immutable_array import readonly_array as _readonly_array
 from causal4d.immutable_json import validated_json_mapping
 
 
@@ -32,16 +33,6 @@ def _validate_sha256(value: str, *, name: str) -> None:
         character not in "0123456789abcdef" for character in value
     ):
         raise ValueError(f"{name} must be a lowercase SHA-256 digest")
-
-
-def _readonly_array(
-    values: np.ndarray,
-    *,
-    dtype: np.dtype[Any] | type | None = None,
-) -> np.ndarray:
-    array = np.asarray(values, dtype=dtype).copy()
-    array.setflags(write=False)
-    return array
 
 
 def _validated_weights(values: np.ndarray, *, name: str) -> np.ndarray:

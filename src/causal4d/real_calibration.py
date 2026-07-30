@@ -11,7 +11,9 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from causal4d.atomic_io import atomic_write_json
 from causal4d.contracts import PhysicalPosterior
+from causal4d.immutable_array import readonly_array
 from causal4d.physical_validation import physical_posterior_moments
 
 
@@ -39,10 +41,10 @@ class RealCalibrationCase:
     node_group_labels: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
-        mean = np.asarray(self.mean_m, dtype=float)
-        variance = np.asarray(self.variance_m2, dtype=float)
-        truth = np.asarray(self.truth_m, dtype=float)
-        valid = np.asarray(self.valid, dtype=bool)
+        mean = readonly_array(self.mean_m, dtype=float)
+        variance = readonly_array(self.variance_m2, dtype=float)
+        truth = readonly_array(self.truth_m, dtype=float)
+        valid = np.asarray(self.valid, dtype=bool).copy()
         if mean.ndim != 3 or mean.shape[2] != 3:
             raise ValueError("calibration trajectories must have shape (T, N, 3)")
         if variance.shape != mean.shape or truth.shape != mean.shape:
@@ -71,6 +73,7 @@ class RealCalibrationCase:
         valid[: self.start_frame] = False
         if not np.any(valid):
             raise ValueError("calibration case has no valid target point-frames")
+        valid = readonly_array(valid, dtype=bool)
         object.__setattr__(self, "mean_m", mean)
         object.__setattr__(self, "variance_m2", variance)
         object.__setattr__(self, "truth_m", truth)
@@ -499,12 +502,7 @@ def save_affine_variance_calibration(
     payload = calibration.as_dict()
     payload["calibration_id"] = calibration.calibration_id
     payload["diagnostics"] = diagnostics
-    output = Path(path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(
-        json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(path, payload)
 
 
 def load_affine_variance_calibration(
