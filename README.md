@@ -148,12 +148,22 @@ independent-execution calibration. Primary-method development is frozen for
 this result; another discrepancy mechanism, semantic component, planner, or
 public-data branch cannot replace it.
 
-After scaffolding the acquisition dataset, seal the exact clean Causal4D commit,
+The v4 amendment itself remains immutable. After scaffolding the acquisition
+dataset, create its separate operational evidence records:
+
+```bash
+causal4d protocol readiness scaffold \
+  /opt/causal4d-frozen \
+  /data/causal4d-sloth-multi-action-v1
+```
+
+Complete and seal the source-panel, actuator, support/gravity, and
+nonconfirmatory dry-run gates. Then seal the exact clean Causal4D commit,
 Bayesian-PhysTwin pin, protocol files, analysis boundary, and reporting contract:
 
 ```bash
 causal4d-real-experiment-freeze seal \
-  . \
+  /opt/causal4d-frozen \
   /data/causal4d-sloth-multi-action-v1/method_freeze.json \
   --frozen-by "<operator-or-principal-investigator>"
 ```
@@ -168,6 +178,27 @@ causal4d-real-experiment-freeze attest \
   /data/causal4d-sloth-multi-action-v1/method_freeze_validation.json \
   --verified-by "<independent-verifier>"
 ```
+
+Seal the software-environment gate after that attestation, then require a
+hash-verified readiness decision before confirmatory execution 1:
+
+```bash
+causal4d protocol readiness status \
+  /opt/causal4d-frozen \
+  /data/causal4d-sloth-multi-action-v1 \
+  --verify-file-hashes \
+  --require-ready \
+  --output-json \
+  /data/causal4d-sloth-multi-action-v1/preacquisition-readiness.json
+```
+
+The readiness gate binds the 12-run source panel, actuator synchronization,
+support/gravity registration, the nonconfirmatory end-to-end dry run, the
+method freeze, exact Causal4D/Bayesian-PhysTwin package artifacts, and an
+explicit Prob4D used-or-unused declaration. It refuses readiness when any
+confirmatory manifest already exists. See
+[docs/causal4d_preacquisition_readiness.md](docs/causal4d_preacquisition_readiness.md)
+for its evidence and exit-code contracts.
 
 Track acquisition progress without counting templates as evidence:
 

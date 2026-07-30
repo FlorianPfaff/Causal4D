@@ -57,17 +57,49 @@ Every such change must be logged with its commit and reason.
 ## Freeze and acquisition workflow
 
 Start from a clean checkout of the commit intended for acquisition. Scaffold the
-non-overwriting dataset first, then write the freeze manifest into that dataset:
+non-overwriting dataset and readiness evidence first:
 
 ```bash
 causal4d-real-protocol scaffold \
   configs/causal4d/sloth_multi_action_v1.json \
   /data/causal4d-sloth-multi-action-v1
 
+causal4d protocol readiness scaffold \
+  /opt/causal4d-frozen \
+  /data/causal4d-sloth-multi-action-v1
+```
+
+Complete and seal the source-panel, actuator, support/gravity, and
+nonconfirmatory dry-run gates. These operational approvals must predate the
+method freeze. Then write and independently attest the freeze manifest:
+
+```bash
 causal4d-real-experiment-freeze seal \
-  . \
+  /opt/causal4d-frozen \
   /data/causal4d-sloth-multi-action-v1/method_freeze.json \
   --frozen-by "<operator-or-principal-investigator>"
+
+causal4d-real-experiment-freeze attest \
+  /data/causal4d-sloth-multi-action-v1/method_freeze.json \
+  configs/causal4d/sloth_multi_action_v1.json \
+  /opt/causal4d-frozen \
+  /data/causal4d-sloth-multi-action-v1/method_freeze_validation.json \
+  --verified-by "<independent-verifier>"
+```
+
+After the attestation, seal the software-environment gate. It binds the exact
+freeze and attestation hashes, Causal4D and Bayesian-PhysTwin package artifacts,
+the observation producer, and an explicit Prob4D used-or-unused declaration.
+Finally, require the hash-verified readiness decision:
+
+```bash
+causal4d protocol readiness status \
+  /opt/causal4d-frozen \
+  /data/causal4d-sloth-multi-action-v1 \
+  --verify-file-hashes \
+  --require-ready \
+  --output-json \
+  /data/causal4d-sloth-multi-action-v1/preacquisition-readiness.json
 ```
 
 Before every acquisition session, verify that the checkout still matches the
@@ -76,8 +108,8 @@ sealed commit and that no locked file has drifted:
 ```bash
 causal4d-real-experiment-freeze validate \
   /data/causal4d-sloth-multi-action-v1/method_freeze.json \
-  . \
-  --expected-causal4d-commit "$(git rev-parse HEAD)"
+  /opt/causal4d-frozen \
+  --expected-causal4d-commit "$(git -C /opt/causal4d-frozen rev-parse HEAD)"
 ```
 
 The seal command refuses a dirty Git worktree. Freeze schema v2 records file
@@ -89,6 +121,12 @@ execution-block score, calibration unit, fold count, finite rank, and
 non-claims. A manifest that substitutes the older coordinate-pooled calibration
 command fails validation.
 
+The separate readiness status does not mutate that freeze or the v4 amendment.
+It derives the collection decision from the registered prerequisite validators,
+checksummed operational records, software lineage, chronology, and zero
+confirmatory manifests. See
+[causal4d_preacquisition_readiness.md](causal4d_preacquisition_readiness.md).
+
 ## Execution checkpoints
 
 ### 1. Readiness gate
@@ -98,9 +136,15 @@ Before confirmatory execution 1:
 - pass the versioned pre-acquisition amendment;
 - register the physical object and all three canonical contact-node sets;
 - pass the slip go/no-go pilot;
-- verify camera/controller calibration and shared-clock synchronization;
+- complete the exact 12-execution, 12-independent-session source panel;
+- validate commanded versus measured actuation;
+- validate support, gravity, camera/controller, and shared-clock registration;
+- pass one nonconfirmatory end-to-end dry run;
 - seal and independently validate `method_freeze.json`;
-- confirm that no confirmatory target outcome has been inspected.
+- bind the exact software distributions and observation producer;
+- confirm that no confirmatory manifest or target outcome exists; and
+- obtain `first_confirmatory_execution_allowed=true` from
+  `causal4d protocol readiness status --verify-file-hashes --require-ready`.
 
 ### 2. Confirmatory acquisition
 
