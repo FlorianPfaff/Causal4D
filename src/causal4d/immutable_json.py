@@ -75,7 +75,7 @@ class _FrozenList(list):
     def __delitem__(self, key: object) -> None:
         self._immutable(key)
 
-    def __iadd__(self, other: object) -> _FrozenList:
+    def __iadd__(self, other: object) -> _FrozenList:  # type: ignore[misc]
         self._immutable(other)
         return self
 
