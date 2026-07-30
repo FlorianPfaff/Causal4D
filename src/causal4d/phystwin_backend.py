@@ -51,6 +51,18 @@ def _load_pickle(path: str | Path) -> Any:
         return pickle.load(handle)
 
 
+def _readonly_array(
+    values: np.ndarray,
+    *,
+    dtype: Any = float,
+) -> np.ndarray:
+    """Return an independent immutable NumPy array."""
+
+    array = np.asarray(values, dtype=dtype).copy()
+    array.setflags(write=False)
+    return array
+
+
 def _graph_replay_descriptor(graph: PhysTwinSpringGraph) -> dict[str, Any]:
     return {
         "vertices_sha256": array_sha256(np.asarray(graph.vertices)),
@@ -89,9 +101,9 @@ class BayesianPhysTwinParticles:
     bpt_source_weight_key: str | None = None
 
     def __post_init__(self) -> None:
-        particles = np.asarray(self.log_scales, dtype=float)
-        weights = np.asarray(self.weights, dtype=float)
-        indices = np.asarray(self.grid_indices, dtype=int)
+        particles = _readonly_array(self.log_scales, dtype=float)
+        weights = _readonly_array(self.weights, dtype=float)
+        indices = _readonly_array(self.grid_indices, dtype=int)
         if particles.ndim != 2 or particles.shape[1] != 2:
             raise ValueError("log_scales must have shape (P, 2)")
         if weights.shape != (len(particles),) or indices.shape != (len(particles), 2):
@@ -372,7 +384,7 @@ class PhysTwinActionProposal:
     provenance: str
 
     def __post_init__(self) -> None:
-        controls = np.asarray(self.controller_points_m, dtype=float)
+        controls = _readonly_array(self.controller_points_m, dtype=float)
         if controls.ndim != 3 or controls.shape[2] != 3:
             raise ValueError("controller_points_m must have shape (T, C, 3)")
         if not np.all(np.isfinite(controls)):
