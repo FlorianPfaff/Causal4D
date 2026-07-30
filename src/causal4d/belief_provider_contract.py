@@ -11,9 +11,7 @@ from causal4d.provider_contract import (
     validate_provider_compatibility,
 )
 
-BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_API = (
-    "bayesian_phystwin.causal4d_belief_provider_v1"
-)
+BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_API = "bayesian_phystwin.causal4d_belief_provider_v1"
 BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_API_VERSION = 1
 BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_CAPABILITIES = (
     "causal_prefix_endpoint_inference",
@@ -26,9 +24,7 @@ BAYESIAN_PHYSTWIN_BELIEF_ARTIFACT_SCHEMA_VERSIONS = {
     "FixedBayesianAnchorConfig": 1,
     "RobustEndpointPosterior": 1,
 }
-BAYESIAN_PHYSTWIN_BELIEF_INFERENCE_ROLE = (
-    "fixed robust readout-discrepancy endpoint"
-)
+BAYESIAN_PHYSTWIN_BELIEF_INFERENCE_ROLE = "fixed robust readout-discrepancy endpoint"
 
 
 def load_bayesian_phystwin_belief_provider_manifest(
@@ -41,9 +37,7 @@ def load_bayesian_phystwin_belief_provider_manifest(
         causal4d_belief_provider_manifest,
     )
 
-    values = causal4d_belief_provider_manifest(
-        provider_revision=provider_revision
-    )
+    values = causal4d_belief_provider_manifest(provider_revision=provider_revision)
     return PhysicalBeliefProviderManifest(
         provider_name=str(values["provider_name"]),
         provider_version=str(values["provider_version"]),
@@ -92,9 +86,7 @@ def validate_bayesian_phystwin_belief_provider(
         candidate,
         required_capabilities=BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_CAPABILITIES,
         supported_provider_versions=BAYESIAN_PHYSTWIN_COMPATIBILITY_RANGE,
-        required_artifact_versions=(
-            BAYESIAN_PHYSTWIN_BELIEF_ARTIFACT_SCHEMA_VERSIONS
-        ),
+        required_artifact_versions=BAYESIAN_PHYSTWIN_BELIEF_ARTIFACT_SCHEMA_VERSIONS,
     )
 
 
