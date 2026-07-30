@@ -144,12 +144,12 @@ jobs:
       PRIVATE_REPOSITORY_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
     steps:
       - name: Check out Causal4D
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: causal4d
 
       - name: Check out Bayesian-PhysTwin
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: FlorianPfaff/Bayesian-PhysTwin
           ref: ${{ inputs.bpt_ref || 'main' }}
@@ -157,7 +157,7 @@ jobs:
           path: bayesian-phystwin
 
       - name: Check out Prob4D
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: FlorianPfaff/Prob4D
           ref: ${{ inputs.prob4d_ref || 'main' }}

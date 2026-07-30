@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out the failed revision
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
       - name: Set up Python 3.10

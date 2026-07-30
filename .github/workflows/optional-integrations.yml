@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -63,7 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out Causal4D
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -86,7 +86,7 @@ jobs:
         run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
       - name: Check out pinned Bayesian-PhysTwin
         if: steps.access.outputs.enabled == 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: FlorianPfaff/Bayesian-PhysTwin
           ref: ${{ steps.pin.outputs.sha }}
@@ -108,7 +108,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out Causal4D
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -131,7 +131,7 @@ jobs:
         run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
       - name: Check out pinned Bayesian-PhysTwin
         if: steps.access.outputs.enabled == 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: FlorianPfaff/Bayesian-PhysTwin
           ref: ${{ steps.pin.outputs.sha }}
@@ -169,7 +169,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, gpu]
     steps:
       - name: Check out Causal4D
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -182,7 +182,7 @@ jobs:
         id: pin
         run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
       - name: Check out pinned Bayesian-PhysTwin
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: FlorianPfaff/Bayesian-PhysTwin
           ref: ${{ steps.pin.outputs.sha }}

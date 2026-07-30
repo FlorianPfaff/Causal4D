@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Set up Python 3.10
@@ -71,7 +71,7 @@ jobs:
         python-version: ["3.10", "3.12", "3.14"]
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v6
         with:
@@ -105,7 +105,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out Causal4D
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -135,7 +135,7 @@ jobs:
         run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
       - name: Check out pinned Bayesian-PhysTwin
         if: steps.access.outputs.enabled == 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: FlorianPfaff/Bayesian-PhysTwin
           ref: ${{ steps.pin.outputs.sha }}
@@ -156,7 +156,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -184,7 +184,7 @@ jobs:
         kind: [wheel, sdist]
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -228,7 +228,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -279,7 +279,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
