@@ -7,14 +7,11 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from bayesian_phystwin.causal4d_provider_v1 import (
-    FIXED_INITIAL_STD_M,
-    FIXED_INLIER_PRIOR,
-    FIXED_OBSERVATION_STD_M,
-    FIXED_OUTLIER_VARIANCE_MULTIPLIER,
-    FIXED_PROCESS_STD_M,
+from bayesian_phystwin.causal4d_belief_provider_v1 import (
+    DEFAULT_FIXED_BAYESIAN_ANCHOR_CONFIG_V1,
+    FixedBayesianAnchorConfigV1,
+    infer_fixed_bayesian_anchor_endpoint,
 )
-from bayesian_phystwin.causal4d_provider_v1 import robust_random_walk_endpoint
 from bayesian_phystwin.causal4d_provider_v1 import released_self_collision_for_case
 from bayesian_phystwin.causal4d_provider_v2 import (
     InitialReplayRequestV1,
@@ -23,6 +20,9 @@ from bayesian_phystwin.causal4d_provider_v2 import (
     create_official_replay_provider,
     lift_residual,
     target_validity,
+)
+from causal4d.belief_provider_contract import (
+    require_bayesian_phystwin_belief_provider,
 )
 from causal4d.contracts import CausalContext, TwinBelief, array_sha256
 from causal4d.replay_provider_contract import (
@@ -38,25 +38,57 @@ if TYPE_CHECKING:
 class BPTBeliefExportConfig:
     """Fixed, label-free settings for a full endpoint belief export."""
 
-    process_std_m: float = FIXED_PROCESS_STD_M
-    observation_std_m: float = FIXED_OBSERVATION_STD_M
-    initial_std_m: float = FIXED_INITIAL_STD_M
-    inlier_prior: float = FIXED_INLIER_PRIOR
-    outlier_variance_multiplier: float = FIXED_OUTLIER_VARIANCE_MULTIPLIER
+    process_std_m: float = DEFAULT_FIXED_BAYESIAN_ANCHOR_CONFIG_V1.process_std_m
+    observation_std_m: float = DEFAULT_FIXED_BAYESIAN_ANCHOR_CONFIG_V1.observation_std_m
+    initial_std_m: float = DEFAULT_FIXED_BAYESIAN_ANCHOR_CONFIG_V1.initial_std_m
+    inlier_prior: float = DEFAULT_FIXED_BAYESIAN_ANCHOR_CONFIG_V1.inlier_prior
+    outlier_variance_multiplier: float = (
+        DEFAULT_FIXED_BAYESIAN_ANCHOR_CONFIG_V1.outlier_variance_multiplier
+    )
     interpolation_neighbors: int = 4
     maximum_discrepancy_m: float = 0.01
 
     def __post_init__(self) -> None:
-        if self.process_std_m < 0.0:
-            raise ValueError("process_std_m must be nonnegative")
-        if self.observation_std_m <= 0.0 or self.initial_std_m <= 0.0:
-            raise ValueError("observation and initial scales must be positive")
-        if not 0.0 < self.inlier_prior < 1.0:
-            raise ValueError("inlier_prior must lie in (0, 1)")
-        if self.outlier_variance_multiplier <= 1.0:
-            raise ValueError("outlier_variance_multiplier must exceed one")
-        if self.interpolation_neighbors < 1 or self.maximum_discrepancy_m <= 0.0:
-            raise ValueError("lifting settings must be positive")
+        anchor = FixedBayesianAnchorConfigV1(
+            process_std_m=self.process_std_m,
+            observation_std_m=self.observation_std_m,
+            initial_std_m=self.initial_std_m,
+            inlier_prior=self.inlier_prior,
+            outlier_variance_multiplier=self.outlier_variance_multiplier,
+        )
+        if (
+            isinstance(self.interpolation_neighbors, bool)
+            or not isinstance(self.interpolation_neighbors, (int, np.integer))
+            or self.interpolation_neighbors < 1
+        ):
+            raise ValueError("interpolation_neighbors must be a positive integer")
+        maximum_discrepancy = float(self.maximum_discrepancy_m)
+        if not np.isfinite(maximum_discrepancy) or maximum_discrepancy <= 0.0:
+            raise ValueError("maximum_discrepancy_m must be finite and positive")
+        object.__setattr__(self, "process_std_m", anchor.process_std_m)
+        object.__setattr__(self, "observation_std_m", anchor.observation_std_m)
+        object.__setattr__(self, "initial_std_m", anchor.initial_std_m)
+        object.__setattr__(self, "inlier_prior", anchor.inlier_prior)
+        object.__setattr__(
+            self,
+            "outlier_variance_multiplier",
+            anchor.outlier_variance_multiplier,
+        )
+        object.__setattr__(
+            self, "interpolation_neighbors", int(self.interpolation_neighbors)
+        )
+        object.__setattr__(self, "maximum_discrepancy_m", maximum_discrepancy)
+
+    def fixed_anchor_config(self) -> FixedBayesianAnchorConfigV1:
+        """Return the immutable configuration owned by Bayesian-PhysTwin."""
+
+        return FixedBayesianAnchorConfigV1(
+            process_std_m=self.process_std_m,
+            observation_std_m=self.observation_std_m,
+            initial_std_m=self.initial_std_m,
+            inlier_prior=self.inlier_prior,
+            outlier_variance_multiplier=self.outlier_variance_multiplier,
+        )
 
 
 def lift_isotropic_discrepancy_variance(
@@ -110,7 +142,9 @@ def build_twin_belief_from_replays(
 ) -> TwinBelief:
     """Build a belief using only the declared pre-intervention prefix."""
 
+    belief_provider_manifest = require_bayesian_phystwin_belief_provider()
     settings = config or BPTBeliefExportConfig()
+    anchor_config = settings.fixed_anchor_config()
     positions = np.asarray(replay_positions_m, dtype=float)
     velocities = np.asarray(replay_velocities_mps, dtype=float)
     observed = np.asarray(observed_positions_m, dtype=float)
@@ -151,25 +185,21 @@ def build_twin_belief_from_replays(
         residual = (
             observed[:train_end] - positions[particle_index, :train_end, :tracked_count]
         )
-        posterior = robust_random_walk_endpoint(
+        posterior = infer_fixed_bayesian_anchor_endpoint(
             residual,
             valid[:train_end],
             end_frame=train_end,
-            process_variance=settings.process_std_m**2,
-            observation_variance=settings.observation_std_m**2,
-            initial_variance=settings.initial_std_m**2,
-            inlier_prior=settings.inlier_prior,
-            outlier_variance_multiplier=settings.outlier_variance_multiplier,
+            config=anchor_config,
         )
         discrepancy_means[particle_index] = lift_residual(
-            posterior.mean[None],
+            posterior.mean_m[None],
             state_count,
             lift_indices,
             lift_weights,
             maximum_norm=settings.maximum_discrepancy_m,
         )[0]
         discrepancy_variances[particle_index] = lift_isotropic_discrepancy_variance(
-            posterior.variance,
+            posterior.variance_m2,
             state_count,
             lift_indices,
             lift_weights,
@@ -177,7 +207,7 @@ def build_twin_belief_from_replays(
         update_counts.append(int(np.sum(posterior.update_count)))
         supported = posterior.update_count > 0
         final_inlier_probabilities.append(
-            float(np.mean(posterior.final_inlier_probability[supported]))
+            float(np.mean(posterior.final_nominal_probability[supported]))
             if np.any(supported)
             else 0.0
         )
@@ -210,6 +240,7 @@ def build_twin_belief_from_replays(
         "maximum_pairwise_endpoint_rmse_m": max(pairwise_rmse, default=0.0),
     }
     diagnostics.update(metadata or {})
+    diagnostics["belief_provider"] = belief_provider_manifest.as_dict()
     identifiers = particle_ids or tuple(
         f"theta_{index:04d}" for index in range(particle_count)
     )
