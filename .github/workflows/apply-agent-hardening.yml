@@ -67,8 +67,8 @@ jobs:
 
       - name: Remove temporary patch machinery
         run: |
-          rm scripts/ci/apply_agent_hardening.py
-          rm .github/workflows/apply-agent-hardening.yml
+          rm -f scripts/ci/apply_agent_hardening.py
+          rm -f .github/workflows/apply-agent-hardening.yml
 
       - name: Commit the verified patch
         env:
