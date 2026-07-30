@@ -39,9 +39,7 @@ class BPTBeliefExportConfig:
     """Fixed, label-free settings for a full endpoint belief export."""
 
     process_std_m: float = DEFAULT_FIXED_BAYESIAN_ANCHOR_CONFIG_V1.process_std_m
-    observation_std_m: float = (
-        DEFAULT_FIXED_BAYESIAN_ANCHOR_CONFIG_V1.observation_std_m
-    )
+    observation_std_m: float = DEFAULT_FIXED_BAYESIAN_ANCHOR_CONFIG_V1.observation_std_m
     initial_std_m: float = DEFAULT_FIXED_BAYESIAN_ANCHOR_CONFIG_V1.initial_std_m
     inlier_prior: float = DEFAULT_FIXED_BAYESIAN_ANCHOR_CONFIG_V1.inlier_prior
     outlier_variance_multiplier: float = (
@@ -76,7 +74,9 @@ class BPTBeliefExportConfig:
             "outlier_variance_multiplier",
             anchor.outlier_variance_multiplier,
         )
-        object.__setattr__(self, "interpolation_neighbors", int(self.interpolation_neighbors))
+        object.__setattr__(
+            self, "interpolation_neighbors", int(self.interpolation_neighbors)
+        )
         object.__setattr__(self, "maximum_discrepancy_m", maximum_discrepancy)
 
     def fixed_anchor_config(self) -> FixedBayesianAnchorConfigV1:
@@ -205,7 +205,7 @@ def build_twin_belief_from_replays(
             lift_weights,
         )
         update_counts.append(int(np.sum(posterior.update_count)))
-        supported = posterior.updated_mask
+        supported = posterior.update_count > 0
         final_inlier_probabilities.append(
             float(np.mean(posterior.final_nominal_probability[supported]))
             if np.any(supported)
