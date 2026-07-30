@@ -7,6 +7,8 @@ modules:
   compatibility names;
 - `bayesian_phystwin.causal4d_provider_v2` for all production initial and restart
   replay execution through immutable request-complete contracts;
+- `bayesian_phystwin.causal4d_belief_provider_v1` for NumPy-only fixed-anchor
+  endpoint inference and immutable endpoint posteriors;
 - `bayesian_phystwin.causal4d_graph_provider_v1` for the NumPy-only spring-graph
   value type, graph construction, and released controller grouping semantics;
 - `bayesian_phystwin.causal4d_artifacts_v1` for hash-locked released pickle
@@ -15,9 +17,11 @@ modules:
   diagnostics that still reuse BPT experiment semantics.
 
 The graph module is explicitly parented to Bayesian-PhysTwin's immutable
-`causal4d_provider_v2` contract. Causal4D's belief exporter, rollout-bank backend,
-and resumable cache now execute replay exclusively through provider v2. Provider
-v1 remains only for frozen scientific and diagnostic compatibility operations.
+`causal4d_provider_v2` contract. Causal4D's belief exporter validates the
+separate belief-provider manifest and invokes only its fixed-anchor operation.
+The rollout-bank backend and resumable cache execute replay exclusively through
+provider v2. Provider v1 remains only for frozen scientific and diagnostic
+compatibility operations.
 
 Production source and scripts no longer import any unversioned
 Bayesian-PhysTwin implementation module. An AST allowlist makes new direct
@@ -27,17 +31,29 @@ experiment imports a blocking test failure.
 
 Normal development accepts Bayesian-PhysTwin versions in the range
 `>=0.4,<0.5`. Compatibility is not inferred from the package version alone.
-Causal4D validates two deliberately separate provider manifests:
+Causal4D validates four deliberately separate provider manifests:
 
-- scientific provider API/schema version 1 for frozen compatibility names,
-  fixed-anchor inference, and migrated diagnostics; and
+- scientific provider API/schema version 1 for frozen compatibility names and
+  migrated diagnostics;
 - replay provider API/schema version 2 for typed initial/restart requests,
   immutable position/velocity trajectories, frame provenance, and stateless
-  replay execution.
+  replay execution;
+- belief provider API/schema version 1 for the fixed robust discrepancy endpoint,
+  immutable configuration, causal-prefix validation, and immutable posterior;
+- graph provider API/schema version 1 for graph and controller grouping values.
 
 The scientific manifest requires its existing `TwinBelief` and `GraphBelief`
 artifact schemas. The replay manifest additionally requires `ReplayRequest` and
 `ReplayTrajectory` schema version 1 and every provider-v2 replay capability.
+
+The belief provider is checked separately for:
+
+- the exact `bayesian_phystwin.causal4d_belief_provider_v1` API identity;
+- causal-prefix endpoint inference and finite-residual preflight;
+- immutable fixed-anchor configuration and endpoint posterior capabilities;
+- `FixedBayesianAnchorConfig` and `RobustEndpointPosterior` schema version 1;
+- the fixed readout/model-discrepancy inference role; and
+- the supported Bayesian-PhysTwin package range.
 
 The graph provider is checked separately for:
 
@@ -52,11 +68,13 @@ The scientific manifest is loaded with
 `load_bayesian_phystwin_provider_manifest()` and checked with
 `validate_bayesian_phystwin_provider()`. The replay manifest is loaded with
 `load_bayesian_phystwin_replay_provider_manifest()` and checked with
-`validate_bayesian_phystwin_replay_provider()`. The graph manifest is loaded with
-`load_bayesian_phystwin_graph_provider_manifest()` and checked with
+`validate_bayesian_phystwin_replay_provider()`. The belief manifest is loaded
+with `load_bayesian_phystwin_belief_provider_manifest()` and checked with
+`validate_bayesian_phystwin_belief_provider()`. The graph manifest is loaded
+with `load_bayesian_phystwin_graph_provider_manifest()` and checked with
 `validate_bayesian_phystwin_graph_provider()`. A version, capability, artifact,
-graph-provider, or parent-provider mismatch fails closed and is reported
-explicitly.
+provider-identity, inference-role, graph-provider, or parent-provider mismatch
+fails closed and is reported explicitly.
 
 ## Execution API
 
@@ -76,11 +94,18 @@ position/velocity values. The resumable cache stores and hashes positions,
 velocities, frame provenance, timestep, and all three identities. A cache hit can
 therefore reconstruct a complete provider-v2 response without instantiating Warp.
 
-Provider v1 is not the production replay boundary. It remains a versioned
-compatibility facade for frozen diagnostics and scientific operations that have no
-request-complete replay role. Graph and controller geometry remain in
-`causal4d_graph_provider_v1`, which is NumPy-only and declares replay provider v2
-as its parent contract.
+Fixed robust endpoint inference uses
+`infer_fixed_bayesian_anchor_endpoint()` from the belief provider. Causal4D
+validates the installed belief manifest before reading residuals, passes the
+exclusive causal cutoff explicitly, and consumes the immutable
+`RobustEndpointPosteriorV1` fields. The historical broad provider is no longer the
+belief exporter's endpoint-inference dependency.
+
+Provider v1 is not the production replay or endpoint-inference boundary. It
+remains a versioned compatibility facade for frozen diagnostics and scientific
+operations that have no request-complete replay role. Graph and controller
+geometry remain in `causal4d_graph_provider_v1`, which is NumPy-only and declares
+replay provider v2 as its parent contract.
 
 The official rollout manifest records the scientific provider, replay-provider-v2,
 and graph-provider manifests separately. It also records source-artifact hashes,
@@ -100,7 +125,9 @@ python -m pip install -e "../Bayesian-PhysTwin[graph]"
 python -m pip install -e ".[dev]"
 CAUSAL4D_REQUIRE_BPT_PROVIDER=1 python -m pytest -q \
   tests/test_bpt_provider_integration.py \
-  tests/test_bpt_graph_provider_integration.py
+  tests/test_bpt_graph_provider_integration.py \
+  tests/test_belief_provider_contract.py \
+  tests/test_bpt_belief_provider_usage.py
 ```
 
 Package-based installations may use `python -m pip install ".[phystwin]"`;
@@ -122,5 +149,5 @@ python -m pip install -r requirements/frozen/causal4d-0.3.0.txt
 
 That file locks Causal4D and Bayesian-PhysTwin to exact Git commits. Existing
 milestone tags and recorded environments remain unchanged. New experiments
-should record the exact BPT revision in both provider manifests in addition to
+should record the exact BPT revision in every provider manifest in addition to
 using the normal compatibility range during development.
