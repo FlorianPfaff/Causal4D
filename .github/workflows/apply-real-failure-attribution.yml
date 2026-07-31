@@ -26,6 +26,12 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+          cache: pip
+
       - name: Reconstruct reviewed source archive
         run: |
           cat .patches/parts/* > "$RUNNER_TEMP/real_failure_attribution.tar.gz.b64"
