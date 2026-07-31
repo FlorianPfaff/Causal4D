@@ -1,4 +1,4 @@
-nSHA-256 digest. Only `ready=true` and\n''',
+SHA-256 digest. Only `ready=true` and\n''',
         '''The resulting status includes the derived collection flags, prerequisite and gate\nvalidation details, confirmatory-manifest counts, blockers, a portable\n`evidence_sha256` that excludes mount-local paths, and an exact host-local\n`status_sha256`. Only `ready=true` and\n''',
     )
 
