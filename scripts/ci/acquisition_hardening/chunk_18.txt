@@ -1,8 +1,0 @@
-e.read_bytes()).hexdigest(),\n        "bytes": outside.stat().st_size,\n    }\n\n    with pytest.raises(ValueError, match="symlink"):\n        readiness_contracts._validate_descriptor(\n            root,\n            descriptor,\n            name="linked evidence",\n            verify_file_hashes=True,\n        )\n\n\ndef test_readiness_evidence_digest_is_mount_independent(\n    monkeypatch, tmp_path: Path\n) -> None:\n    protocol, v2, v4 = _registered_values()\n    _patch_gate_results(monkeypatch)\n    first = evaluate_preacquisition_readiness(\n        protocol,\n        v2,\n        v4,\n        tmp_path / "first-mount",\n        _real_status(),\n        verify_file_hashes=True,\n    )\n    relocated = deepcopy(first)\n    relocated["dataset_root"] = "/archive/relocated-dataset"\n    for section in ("prerequisites", "operational_gates"):\n        for record in relocated[section].values():\n            record["path"] = "/archive/" + Path(record.get("path", "evidence")).name\n    relocated["evidence_sha256"] = readiness_evidence_sha256(relocated)\n    relocated["status_sha256"] = readiness_status_sha256(relocated)\n\n    assert relocated["evidence_sha256"] == first["evidence_sha256"]\n    assert relocated["status_sha256"] != first["status_sha256"]\n''',
-    )
-
-
-def _docs() -> None:
-    _replace(
-        "docs/causal4d_preacquisition_readiness.md",
-        '''{"path": "relativ

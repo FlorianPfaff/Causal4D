@@ -51,6 +51,10 @@ resealed. Evidence descriptors use the same relative-path contract throughout:
 {"path": "relative/file", "sha256": "<64 lowercase hex>", "bytes": 123}
 ```
 
+During hash verification, descriptor paths must resolve to ordinary files below
+the dataset root. Symlinked files and symlinked intermediate directories are
+rejected, including links that would escape to an otherwise valid external file.
+
 ### Signature panel
 
 The signature gate requires the exact 12 v2 source-panel execution IDs in their
@@ -102,10 +106,13 @@ The software-environment gate is sealed after the method freeze. It binds:
   observations, its commit, version, distribution, and observation-contract
   version are required. When it is not used, the record must say so and give a
   reason;
-- the actual observation producer and Python runtime identity.
+- the actual observation producer and Python runtime identity; and
+- a checksummed resolved dependency report, the selected numerical backend,
+  NumPy/SciPy and applicable Torch/Warp/OpenCV versions, CUDA runtime and driver
+  identity when used, and an immutable container-image digest when containerized.
 
-This makes the executed bytes and observation producer explicit without changing
-the registered scientific method.
+This makes the executed bytes, transitive numerical runtime, and observation
+producer explicit without changing the registered scientific method.
 
 ## Workflow
 
@@ -153,7 +160,8 @@ causal4d protocol readiness status \
 ```
 
 The resulting status includes the derived collection flags, prerequisite and gate
-validation details, confirmatory-manifest counts, blockers, and its own canonical
-SHA-256 digest. Only `ready=true` and
+validation details, confirmatory-manifest counts, blockers, a portable
+`evidence_sha256` that excludes mount-local paths, and an exact host-local
+`status_sha256`. Only `ready=true` and
 `first_confirmatory_execution_allowed=true` authorize the first confirmatory
 execution.

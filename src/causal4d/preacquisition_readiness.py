@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import json
-import os
-import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from causal4d.atomic_io import atomic_write_json
 from causal4d.preacquisition_gate_validation import (
     _validate_gate_file,
     seal_preacquisition_gate as seal_preacquisition_gate,
@@ -26,10 +24,27 @@ from causal4d.preacquisition_readiness_contracts import (
     gate_evidence_sha256 as gate_evidence_sha256,
     gate_evidence_template,
     load_registered_preacquisition_chain,
+    readiness_evidence_sha256,
     readiness_status_sha256,
     source_panel_execution_manifest_template,
 )
 from causal4d.real_evidence_contract_v2 import build_real_evidence_status
+
+
+def _publish_template(
+    path: Path,
+    payload: Mapping[str, Any],
+    relative: str,
+    *,
+    created: list[str],
+    existing: list[str],
+) -> None:
+    try:
+        atomic_write_json(path, dict(payload), overwrite=False)
+    except FileExistsError:
+        existing.append(relative)
+    else:
+        created.append(relative)
 
 
 def scaffold_preacquisition_readiness(
@@ -44,42 +59,26 @@ def scaffold_preacquisition_readiness(
     existing: list[str] = []
     for gate_id, relative in GATE_PATHS.items():
         path = root / relative
-        if path.exists():
-            existing.append(relative)
-            continue
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(
-                gate_evidence_template(gate_id, protocol, v2, v4),
-                indent=2,
-                sort_keys=True,
-                allow_nan=False,
-            )
-            + "\n",
-            encoding="utf-8",
+        _publish_template(
+            path,
+            gate_evidence_template(gate_id, protocol, v2, v4),
+            relative,
+            created=created,
+            existing=existing,
         )
-        created.append(relative)
     source_executions = v2["preacquisition_signature_panel"]["executions"]
     for execution in source_executions:
         relative = SOURCE_PANEL_MANIFEST_TEMPLATE_PATH.format(
             execution_id=execution["execution_id"]
         )
         path = root / relative
-        if path.exists():
-            existing.append(relative)
-            continue
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(
-                source_panel_execution_manifest_template(execution, protocol, v4),
-                indent=2,
-                sort_keys=True,
-                allow_nan=False,
-            )
-            + "\n",
-            encoding="utf-8",
+        _publish_template(
+            path,
+            source_panel_execution_manifest_template(execution, protocol, v4),
+            relative,
+            created=created,
+            existing=existing,
         )
-        created.append(relative)
     return {
         "passed": True,
         "dataset_root": str(root.resolve()),
@@ -257,6 +256,7 @@ def evaluate_preacquisition_readiness(
         "ready": ready,
         "passed": ready,
     }
+    status["evidence_sha256"] = readiness_evidence_sha256(status)
     status["status_sha256"] = readiness_status_sha256(status)
     return status
 
@@ -293,20 +293,7 @@ def write_preacquisition_readiness(
     """Atomically write one deterministic readiness snapshot."""
 
     output = Path(path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(dict(status), indent=2, sort_keys=True, allow_nan=False) + "\n"
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{output.name}.", suffix=".tmp", dir=output.parent
-    )
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary_name, output)
-    finally:
-        if os.path.exists(temporary_name):
-            os.unlink(temporary_name)
+    atomic_write_json(output, dict(status))
     return output
 
 
@@ -323,6 +310,7 @@ __all__ = [
     "gate_evidence_sha256",
     "gate_evidence_template",
     "load_registered_preacquisition_chain",
+    "readiness_evidence_sha256",
     "readiness_status_sha256",
     "scaffold_preacquisition_readiness",
     "seal_preacquisition_gate",

@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from causal4d.atomic_io import atomic_write_json
 from causal4d.real_evidence_common import (
     METHOD_FREEZE_ATTESTATION_SCHEMA_VERSION,
     _error_text,
@@ -113,11 +113,7 @@ def write_method_freeze_validation_attestation(
     """Write a deterministic method-freeze validation attestation."""
 
     output = Path(path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(
-        json.dumps(dict(attestation), indent=2, sort_keys=True, allow_nan=False) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(output, dict(attestation), overwrite=False)
     return output
 
 

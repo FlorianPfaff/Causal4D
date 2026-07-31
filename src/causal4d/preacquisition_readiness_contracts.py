@@ -13,8 +13,8 @@ from typing import Any
 
 from causal4d.preacquisition_protocol_v4 import load_v4_chain
 
-READINESS_SCHEMA_VERSION = 1
-GATE_EVIDENCE_SCHEMA_VERSION = 1
+READINESS_SCHEMA_VERSION = 2
+GATE_EVIDENCE_SCHEMA_VERSION = 2
 READINESS_ARTIFACT_KIND = "PreacquisitionReadinessStatus"
 GATE_EVIDENCE_ARTIFACT_KIND = "PreacquisitionGateEvidence"
 
@@ -83,9 +83,37 @@ def gate_evidence_sha256(values: Mapping[str, Any]) -> str:
 
 
 def readiness_status_sha256(values: Mapping[str, Any]) -> str:
-    """Return the digest that binds one final readiness snapshot."""
+    """Return the digest that binds one exact, host-local readiness snapshot."""
 
     return _canonical_sha256(values, omitted_field="status_sha256")
+
+
+def readiness_evidence_sha256(values: Mapping[str, Any]) -> str:
+    """Return a mount-point-independent digest of the logical readiness evidence."""
+
+    payload = deepcopy(dict(values))
+    for field in ("dataset_root", "evidence_sha256", "status_sha256"):
+        payload.pop(field, None)
+    for section_name in ("prerequisites", "operational_gates"):
+        section = payload.get(section_name)
+        if not isinstance(section, Mapping):
+            continue
+        normalized: dict[str, Any] = {}
+        for key, value in section.items():
+            if isinstance(value, Mapping):
+                record = deepcopy(dict(value))
+                record.pop("path", None)
+                normalized[str(key)] = record
+            else:
+                normalized[str(key)] = deepcopy(value)
+        payload[section_name] = normalized
+    serialized = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(serialized).hexdigest()
 
 
 def _is_hex_digest(value: Any, length: int) -> bool:
@@ -152,6 +180,27 @@ def _finite_number(value: Any, *, name: str) -> float:
     return result
 
 
+def _resolved_dataset_file(
+    dataset_root: Path,
+    relative: Path,
+    *,
+    name: str,
+) -> Path:
+    root = dataset_root.resolve(strict=True)
+    candidate = dataset_root / relative
+    cursor = dataset_root
+    for part in relative.parts:
+        cursor = cursor / part
+        _require(not cursor.is_symlink(), f"{name} path contains a symlink")
+    _require(candidate.is_file(), f"{name} file is missing: {relative.as_posix()}")
+    resolved = candidate.resolve(strict=True)
+    _require(
+        resolved.is_relative_to(root),
+        f"{name} path escapes the dataset root",
+    )
+    return resolved
+
+
 def _validate_descriptor(
     dataset_root: Path,
     descriptor: Mapping[str, Any],
@@ -169,8 +218,7 @@ def _validate_descriptor(
         f"{name} byte count is invalid",
     )
     if verify_file_hashes:
-        path = dataset_root / relative
-        _require(path.is_file(), f"{name} file is missing: {relative.as_posix()}")
+        path = _resolved_dataset_file(dataset_root, relative, name=name)
         digest, size = _sha256_file(path)
         _require(digest == descriptor["sha256"], f"{name} checksum mismatch")
         _require(size == byte_count, f"{name} byte count mismatch")
@@ -319,6 +367,19 @@ def _template_checks(
                 "artifact_contract": None,
             },
             "python": {"version": None, "implementation": None, "platform": None},
+            "runtime_environment": {
+                "resolved_dependency_report": None,
+                "execution_backend": None,
+                "containerized": None,
+                "container_image_digest": None,
+                "numpy_version": None,
+                "scipy_version": None,
+                "torch_version": None,
+                "warp_version": None,
+                "opencv_version": None,
+                "cuda_runtime_version": None,
+                "cuda_driver_version": None,
+            },
         }
     raise KeyError(gate_id)
 
@@ -388,6 +449,7 @@ __all__ = [
     "gate_evidence_sha256",
     "gate_evidence_template",
     "load_registered_preacquisition_chain",
+    "readiness_evidence_sha256",
     "readiness_status_sha256",
     "source_panel_execution_manifest_template",
 ]

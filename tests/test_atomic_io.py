@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from causal4d.atomic_io import atomic_write_json
+from causal4d.atomic_io import atomic_write_binary, atomic_write_json
 
 
 def test_atomic_write_json_publishes_sorted_finite_json(tmp_path) -> None:
@@ -37,3 +37,34 @@ def test_atomic_write_json_can_fail_closed_on_existing_destination(tmp_path) -> 
 
     assert json.loads(target.read_text(encoding="utf-8")) == {"version": 1}
     assert not list(tmp_path.glob(f".{target.name}.*.tmp"))
+
+
+def test_atomic_write_binary_validates_before_publication(tmp_path) -> None:
+    target = tmp_path / "artifact.bin"
+
+    def writer(handle) -> None:
+        handle.write(b"candidate")
+
+    def reject(path) -> None:
+        assert path.read_bytes() == b"candidate"
+        raise ValueError("invalid candidate")
+
+    with pytest.raises(ValueError, match="invalid candidate"):
+        atomic_write_binary(target, writer, validate=reject)
+
+    assert not target.exists()
+    assert not list(tmp_path.glob(f".{target.name}.*.tmp"))
+
+
+def test_atomic_write_binary_can_fail_closed_on_existing_destination(tmp_path) -> None:
+    target = tmp_path / "artifact.bin"
+    atomic_write_binary(target, lambda handle: handle.write(b"first"), overwrite=False)
+
+    with pytest.raises(FileExistsError):
+        atomic_write_binary(
+            target,
+            lambda handle: handle.write(b"second"),
+            overwrite=False,
+        )
+
+    assert target.read_bytes() == b"first"

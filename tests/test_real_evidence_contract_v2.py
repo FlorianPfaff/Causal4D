@@ -438,3 +438,17 @@ def test_method_freeze_attestation_builder_binds_exact_file(
     )
     assert attestation["repository_checkout_verified"]
     assert attestation["locked_file_hashes_verified"]
+
+
+def test_method_freeze_attestation_publication_is_once_only(tmp_path: Path) -> None:
+    target = tmp_path / "method_freeze_validation.json"
+    first = {"schema_version": 1, "verifier_id": "reviewer-1"}
+    second = {"schema_version": 1, "verifier_id": "reviewer-2"}
+
+    freeze_evidence.write_method_freeze_validation_attestation(target, first)
+    original = target.read_bytes()
+    with pytest.raises(FileExistsError):
+        freeze_evidence.write_method_freeze_validation_attestation(target, second)
+
+    assert target.read_bytes() == original
+    assert json.loads(target.read_text(encoding="utf-8")) == first

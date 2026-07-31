@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from causal4d.atomic_io import atomic_write_json
+
 SCHEMA_VERSION = 2
 MILESTONE_ID = "causal4d-same-object-real-v1"
 BPT_PIN_PATH = "requirements/ci/bayesian-phystwin-provider-v1.sha"
@@ -352,12 +354,10 @@ def build_method_freeze_manifest(
 
 
 def write_method_freeze_manifest(path: str | Path, manifest: Mapping[str, Any]) -> Path:
+    """Publish the once-only method freeze atomically and without replacement."""
+
     output = Path(path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(
-        json.dumps(dict(manifest), indent=2, sort_keys=True, allow_nan=False) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(output, dict(manifest), overwrite=False)
     return output
 
 
