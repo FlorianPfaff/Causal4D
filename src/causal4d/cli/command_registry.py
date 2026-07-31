@@ -104,6 +104,12 @@ GROUPED_COMMANDS = (
         legacy_name="causal4d-observation-lineage",
     ),
     CommandSpec(
+        route=("evidence", "interpret-real-result"),
+        target="causal4d.cli.real_result_interpretation:main",
+        summary="Apply the preregistered real-result interpretation tree.",
+        lifecycle="stable",
+    ),
+    CommandSpec(
         route=("calibration", "real"),
         target="causal4d.cli.real_calibration:main",
         summary="Fit or evaluate real predictive calibration.",
