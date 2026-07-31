@@ -15,6 +15,17 @@ def _replace(path: str, old: str, new: str) -> None:
         return
     count = text.count(old)
     if count != 1:
+        if path == "src/causal4d/contracts.py" and old.startswith(
+            "def save_contract("
+        ):
+            start = text.index("def save_contract(")
+            stop = text.index("\ndef load_contract(", start)
+            replacement = new.rstrip() + "\n\n"
+            target.write_text(
+                text[:start] + replacement + text[stop + 1 :],
+                encoding="utf-8",
+            )
+            return
         raise RuntimeError(f"expected one replacement in {path}, found {count}")
     target.write_text(text.replace(old, new), encoding="utf-8")
 
