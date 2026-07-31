@@ -1,45 +1,42 @@
-name: Apply staged real failure-attribution patch
+name: Materialize and validate real failure attribution
 
 on:
-  push:
-    branches: [agent/aggregate-real-failure-attribution]
-    paths:
-      - ".patches/real_failure_attribution.tar.gz.b64"
-      - ".github/workflows/apply-real-failure-attribution.yml"
   pull_request:
     branches: [main]
     paths:
-      - ".patches/real_failure_attribution.tar.gz.b64"
+      - ".patches/parts/**"
       - ".github/workflows/apply-real-failure-attribution.yml"
 
 permissions:
   contents: write
 
 concurrency:
-  group: apply-real-failure-attribution-${{ github.ref }}
+  group: materialize-real-failure-attribution-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
-  apply:
-    if: github.actor != 'github-actions[bot]'
+  materialize:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Check out feature branch
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.head_ref || github.ref_name }}
+          ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Materialize reviewed patch
+      - name: Reconstruct reviewed source archive
         run: |
+          cat .patches/parts/* > "$RUNNER_TEMP/real_failure_attribution.tar.gz.b64"
           base64 --decode \
-            .patches/real_failure_attribution.tar.gz.b64 \
+            "$RUNNER_TEMP/real_failure_attribution.tar.gz.b64" \
             > "$RUNNER_TEMP/real_failure_attribution.tar.gz"
+          echo "dc984f393a0524505d1c7ff100409bbb32e08aefbb188ff01b57319ea311e3ac  $RUNNER_TEMP/real_failure_attribution.tar.gz" \
+            | sha256sum --check
           tar -tzf "$RUNNER_TEMP/real_failure_attribution.tar.gz"
           tar -xzf "$RUNNER_TEMP/real_failure_attribution.tar.gz" -C .
-          rm -f .patches/real_failure_attribution.tar.gz.b64
-          rmdir .patches
+          rm -rf .patches
           rm -f .github/workflows/apply-real-failure-attribution.yml
 
       - name: Validate focused implementation
@@ -65,6 +62,7 @@ jobs:
           python -m pytest -q tests/test_real_failure_attribution.py
           causal4d diagnostic real-failure-attribution --help
           causal4d-aggregate-real-failure-attribution --help
+          git diff --check
 
       - name: Commit validated implementation
         run: |
@@ -72,4 +70,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "Add execution-accounted failure attribution"
-          git push origin HEAD:${{ github.head_ref || github.ref_name }}
+          git push origin HEAD:${{ github.head_ref }}
