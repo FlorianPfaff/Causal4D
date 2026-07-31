@@ -1,0 +1,34 @@
+{
+  "claim_status": "controlled_passed_real_pending",
+  "empirical_status": {
+    "controlled_counterfactual": "passed",
+    "independent_execution_calibration": "pending",
+    "prob4d_to_bayesian_phystwin": "prospective_pending",
+    "same_object_multi_action_real": "pending",
+    "semantic_reweighting": "not_admitted"
+  },
+  "non_claims": [
+    "same-object multi-action real validation is not yet complete",
+    "independent-execution calibration is not yet established",
+    "Prob4D has not yet shown held-out physical-prediction benefit",
+    "semantic reweighting is not admitted into the primary method"
+  ],
+  "packages": {
+    "bayesian-phystwin": {
+      "role": "uncertain_physical_twin",
+      "supported_versions": ">=0.4,<0.5"
+    },
+    "causal4d": {
+      "required_version": "0.4.1",
+      "role": "realized_intervention_abduction_and_prediction"
+    },
+    "prob4d": {
+      "role": "optional_probabilistic_observation_feeder",
+      "supported_versions": ">=0.3,<0.4"
+    }
+  },
+  "primary_next_milestone": "same_object_multi_action_real_protocol",
+  "schema_version": 1,
+  "snapshot_date": "2026-07-31",
+  "status_id": "causal4d-project-status-v1"
+}
