@@ -1,0 +1,18 @@
+{
+  "analysis_manifest_sha256": null,
+  "artifact_kind": "Causal4DRealResultGateSummaryTemplate",
+  "evidence_status": "incomplete",
+  "execution_block_calibration": "not_estimable",
+  "factual_continuation": "not_estimable",
+  "method_freeze_sha256": null,
+  "new_contact_transfer": "not_estimable",
+  "oracle_diagnosis": "not_estimable",
+  "preacquisition_amendment_sha256": "0e167538a7824e5ec053031d8359d4e9b4ff89ad61a85666400a86c2a88ac42f",
+  "preregistered_exclusion_count": 0,
+  "protocol_design_sha256": "6d61f2bea96af0ba04faaf3476990b58cd87e0a9c826420c254a012dec647968",
+  "protocol_id": "causal4d-sloth-multi-action-v1",
+  "same_grasp_transfer": "not_estimable",
+  "schema_version": 1,
+  "target_informed_selection": null,
+  "technical_failure_count": 0
+}
