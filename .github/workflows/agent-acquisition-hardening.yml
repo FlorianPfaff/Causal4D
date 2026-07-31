@@ -1,0 +1,109 @@
+name: Agent acquisition evidence hardening
+
+on:
+  push:
+    branches: ["agent/acquisition-evidence-hardening"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-acquisition-evidence-hardening
+  cancel-in-progress: false
+
+jobs:
+  apply-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out hardening branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/acquisition-evidence-hardening
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Reconstruct and apply reviewed patch
+        run: |
+          cat scripts/ci/acquisition_hardening/chunk_*.txt \
+            > scripts/ci/apply_acquisition_hardening.py
+          python -m py_compile scripts/ci/apply_acquisition_hardening.py
+          python scripts/ci/apply_acquisition_hardening.py
+
+      - name: Install development tools
+        run: python -m pip install -e ".[dev]"
+
+      - name: Format changed Python
+        run: |
+          python -m ruff format \
+            src/causal4d/atomic_io.py \
+            src/causal4d/real_experiment_freeze.py \
+            src/causal4d/real_freeze_evidence.py \
+            src/causal4d/contracts.py \
+            src/causal4d/preacquisition_readiness_contracts.py \
+            src/causal4d/preacquisition_readiness.py \
+            src/causal4d/preacquisition_gate_validation.py \
+            tests/test_atomic_io.py \
+            tests/test_real_experiment_freeze.py \
+            tests/test_real_evidence_contract_v2.py \
+            tests/test_causal4d_contracts.py \
+            tests/test_preacquisition_readiness.py
+
+      - name: Run focused lint and regression tests
+        run: |
+          python -m ruff check \
+            src/causal4d/atomic_io.py \
+            src/causal4d/real_experiment_freeze.py \
+            src/causal4d/real_freeze_evidence.py \
+            src/causal4d/contracts.py \
+            src/causal4d/preacquisition_readiness_contracts.py \
+            src/causal4d/preacquisition_readiness.py \
+            src/causal4d/preacquisition_gate_validation.py \
+            tests/test_atomic_io.py \
+            tests/test_real_experiment_freeze.py \
+            tests/test_real_evidence_contract_v2.py \
+            tests/test_causal4d_contracts.py \
+            tests/test_preacquisition_readiness.py
+          python -m pytest -q \
+            tests/test_atomic_io.py \
+            tests/test_real_experiment_freeze.py \
+            tests/test_real_evidence_contract_v2.py \
+            tests/test_causal4d_contracts.py \
+            tests/test_preacquisition_readiness.py
+
+      - name: Remove temporary patch machinery
+        run: |
+          rm -f scripts/ci/apply_acquisition_hardening.py
+          rm -rf scripts/ci/acquisition_hardening
+          rm -f .github/workflows/agent-acquisition-hardening.yml
+
+      - name: Commit validated source changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            docs/causal4d_preacquisition_readiness.md \
+            src/causal4d/atomic_io.py \
+            src/causal4d/real_experiment_freeze.py \
+            src/causal4d/real_freeze_evidence.py \
+            src/causal4d/contracts.py \
+            src/causal4d/preacquisition_readiness_contracts.py \
+            src/causal4d/preacquisition_readiness.py \
+            src/causal4d/preacquisition_gate_validation.py \
+            tests/test_atomic_io.py \
+            tests/test_real_experiment_freeze.py \
+            tests/test_real_evidence_contract_v2.py \
+            tests/test_causal4d_contracts.py \
+            tests/test_preacquisition_readiness.py
+          git add -u -- \
+            .github/workflows/agent-acquisition-hardening.yml \
+            scripts/ci/acquisition_hardening
+          git diff --cached --check
+          git commit -m "Harden acquisition evidence publication"
+          git push origin HEAD:agent/acquisition-evidence-hardening
