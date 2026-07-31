@@ -18,9 +18,7 @@ def test_grouped_registry_has_unique_routes_and_legacy_names() -> None:
     commands = grouped_commands()
     assert len({command.route for command in commands}) == len(commands)
     legacy = [
-        command.legacy_name
-        for command in commands
-        if command.legacy_name is not None
+        command.legacy_name for command in commands if command.legacy_name is not None
     ]
     assert len(set(legacy)) == len(legacy)
     assert find_command("benchmark/counterfactual").target.endswith(
