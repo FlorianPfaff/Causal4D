@@ -1,8 +1,6 @@
 name: Agent acquisition evidence hardening
 
 on:
-  push:
-    branches: ["agent/acquisition-evidence-hardening"]
   pull_request:
     branches: ["main"]
 
@@ -11,7 +9,7 @@ permissions:
 
 concurrency:
   group: agent-acquisition-evidence-hardening
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   apply-and-validate:
