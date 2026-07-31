@@ -1,0 +1,14 @@
+(field), str) and bool(runtime[field].strip()),\n                f"cuda requires runtime environment {field}",\n            )\n    containerized = runtime.get("containerized")\n    _require(isinstance(containerized, bool), "containerized must be Boolean")\n    image_digest = runtime.get("container_image_digest")\n    if containerized:\n        _require(\n            isinstance(image_digest, str)\n            and image_digest.startswith("sha256:")\n            and _is_hex_digest(image_digest.removeprefix("sha256:"), 64),\n            "container image digest must be sha256:<64 lowercase hex>",\n        )\n    else:\n        _require(\n            image_digest is None,\n            "non-containerized execution must not declare an image digest",\n        )\n''',
+    )
+
+
+def _tests() -> None:
+    _replace(
+        "tests/test_atomic_io.py",
+        "from causal4d.atomic_io import atomic_write_json\n",
+        "from causal4d.atomic_io import atomic_write_binary, atomic_write_json\n",
+    )
+    _append(
+        "tests/test_atomic_io.py",
+        "def test_atomic_write_binary_validates_before_publication",
+        '''def test_atomic_write_binary_validates_before_publication(tmp_path) -> None:\n    target = tmp_path / "artifact.bin"\n\n    def writer(handle) -> None:\n        handle.write(b"candidate")\n\n    def reject(path) -> None:\n        assert path.read_bytes() == b"candidate"\n 
