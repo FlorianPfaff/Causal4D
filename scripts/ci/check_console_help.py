@@ -41,8 +41,7 @@ def _require_installed_file(distribution: str, relative_path: str) -> Path:
             f"installed distribution {distribution!r} exposes no file inventory"
         )
     normalized = {
-        str(package_path).replace("\\", "/"): package_path
-        for package_path in files
+        str(package_path).replace("\\", "/"): package_path for package_path in files
     }
     package_path = normalized.get(relative_path)
     if package_path is None:
