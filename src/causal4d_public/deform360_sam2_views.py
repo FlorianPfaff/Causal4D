@@ -11,6 +11,12 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
+from causal4d.camera_geometry import (
+    invert_se3_transform,
+    validate_pinhole_intrinsics,
+    validate_se3_transform,
+)
+
 from .deform360_sam2 import (
     PINNED_SAM2_CHECKPOINT_SHA256,
     PINNED_SAM2_CHECKPOINT_URL,
@@ -162,11 +168,17 @@ def multiview_mask_consistency(
     )
 
     centers = []
+    world_to_camera_by_camera: dict[str, np.ndarray] = {}
     for camera in cameras:
-        transform = np.asarray(camera_to_world_by_camera[camera], dtype=np.float64)
-        _require(transform.shape == (4, 4), f"invalid extrinsics for {camera}")
-        _require(np.isfinite(transform).all(), f"non-finite extrinsics for {camera}")
-        centers.append(transform[:3, 3])
+        camera_to_world = validate_se3_transform(
+            camera_to_world_by_camera[camera],
+            name=f"extrinsics for {camera}",
+        )
+        centers.append(camera_to_world[:3, 3])
+        world_to_camera_by_camera[camera] = invert_se3_transform(
+            camera_to_world,
+            name=f"extrinsics for {camera}",
+        )
     center = np.mean(centers, axis=0)
     axis = np.linspace(
         -cfg.cube_half_extent_m,
@@ -183,11 +195,11 @@ def multiview_mask_consistency(
         mask = np.asarray(masks_by_camera[camera], dtype=bool)
         _require(mask.ndim == 2, f"mask for {camera} must be 2D")
         height, width = mask.shape
-        intrinsics = np.asarray(intrinsics_by_camera[camera], dtype=np.float64)
-        _require(intrinsics.shape == (3, 3), f"invalid intrinsics for {camera}")
-        world_to_camera = np.linalg.inv(
-            np.asarray(camera_to_world_by_camera[camera], dtype=np.float64)
+        intrinsics = validate_pinhole_intrinsics(
+            intrinsics_by_camera[camera],
+            name=f"intrinsics for {camera}",
         )
+        world_to_camera = world_to_camera_by_camera[camera]
         points = grid @ world_to_camera[:3, :3].T + world_to_camera[:3, 3]
         depth = points[:, 2]
         in_front = depth > 1e-6
