@@ -1,0 +1,22 @@
+
+
+def _freeze_writers() -> None:
+    _replace(
+        "src/causal4d/real_experiment_freeze.py",
+        "from typing import Any\n\nSCHEMA_VERSION = 2\n",
+        "from typing import Any\n\nfrom causal4d.atomic_io import atomic_write_json\n\nSCHEMA_VERSION = 2\n",
+    )
+    _replace(
+        "src/causal4d/real_experiment_freeze.py",
+        '''def write_method_freeze_manifest(path: str | Path, manifest: Mapping[str, Any]) -> Path:\n    output = Path(path)\n    output.parent.mkdir(parents=True, exist_ok=True)\n    output.write_text(\n        json.dumps(dict(manifest), indent=2, sort_keys=True, allow_nan=False) + "\\n",\n        encoding="utf-8",\n    )\n    return output\n''',
+        '''def write_method_freeze_manifest(path: str | Path, manifest: Mapping[str, Any]) -> Path:\n    """Publish the once-only method freeze atomically and without replacement."""\n\n    output = Path(path)\n    atomic_write_json(output, dict(manifest), overwrite=False)\n    return output\n''',
+    )
+    _replace(
+        "src/causal4d/real_freeze_evidence.py",
+        "import json\nfrom collections.abc import Mapping\n",
+        "from collections.abc import Mapping\n",
+    )
+    _replace(
+        "src/causal4d/real_freeze_evidence.py",
+        "from typing import Any\n\nfrom causal4d.real_evidence_common import (\n",
+        "from typing import Any\n\nfrom causal4d.atomic_io import atomic_write_json\nf
