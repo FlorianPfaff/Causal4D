@@ -12,6 +12,11 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
+from causal4d.camera_geometry import (
+    invert_se3_transform,
+    validate_pinhole_intrinsics,
+)
+
 from .deform360 import Deform360ProtocolConfig
 from .deform360_sam2_prefix import select_source_locked_prefix_cameras
 
@@ -155,13 +160,14 @@ def gaussian_splat_geometry_diagnostics(
         mask = np.asarray(masks_by_camera[camera], dtype=bool)
         _require(mask.ndim == 2, f"mask for {camera} must be two-dimensional")
         height, width = mask.shape
-        intrinsics = np.asarray(intrinsics_by_camera[camera], dtype=np.float64)
-        camera_to_world = np.asarray(
-            camera_to_world_by_camera[camera], dtype=np.float64
+        intrinsics = validate_pinhole_intrinsics(
+            intrinsics_by_camera[camera],
+            name=f"intrinsics for {camera}",
         )
-        _require(intrinsics.shape == (3, 3), f"invalid intrinsics for {camera}")
-        _require(camera_to_world.shape == (4, 4), f"invalid extrinsics for {camera}")
-        world_to_camera = np.linalg.inv(camera_to_world)
+        world_to_camera = invert_se3_transform(
+            camera_to_world_by_camera[camera],
+            name=f"extrinsics for {camera}",
+        )
         points_camera = positions @ world_to_camera[:3, :3].T + world_to_camera[:3, 3]
         depth = points_camera[:, 2]
         in_front = depth > 1e-6
