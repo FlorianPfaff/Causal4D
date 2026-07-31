@@ -241,8 +241,7 @@ class RealResultGateSummary:
             name="preacquisition_amendment_sha256",
         )
         _require(
-            self.preacquisition_amendment_sha256
-            == EXPECTED_PREACQUISITION_SHA256,
+            self.preacquisition_amendment_sha256 == EXPECTED_PREACQUISITION_SHA256,
             "gate summary amendment digest does not match locked v4 amendment",
         )
         _sha256(self.method_freeze_sha256, name="method_freeze_sha256")
@@ -276,9 +275,7 @@ class RealResultGateSummary:
         return {
             "protocol_id": self.protocol_id,
             "protocol_design_sha256": self.protocol_design_sha256,
-            "preacquisition_amendment_sha256": (
-                self.preacquisition_amendment_sha256
-            ),
+            "preacquisition_amendment_sha256": (self.preacquisition_amendment_sha256),
             "method_freeze_sha256": self.method_freeze_sha256,
             "analysis_manifest_sha256": self.analysis_manifest_sha256,
             "evidence_status": self.evidence_status,
@@ -473,15 +470,9 @@ def validate_real_result_interpretation(
         method_freeze_sha256=str(gates_payload["method_freeze_sha256"]),
         analysis_manifest_sha256=str(gates_payload["analysis_manifest_sha256"]),
         evidence_status=cast(EvidenceStatus, gates_payload["evidence_status"]),
-        factual_continuation=cast(
-            GateStatus, gates_payload["factual_continuation"]
-        ),
-        same_grasp_transfer=cast(
-            GateStatus, gates_payload["same_grasp_transfer"]
-        ),
-        new_contact_transfer=cast(
-            GateStatus, gates_payload["new_contact_transfer"]
-        ),
+        factual_continuation=cast(GateStatus, gates_payload["factual_continuation"]),
+        same_grasp_transfer=cast(GateStatus, gates_payload["same_grasp_transfer"]),
+        new_contact_transfer=cast(GateStatus, gates_payload["new_contact_transfer"]),
         execution_block_calibration=cast(
             GateStatus, gates_payload["execution_block_calibration"]
         ),
