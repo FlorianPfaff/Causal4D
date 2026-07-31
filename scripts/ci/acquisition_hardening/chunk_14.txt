@@ -1,0 +1,11 @@
+est(target, first)\n    original = target.read_bytes()\n    with pytest.raises(FileExistsError):\n        write_method_freeze_manifest(target, second)\n\n    assert target.read_bytes() == original\n    assert json.loads(target.read_text(encoding="utf-8")) == first\n''',
+    )
+    _append(
+        "tests/test_real_evidence_contract_v2.py",
+        "def test_method_freeze_attestation_publication_is_once_only",
+        '''def test_method_freeze_attestation_publication_is_once_only(tmp_path: Path) -> None:\n    target = tmp_path / "method_freeze_validation.json"\n    first = {"schema_version": 1, "verifier_id": "reviewer-1"}\n    second = {"schema_version": 1, "verifier_id": "reviewer-2"}\n\n    freeze_evidence.write_method_freeze_validation_attestation(target, first)\n    original = target.read_bytes()\n    with pytest.raises(FileExistsError):\n        freeze_evidence.write_method_freeze_validation_attestation(target, second)\n\n    assert target.read_bytes() == original\n    assert json.loads(target.read_text(encoding="utf-8")) == first\n''',
+    )
+    _append(
+        "tests/test_causal4d_contracts.py",
+        "def test_contract_publication_can_refuse_overwrite",
+        '''def test_contract_publication_can_refuse_overwrite(tmp_path: Path) -> None:\n    context, _ = _context()\n    first = _belief(context)\n    second = TwinBelief(**{**first.__dict__, "metadata": {"revision": 2 
