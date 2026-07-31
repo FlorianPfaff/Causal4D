@@ -35,6 +35,13 @@ def _require_runner_outside_checkouts(checkout_roots: tuple[Path, ...]) -> None:
         raise RuntimeError(f"golden-path runner is inside a checkout: {runner}")
 
 
+def _default_project_status() -> str:
+    workspace = os.environ.get("GITHUB_WORKSPACE")
+    if workspace:
+        return str(Path(workspace) / "causal4d" / "ci" / "project_status_v1.json")
+    return "ci/project_status_v1.json"
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     fixture_path = Path(args.prob4d_fixture).resolve()
     project_status_path = Path(args.project_status).resolve()
@@ -117,7 +124,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prob4d-fixture", required=True)
-    parser.add_argument("--project-status", required=True)
+    parser.add_argument("--project-status", default=_default_project_status())
     parser.add_argument("--prob4d-revision", required=True)
     parser.add_argument("--bpt-revision", required=True)
     parser.add_argument("--causal4d-revision", required=True)
