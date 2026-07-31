@@ -48,7 +48,7 @@ def _require_installed_file(distribution: str, relative_path: str) -> Path:
         raise RuntimeError(
             f"installed distribution {distribution!r} does not contain {relative_path}"
         )
-    resolved = Path(installed.locate_file(package_path))
+    resolved = Path(str(installed.locate_file(package_path)))
     if not resolved.is_file():
         raise RuntimeError(
             f"installed distribution records {relative_path}, but {resolved} is absent"
