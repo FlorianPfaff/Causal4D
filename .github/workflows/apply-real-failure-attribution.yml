@@ -36,7 +36,7 @@ jobs:
           base64 --decode \
             .patches/real_failure_attribution.tar.gz.b64 \
             > "$RUNNER_TEMP/real_failure_attribution.tar.gz"
-          echo "14b1dab240c93d56c2b82dabca44034d1feacb02062f093b9c9f38f44369d59f  $RUNNER_TEMP/real_failure_attribution.tar.gz" \
+          echo "dc984f393a0524505d1c7ff100409bbb32e08aefbb188ff01b57319ea311e3ac  $RUNNER_TEMP/real_failure_attribution.tar.gz" \
             | sha256sum --check
           tar -xzf "$RUNNER_TEMP/real_failure_attribution.tar.gz" -C .
           rm -f .patches/real_failure_attribution.tar.gz.b64
