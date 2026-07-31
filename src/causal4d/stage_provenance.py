@@ -367,6 +367,8 @@ def validate_stage_contexts(
         raise ValueError("stage contexts must use the same protocol")
     if len({factual.case_id, query.case_id, target.case_id}) != 1:
         raise ValueError("stage contexts must use the same case")
+    if factual.o_plus_prefix.stream_id != target.target.stream_id:
+        raise ValueError("held-out target must continue the factual observation stream")
     if factual.o_plus_prefix.frame_stop != target.target.frame_start:
         raise ValueError("held-out target must begin at the factual evidence boundary")
     if (
