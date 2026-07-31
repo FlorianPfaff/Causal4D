@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify that every installed Causal4D console script can render ``--help``."""
+"""Verify installed package metadata and every Causal4D command's ``--help``."""
 
 from __future__ import annotations
 
@@ -33,6 +33,29 @@ def _installed_scripts(distribution: str) -> dict[str, str]:
     }
 
 
+def _require_installed_file(distribution: str, relative_path: str) -> Path:
+    installed = importlib.metadata.distribution(distribution)
+    files = installed.files
+    if files is None:
+        raise RuntimeError(
+            f"installed distribution {distribution!r} exposes no file inventory"
+        )
+    normalized = {
+        str(package_path).replace("\\", "/"): package_path for package_path in files
+    }
+    package_path = normalized.get(relative_path)
+    if package_path is None:
+        raise RuntimeError(
+            f"installed distribution {distribution!r} does not contain {relative_path}"
+        )
+    resolved = Path(str(installed.locate_file(package_path)))
+    if not resolved.is_file():
+        raise RuntimeError(
+            f"installed distribution records {relative_path}, but {resolved} is absent"
+        )
+    return resolved
+
+
 def _clean_environment() -> dict[str, str]:
     environment = dict(os.environ)
     environment.pop("PYTHONPATH", None)
@@ -47,6 +70,9 @@ def verify_console_help(
     distribution: str = "causal4d",
     timeout_seconds: float = 30.0,
 ) -> None:
+    typing_marker = _require_installed_file(distribution, "causal4d/py.typed")
+    print(f"verified installed PEP 561 marker: {typing_marker}")
+
     declared = _declared_scripts(pyproject)
     installed = _installed_scripts(distribution)
     if installed != declared:
