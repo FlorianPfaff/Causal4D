@@ -1,0 +1,26 @@
+n_readiness_contracts.py",
+        '    "readiness_status_sha256",\n',
+        '    "readiness_evidence_sha256",\n    "readiness_status_sha256",\n',
+    )
+
+
+def _readiness_workflow() -> None:
+    _replace(
+        "src/causal4d/preacquisition_readiness.py",
+        '''import json\nimport os\nimport tempfile\nfrom collections.abc import Mapping\n''',
+        '''from collections.abc import Mapping\n''',
+    )
+    _replace(
+        "src/causal4d/preacquisition_readiness.py",
+        "from typing import Any\n\nfrom causal4d.preacquisition_gate_validation import (\n",
+        "from typing import Any\n\nfrom causal4d.atomic_io import atomic_write_json\nfrom causal4d.preacquisition_gate_validation import (\n",
+    )
+    _replace(
+        "src/causal4d/preacquisition_readiness.py",
+        "    load_registered_preacquisition_chain,\n    readiness_status_sha256,\n",
+        "    load_registered_preacquisition_chain,\n    readiness_evidence_sha256,\n    readiness_status_sha256,\n",
+    )
+    _replace(
+        "src/causal4d/preacquisition_readiness.py",
+        '''\ndef scaffold_preacquisition_readiness(\n''',
+        '''\ndef _publish_template(\n    path: Path,\n    payload: Mapping[str, Any],\n    relative: str,\n    *,\n    created: list[str],\n    existing: list[str],\n) -> None:\n    try:\n        atomic_write_json(path, dict(payload), overwrite=False)\n    except FileExistsError:\n  
