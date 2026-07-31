@@ -91,6 +91,12 @@ GROUPED_COMMANDS = (
         legacy_name="causal4d-preacquisition-protocol-v4",
     ),
     CommandSpec(
+        route=("protocol", "readiness"),
+        target="causal4d.cli.preacquisition_readiness:main",
+        summary="Verify evidence-bound readiness before confirmatory collection.",
+        lifecycle="stable",
+    ),
+    CommandSpec(
         route=("evidence", "observation-lineage"),
         target="causal4d.cli.observation_lineage:main",
         summary="Validate or bind observation provenance.",

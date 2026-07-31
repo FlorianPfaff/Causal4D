@@ -18,8 +18,16 @@ causal4d benchmark counterfactual --output-dir runs/counterfactual
 causal4d benchmark latent-contact --output-dir runs/latent-contact
 causal4d protocol real validate-protocol configs/causal4d/sloth_multi_action_v1.json
 causal4d protocol freeze validate method_freeze.json protocol.json checkout/
+causal4d protocol readiness status checkout/ dataset/ --verify-file-hashes
 causal4d evidence observation-lineage validate observation.npz twin_belief.npz
 ```
+
+`protocol readiness` is the fail-closed gate before confirmatory collection. It
+scaffolds non-overwriting operational evidence templates, seals one completed
+gate after hash validation, and derives whether execution 1 is permitted. With
+`--require-ready`, exit code `0` means ready, `3` means valid but incomplete, and
+`2` means malformed or contradictory evidence. See
+[the readiness contract](causal4d_preacquisition_readiness.md).
 
 Command modules are imported only after a route is selected. Therefore root
 help, version reporting, and registry inspection stay independent of optional
