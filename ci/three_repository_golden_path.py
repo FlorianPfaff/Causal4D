@@ -22,6 +22,7 @@ from three_repository_observation import (
     run_rejection_corpus,
 )
 from three_repository_rollout import run_causal4d_rollout
+from three_repository_status import validate_installed_stack_status
 
 
 def _require_runner_outside_checkouts(checkout_roots: tuple[Path, ...]) -> None:
@@ -36,13 +37,19 @@ def _require_runner_outside_checkouts(checkout_roots: tuple[Path, ...]) -> None:
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     fixture_path = Path(args.prob4d_fixture).resolve()
+    project_status_path = Path(args.project_status).resolve()
     output_path = Path(args.output).resolve()
     checkout_roots = tuple(Path(value).resolve() for value in args.checkout_root)
     require(fixture_path.is_file(), f"fixture does not exist: {fixture_path}")
+    require(
+        project_status_path.is_file(),
+        f"project status does not exist: {project_status_path}",
+    )
     require(checkout_roots, "at least one checkout root must be supplied")
     require(os.environ.get("PYTHONPATH") in {None, ""}, "PYTHONPATH must be unset")
     _require_runner_outside_checkouts(checkout_roots)
     origins = installed_package_origins(checkout_roots)
+    project_status = validate_installed_stack_status(project_status_path)
 
     workdir = output_path.parent / "three-repository-golden-work"
     workdir.mkdir(parents=True, exist_ok=True)
@@ -86,6 +93,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "status": "passed",
         "schema_version": 1,
         "package_origins": origins,
+        "project_status": project_status,
         "repository_revisions": {
             "FlorianPfaff/Prob4D": args.prob4d_revision,
             "FlorianPfaff/Bayesian-PhysTwin": args.bpt_revision,
@@ -109,6 +117,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prob4d-fixture", required=True)
+    parser.add_argument("--project-status", required=True)
     parser.add_argument("--prob4d-revision", required=True)
     parser.add_argument("--bpt-revision", required=True)
     parser.add_argument("--causal4d-revision", required=True)
