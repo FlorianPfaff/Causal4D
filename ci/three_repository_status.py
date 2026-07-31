@@ -49,7 +49,9 @@ def _specifier(value: Any, *, name: str) -> str:
     try:
         SpecifierSet(text)
     except InvalidSpecifier as error:
-        raise RuntimeError(f"{name} is not a valid version specifier: {text}") from error
+        raise RuntimeError(
+            f"{name} is not a valid version specifier: {text}"
+        ) from error
     return text
 
 
@@ -89,13 +91,13 @@ def load_project_status(path: Path) -> dict[str, Any]:
         "the decisive same-object real protocol is no longer the next milestone",
     )
     try:
-        date.fromisoformat(_nonempty_text(status.get("snapshot_date"), name="snapshot_date"))
+        date.fromisoformat(
+            _nonempty_text(status.get("snapshot_date"), name="snapshot_date")
+        )
     except ValueError as error:
         raise RuntimeError("snapshot_date must use ISO YYYY-MM-DD format") from error
 
-    empirical = dict(
-        _mapping(status.get("empirical_status"), name="empirical_status")
-    )
+    empirical = dict(_mapping(status.get("empirical_status"), name="empirical_status"))
     require(
         empirical == _EXPECTED_EMPIRICAL_STATUS,
         "empirical status changed without updating the versioned status contract",
