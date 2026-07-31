@@ -1,0 +1,10 @@
+       existing.append(relative)\n    else:\n        created.append(relative)\n\n\ndef scaffold_preacquisition_readiness(\n''',
+    )
+    _replace(
+        "src/causal4d/preacquisition_readiness.py",
+        '''        path = root / relative\n        if path.exists():\n            existing.append(relative)\n            continue\n        path.parent.mkdir(parents=True, exist_ok=True)\n        path.write_text(\n            json.dumps(\n                gate_evidence_template(gate_id, protocol, v2, v4),\n                indent=2,\n                sort_keys=True,\n                allow_nan=False,\n            )\n            + "\\n",\n            encoding="utf-8",\n        )\n        created.append(relative)\n''',
+        '''        path = root / relative\n        _publish_template(\n            path,\n            gate_evidence_template(gate_id, protocol, v2, v4),\n            relative,\n            created=created,\n            existing=existing,\n        )\n''',
+    )
+    _replace(
+        "src/causal4d/preacquisition_readiness.py",
+        '''        path = root / relative\n        if path.exists():\n            existing.append(relative)\n            continue\n        path.parent.mkdir(parents=True, exist_ok=True)\n        path.write_text(\n            json.dumps(\n                source_panel_execution_manifest_template(execution, protocol, v4),\n                indent=2,\n      
