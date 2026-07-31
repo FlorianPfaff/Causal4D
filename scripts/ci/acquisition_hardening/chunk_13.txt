@@ -1,0 +1,11 @@
+       raise ValueError("invalid candidate")\n\n    with pytest.raises(ValueError, match="invalid candidate"):\n        atomic_write_binary(target, writer, validate=reject)\n\n    assert not target.exists()\n    assert not list(tmp_path.glob(f".{target.name}.*.tmp"))\n\n\ndef test_atomic_write_binary_can_fail_closed_on_existing_destination(tmp_path) -> None:\n    target = tmp_path / "artifact.bin"\n    atomic_write_binary(target, lambda handle: handle.write(b"first"), overwrite=False)\n\n    with pytest.raises(FileExistsError):\n        atomic_write_binary(\n            target,\n            lambda handle: handle.write(b"second"),\n            overwrite=False,\n        )\n\n    assert target.read_bytes() == b"first"\n''',
+    )
+    _replace(
+        "tests/test_real_experiment_freeze.py",
+        "    build_method_freeze_manifest,\n    validate_method_freeze_manifest,\n",
+        "    build_method_freeze_manifest,\n    validate_method_freeze_manifest,\n    write_method_freeze_manifest,\n",
+    )
+    _append(
+        "tests/test_real_experiment_freeze.py",
+        "def test_method_freeze_publication_is_once_only",
+        '''def test_method_freeze_publication_is_once_only(tmp_path: Path) -> None:\n    target = tmp_path / "method_freeze.json"\n    first = {"schema_version": 1, "value": "first"}\n    second = {"schema_version": 1, "value": "second"}\n\n    write_method_freeze_manif
