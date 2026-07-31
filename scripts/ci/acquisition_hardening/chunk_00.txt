@@ -11,9 +11,9 @@ ROOT = Path(__file__).resolve().parents[2]
 def _replace(path: str, old: str, new: str) -> None:
     target = ROOT / path
     text = target.read_text(encoding="utf-8")
-    if new in text:
-        return
     count = text.count(old)
+    if count == 0 and new in text:
+        return
     if count != 1:
         if path == "src/causal4d/contracts.py" and old.startswith(
             "def save_contract("
