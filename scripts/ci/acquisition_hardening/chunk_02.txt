@@ -1,0 +1,18 @@
+rom causal4d.real_evidence_common import (\n",
+    )
+    _replace(
+        "src/causal4d/real_freeze_evidence.py",
+        '''    output = Path(path)\n    output.parent.mkdir(parents=True, exist_ok=True)\n    output.write_text(\n        json.dumps(dict(attestation), indent=2, sort_keys=True, allow_nan=False) + "\\n",\n        encoding="utf-8",\n    )\n    return output\n''',
+        '''    output = Path(path)\n    atomic_write_json(output, dict(attestation), overwrite=False)\n    return output\n''',
+    )
+
+
+def _contract_publication() -> None:
+    _replace(
+        "src/causal4d/contracts.py",
+        "from typing import Any, ClassVar, Literal, Mapping\n\nimport numpy as np\n\nfrom causal4d.immutable_array",
+        "from typing import Any, BinaryIO, ClassVar, Literal, Mapping\n\nimport numpy as np\n\nfrom causal4d.atomic_io import atomic_write_binary\nfrom causal4d.immutable_array",
+    )
+    _replace(
+        "src/causal4d/contracts.py",
+        '''def save_contract(path: str | Path, artifact: Contract) -> None:\n    """Write a contract as JSON metadata plus non-pickled NumPy arrays."""\n\n    target = Path(path)\n    target.parent.mkdir(parents=True, exist_ok=True)\n    descriptor = {\n        "contract_version": CONTRACT_VERSION,\n        "contract_type": artifact.contract_type,\n        "artifact_id": artifact.artifact_id,\n        "context": artifact.context.as_dict(),\n  
