@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
@@ -242,3 +244,27 @@ def test_stage_chain_rejects_a_target_with_the_wrong_boundary() -> None:
 
     with pytest.raises(ValueError, match="factual evidence boundary"):
         validate_stage_contexts(factual, query, target)
+
+
+def test_stage_chain_rejects_a_target_from_another_observation_stream() -> None:
+    observations, actions, counterfactual = _arrays()
+    context = _context(observations, actions, counterfactual)
+    factual = build_factual_evidence_context(
+        context,
+        observations,
+        actions,
+        evidence_frame_stop=6,
+    )
+    query = build_counterfactual_query_context(_query(context, counterfactual))
+    target = build_evaluation_target(
+        context,
+        observations,
+        target_frame_start=6,
+    )
+    changed_target = replace(
+        target,
+        target=replace(target.target, stream_id="other-observation-stream"),
+    )
+
+    with pytest.raises(ValueError, match="factual observation stream"):
+        validate_stage_contexts(factual, query, changed_target)
