@@ -17,4 +17,4 @@
     )
     _replace(
         "tests/test_preacquisition_readiness.py",
-        '''    for name, relative in paths.items(): 
+        '''    for name, relative in paths.items():
