@@ -26,7 +26,10 @@ def _replace(path: str, old: str, new: str) -> None:
                 encoding="utf-8",
             )
             return
-        raise RuntimeError(f"expected one replacement in {path}, found {count}")
+        raise RuntimeError(
+            f"expected one replacement in {path}, found {count}; "
+            f"anchor={old[:180]!r}"
+        )
     target.write_text(text.replace(old, new), encoding="utf-8")
 
 
