@@ -209,9 +209,7 @@ class CounterfactualQueryContext:
         nodes = values.get("query_node_indices")
         policy = str(values["contact_policy"])
         if policy not in {"same_grasp", "new_contact"}:
-            raise ValueError(
-                "contact_policy must be 'same_grasp' or 'new_contact'"
-            )
+            raise ValueError("contact_policy must be 'same_grasp' or 'new_contact'")
         language = values.get("language")
         return cls(
             protocol_id=str(values["protocol_id"]),
@@ -281,9 +279,7 @@ def build_factual_evidence_context(
     """Derive a factual identity without reading or hashing held-out observations."""
 
     if not (
-        context.o_plus.frame_start
-        < evidence_frame_stop
-        <= context.o_plus.frame_stop
+        context.o_plus.frame_start < evidence_frame_stop <= context.o_plus.frame_stop
     ):
         raise ValueError("evidence_frame_stop must be a nonempty O+ prefix")
     _require_window_digest(observations, context.o_minus, name="O-")
@@ -339,9 +335,7 @@ def build_evaluation_target(
     """Derive the held-out target identity after the evaluation suffix is opened."""
 
     if not (
-        context.o_plus.frame_start
-        <= target_frame_start
-        < context.o_plus.frame_stop
+        context.o_plus.frame_start <= target_frame_start < context.o_plus.frame_stop
     ):
         raise ValueError("target_frame_start must leave a nonempty O+ suffix")
     _require_window_digest(observations, context.o_plus, name="O+")
