@@ -251,26 +251,35 @@ jobs:
       - name: Produce deterministic smoke bundles
         run: |
           causal4d-counterfactual-benchmark \
-            --output-dir runs/causal4d-counterfactual-v1
+            --output-dir build/bundles/counterfactual \
+            --seeds 0 \
+            --frames 18 \
+            --training-repeats 1 \
+            --parameter-grid-count 3
           causal4d-latent-contact-benchmark \
-            --output-dir runs/causal4d-latent-contact-v1
+            --output-dir build/bundles/latent-contact \
+            --seeds 0 \
+            --frames 18 \
+            --training-repeats 1 \
+            --parameter-grid-count 3 \
+            --contact-parameter-particles 4
       - name: Verify produced bundles
         run: |
           python scripts/ci/verify_result_bundle.py \
-            runs/causal4d-counterfactual-v1/manifest.json
+            build/bundles/counterfactual/manifest.json
           python scripts/ci/verify_result_bundle.py \
-            runs/causal4d-latent-contact-v1/manifest.json
+            build/bundles/latent-contact/manifest.json
       - name: Archive and consume bundles in a clean location
         run: |
           mkdir -p build/archives build/consumed
-          tar -C runs -czf build/archives/counterfactual.tar.gz causal4d-counterfactual-v1
-          tar -C runs -czf build/archives/latent-contact.tar.gz causal4d-latent-contact-v1
+          tar -C build/bundles -czf build/archives/counterfactual.tar.gz counterfactual
+          tar -C build/bundles -czf build/archives/latent-contact.tar.gz latent-contact
           tar -C build/consumed -xzf build/archives/counterfactual.tar.gz
           tar -C build/consumed -xzf build/archives/latent-contact.tar.gz
           python scripts/ci/verify_result_bundle.py \
-            build/consumed/causal4d-counterfactual-v1/manifest.json
+            build/consumed/counterfactual/manifest.json
           python scripts/ci/verify_result_bundle.py \
-            build/consumed/causal4d-latent-contact-v1/manifest.json
+            build/consumed/latent-contact/manifest.json
       - name: Upload smoke bundles
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
