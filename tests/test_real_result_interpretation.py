@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from itertools import product
 import json
 from pathlib import Path
@@ -8,6 +9,7 @@ import pytest
 
 from causal4d.cli.command_registry import find_command
 from causal4d.cli.real_result_interpretation import main as interpretation_main
+from causal4d.real_experiment_freeze import MILESTONE_ID, SCHEMA_VERSION
 from causal4d.real_result_interpretation import (
     EXPECTED_PREACQUISITION_SHA256,
     EXPECTED_PROTOCOL_DESIGN_SHA256,
@@ -17,6 +19,10 @@ from causal4d.real_result_interpretation import (
     load_real_result_interpretation,
     validate_real_result_interpretation,
     write_real_result_interpretation,
+)
+from causal4d.real_result_source_verification import (
+    REGISTERED_ANALYSIS_ARTIFACT_KIND,
+    validate_real_result_source_verification,
 )
 
 _DIGEST = "1" * 64
@@ -50,6 +56,55 @@ def _gate_payload(**changes) -> dict[str, object]:
         "artifact_kind": "Causal4DRealResultGateSummary",
         **gates.as_dict(),
     }
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _write_registered_sources(
+    tmp_path: Path,
+) -> tuple[Path, Path, str, str]:
+    freeze_path = tmp_path / "method-freeze.json"
+    freeze_payload = {
+        "schema_version": SCHEMA_VERSION,
+        "milestone_id": MILESTONE_ID,
+        "status": "sealed",
+        "locked_before_confirmatory_collection": True,
+        "target_outcomes_observed_at_freeze": False,
+        "protocol": {"design_sha256": EXPECTED_PROTOCOL_DESIGN_SHA256},
+        "preacquisition": {
+            "amendment_sha256": EXPECTED_PREACQUISITION_SHA256
+        },
+        "analysis_contract": {
+            "target_outcomes_may_select_method_or_hyperparameters": False,
+            "optional_branches_may_change_primary_analysis": False,
+        },
+    }
+    freeze_path.write_text(
+        json.dumps(freeze_payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    freeze_sha = _sha256(freeze_path)
+
+    analysis_path = tmp_path / "registered-analysis.json"
+    analysis_payload = {
+        "schema_version": 1,
+        "artifact_kind": REGISTERED_ANALYSIS_ARTIFACT_KIND,
+        "analysis_id": "causal4d-real-analysis-unit",
+        "protocol_id": EXPECTED_PROTOCOL_ID,
+        "protocol_design_sha256": EXPECTED_PROTOCOL_DESIGN_SHA256,
+        "preacquisition_amendment_sha256": EXPECTED_PREACQUISITION_SHA256,
+        "method_freeze_sha256": freeze_sha,
+        "primary_analysis_locked": True,
+        "target_outcomes_may_select_method_or_hyperparameters": False,
+        "optional_branches_may_change_primary_analysis": False,
+    }
+    analysis_path.write_text(
+        json.dumps(analysis_payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return freeze_path, analysis_path, freeze_sha, _sha256(analysis_path)
 
 
 def test_grouped_cli_registers_the_interpretation_contract() -> None:
@@ -154,25 +209,56 @@ def test_interpretation_round_trip_and_tamper_detection(tmp_path: Path) -> None:
         write_real_result_interpretation(path, result)
 
 
-def test_cli_writes_artifact_and_can_fail_closed_on_incomplete(
+def test_cli_verifies_sources_and_can_fail_closed_on_incomplete(
     tmp_path: Path,
     capsys,
 ) -> None:
+    freeze_path, analysis_path, freeze_sha, analysis_sha = (
+        _write_registered_sources(tmp_path)
+    )
     input_path = tmp_path / "gates.json"
     output_path = tmp_path / "interpretation.json"
     input_path.write_text(
-        json.dumps(_gate_payload(), indent=2, sort_keys=True) + "\n",
+        json.dumps(
+            _gate_payload(
+                method_freeze_sha256=freeze_sha,
+                analysis_manifest_sha256=analysis_sha,
+            ),
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
         encoding="utf-8",
     )
-    assert interpretation_main([str(input_path), str(output_path)]) == 0
+    arguments = [
+        str(input_path),
+        str(output_path),
+        "--method-freeze",
+        str(freeze_path),
+        "--analysis-manifest",
+        str(analysis_path),
+    ]
+    assert interpretation_main(arguments) == 0
     assert load_real_result_interpretation(output_path).paper_status == "positive"
-    assert json.loads(capsys.readouterr().out)["rule_id"] == "full_chain_supported"
+    verification_path = tmp_path / "interpretation.sources.json"
+    verification = validate_real_result_source_verification(
+        json.loads(verification_path.read_text(encoding="utf-8"))
+    )
+    console = json.loads(capsys.readouterr().out)
+    assert console["rule_id"] == "full_chain_supported"
+    assert console["source_verification"]["verification_sha256"] == (
+        verification["verification_sha256"]
+    )
 
     incomplete_input = tmp_path / "incomplete.json"
     incomplete_output = tmp_path / "incomplete-result.json"
     incomplete_input.write_text(
         json.dumps(
-            _gate_payload(evidence_status="incomplete"),
+            _gate_payload(
+                evidence_status="incomplete",
+                method_freeze_sha256=freeze_sha,
+                analysis_manifest_sha256=analysis_sha,
+            ),
             indent=2,
             sort_keys=True,
         )
@@ -184,6 +270,10 @@ def test_cli_writes_artifact_and_can_fail_closed_on_incomplete(
             [
                 str(incomplete_input),
                 str(incomplete_output),
+                "--method-freeze",
+                str(freeze_path),
+                "--analysis-manifest",
+                str(analysis_path),
                 "--require-complete",
             ]
         )
@@ -191,16 +281,55 @@ def test_cli_writes_artifact_and_can_fail_closed_on_incomplete(
     )
 
 
-def test_checked_in_template_cannot_pass_as_evidence() -> None:
-    template_path = (
-        Path(__file__).parents[1]
-        / "configs"
-        / "causal4d"
-        / "real_result_gate_summary_v1.template.json"
+def test_cli_rejects_source_hash_drift(tmp_path: Path) -> None:
+    freeze_path, analysis_path, freeze_sha, analysis_sha = (
+        _write_registered_sources(tmp_path)
     )
-    payload = json.loads(template_path.read_text(encoding="utf-8"))
+    gates_path = tmp_path / "gates.json"
+    gates_path.write_text(
+        json.dumps(
+            _gate_payload(
+                method_freeze_sha256=freeze_sha,
+                analysis_manifest_sha256=analysis_sha,
+            )
+        ),
+        encoding="utf-8",
+    )
+    analysis_path.write_text(
+        analysis_path.read_text(encoding="utf-8") + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="analysis-manifest file SHA-256"):
+        interpretation_main(
+            [
+                str(gates_path),
+                str(tmp_path / "interpretation.json"),
+                "--method-freeze",
+                str(freeze_path),
+                "--analysis-manifest",
+                str(analysis_path),
+            ]
+        )
+
+
+def test_checked_in_templates_cannot_pass_as_evidence() -> None:
+    root = Path(__file__).parents[1] / "configs" / "causal4d"
+    gate_payload = json.loads(
+        (root / "real_result_gate_summary_v1.template.json").read_text(
+            encoding="utf-8"
+        )
+    )
     with pytest.raises(ValueError, match="artifact kind"):
-        RealResultGateSummary.from_dict(payload)
+        RealResultGateSummary.from_dict(gate_payload)
+
+    analysis_payload = json.loads(
+        (root / "real_analysis_manifest_v1.template.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert analysis_payload["artifact_kind"].endswith("Template")
+    assert analysis_payload["primary_analysis_locked"] is False
 
 
 def test_gate_summary_rejects_wrong_frozen_protocol_identity() -> None:
