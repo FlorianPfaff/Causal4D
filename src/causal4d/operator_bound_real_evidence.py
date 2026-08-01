@@ -10,6 +10,7 @@ from typing import Any
 
 from causal4d.operator_identity_integration import (
     validate_method_freeze_identity_evidence,
+    validate_preacquisition_identity_bindings,
 )
 from causal4d.operator_registry import (
     OPERATOR_REGISTRY_PATH,
@@ -68,8 +69,7 @@ def build_operator_bound_real_evidence_status(
     )
     root = Path(dataset_root)
     prerequisites = {
-        str(name): dict(result)
-        for name, result in status["prerequisites"].items()
+        str(name): dict(result) for name, result in status["prerequisites"].items()
     }
 
     if repository_root is None:
@@ -87,6 +87,9 @@ def build_operator_bound_real_evidence_status(
             root,
         )
     prerequisites["operator_registry"] = registry_result
+    prerequisites["operator_identity_bindings"] = (
+        validate_preacquisition_identity_bindings(root, registry)
+    )
 
     freeze_result = prerequisites["method_freeze"]
     attestation_result = prerequisites["method_freeze_validation"]

@@ -15,9 +15,7 @@ from causal4d.atomic_io import atomic_write_json
 
 OPERATOR_REGISTRY_SCHEMA_VERSION = 1
 OPERATOR_REGISTRY_ARTIFACT_KIND = "Causal4DOperatorIdentityRegistry"
-OPERATOR_REGISTRY_TEMPLATE_ARTIFACT_KIND = (
-    "Causal4DOperatorIdentityRegistryTemplate"
-)
+OPERATOR_REGISTRY_TEMPLATE_ARTIFACT_KIND = "Causal4DOperatorIdentityRegistryTemplate"
 OPERATOR_REGISTRY_PATH = "preacquisition/operator_registry.json"
 OPERATOR_REGISTRY_TEMPLATE_PATH = "preacquisition/operator_registry.template.json"
 PERSON_IDENTITY_DIGEST_METHOD = "hmac-sha256-domain-separated-v1"
@@ -223,8 +221,7 @@ def validate_operator_registry(
         "operator registry pre-acquisition amendment mismatch",
     )
     _require(
-        registry.get("person_identity_digest_method")
-        == PERSON_IDENTITY_DIGEST_METHOD,
+        registry.get("person_identity_digest_method") == PERSON_IDENTITY_DIGEST_METHOD,
         "operator registry uses an unsupported identity digest method",
     )
     sealed_at = _parse_utc_timestamp(
@@ -373,8 +370,7 @@ def require_distinct_operator_people(
     """Reject aliases or duplicate identities where independence is required."""
 
     _require(
-        first.get("person_identity_sha256")
-        != second.get("person_identity_sha256"),
+        first.get("person_identity_sha256") != second.get("person_identity_sha256"),
         relationship,
     )
 
@@ -483,8 +479,7 @@ def validate_gate_approver_identity(
             "software environment approval cannot resolve the method freezer identity",
         )
         _require(
-            approver["person_identity_sha256"]
-            != freezer_person_identity_sha256,
+            approver["person_identity_sha256"] != freezer_person_identity_sha256,
             "software environment approval is not independent of the method freezer",
         )
     return approver
@@ -667,8 +662,7 @@ def seal_operator_registry(
         "operator registry draft binds a different pre-acquisition amendment",
     )
     _require(
-        draft.get("person_identity_digest_method")
-        == PERSON_IDENTITY_DIGEST_METHOD,
+        draft.get("person_identity_digest_method") == PERSON_IDENTITY_DIGEST_METHOD,
         "operator registry draft uses an unsupported identity digest method",
     )
     _require(

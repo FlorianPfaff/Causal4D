@@ -10,6 +10,7 @@ from causal4d.atomic_io import atomic_write_json
 from causal4d.operator_identity_integration import (
     seal_registered_preacquisition_gate as seal_preacquisition_gate,
     validate_gate_file_operator_identity,
+    validate_preacquisition_identity_bindings,
 )
 from causal4d.operator_registry import load_operator_registry_prerequisite
 from causal4d.preacquisition_gate_validation import _validate_gate_file
@@ -112,8 +113,10 @@ def _identity_bound_gate_results(
             prerequisites=prerequisites,
             verify_file_hashes=verify_file_hashes,
         )
+        result["identity_pending"] = False
         if result["valid"]:
             if registry is None:
+                result["identity_pending"] = True
                 result["valid"] = False
                 result["error"] = "operator registry is unavailable"
             else:
@@ -151,13 +154,15 @@ def evaluate_preacquisition_readiness(
 
     root = Path(dataset_root)
     prerequisites = {
-        str(name): dict(value)
-        for name, value in real_status["prerequisites"].items()
+        str(name): dict(value) for name, value in real_status["prerequisites"].items()
     }
-    operator_registry_result, operator_registry = (
-        load_operator_registry_prerequisite(protocol, v4, root)
+    operator_registry_result, operator_registry = load_operator_registry_prerequisite(
+        protocol, v4, root
     )
     prerequisites["operator_registry"] = operator_registry_result
+    prerequisites["operator_identity_bindings"] = (
+        validate_preacquisition_identity_bindings(root, operator_registry)
+    )
     gate_results = _identity_bound_gate_results(
         protocol,
         v2,
@@ -176,26 +181,37 @@ def evaluate_preacquisition_readiness(
         "timebase_calibration",
         "contact_registration",
         "operator_registry",
+        "operator_identity_bindings",
         "method_freeze",
         "method_freeze_validation",
     )
     missing_prerequisites = [
-        name for name in prerequisite_names if not prerequisites[name].get("present")
+        name
+        for name in prerequisite_names
+        if not prerequisites[name].get("present")
+        or prerequisites[name].get("template") is True
     ]
     malformed_prerequisites = [
         name
         for name in prerequisite_names
-        if prerequisites[name].get("present") and not prerequisites[name].get("valid")
+        if prerequisites[name].get("present")
+        and prerequisites[name].get("template") is not True
+        and not prerequisites[name].get("valid")
     ]
     missing_or_template_gates = [
         gate_id
         for gate_id, result in gate_results.items()
-        if not result["present"] or result["template"]
+        if not result["present"]
+        or result["template"]
+        or result.get("identity_pending") is True
     ]
     malformed_gates = [
         gate_id
         for gate_id, result in gate_results.items()
-        if result["present"] and not result["template"] and not result["valid"]
+        if result["present"]
+        and not result["template"]
+        and result.get("identity_pending") is not True
+        and not result["valid"]
     ]
 
     manifest_count = int(real_status.get("manifest_executions", 0))
@@ -268,9 +284,7 @@ def evaluate_preacquisition_readiness(
             name="method freeze verified_at_utc",
         )
         if registry_sealed_at > verified_at:
-            chronology_blockers.append(
-                "operator_registry_postdates_freeze_attestation"
-            )
+            chronology_blockers.append("operator_registry_postdates_freeze_attestation")
 
     blockers: list[str] = []
     blockers.extend(f"prerequisite:{name}" for name in missing_prerequisites)
@@ -294,6 +308,9 @@ def evaluate_preacquisition_readiness(
         "operator_identities_registered": prerequisites["operator_registry"].get(
             "valid", False
         ),
+        "operator_approval_bindings_valid": prerequisites[
+            "operator_identity_bindings"
+        ].get("valid", False),
         "actuator_sync_passed": gate_results["actuator_sync_passed"]["valid"],
         "support_registration_passed": gate_results["support_registration_passed"][
             "valid"
@@ -302,6 +319,7 @@ def evaluate_preacquisition_readiness(
         "analysis_code_frozen": bool(
             prerequisites["method_freeze"].get("valid")
             and prerequisites["method_freeze_validation"].get("valid")
+            and prerequisites["operator_identity_bindings"].get("valid")
         ),
         "software_environment_locked": gate_results["software_environment_locked"][
             "valid"
@@ -403,5 +421,6 @@ __all__ = [
     "scaffold_preacquisition_readiness",
     "seal_preacquisition_gate",
     "source_panel_execution_manifest_template",
+    "validate_preacquisition_identity_bindings",
     "write_preacquisition_readiness",
 ]

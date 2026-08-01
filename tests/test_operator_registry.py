@@ -7,6 +7,9 @@ from pathlib import Path
 import pytest
 
 import causal4d.preacquisition_readiness_contracts as readiness_contracts
+from causal4d.operator_identity_integration import (
+    validate_preacquisition_identity_bindings,
+)
 from causal4d.operator_registry import (
     OPERATOR_REGISTRY_ARTIFACT_KIND,
     OPERATOR_REGISTRY_PATH,
@@ -26,7 +29,10 @@ from causal4d.operator_registry import (
     validate_gate_approver_identity,
     validate_operator_registry,
 )
-from causal4d.preacquisition_readiness_contracts import readiness_evidence_sha256
+from causal4d.preacquisition_readiness_contracts import (
+    GATE_PATHS,
+    readiness_evidence_sha256,
+)
 
 
 def _registered_values() -> tuple[dict, dict]:
@@ -296,3 +302,100 @@ def test_portable_readiness_identity_binds_registry_not_mount_path() -> None:
     changed = deepcopy(relocated)
     changed["prerequisites"]["operator_registry"]["artifact_sha256"] = "b" * 64
     assert readiness_evidence_sha256(changed) != first
+
+
+def _write_identity_governed_sources(
+    root: Path,
+    *,
+    contact_approver: str = "verifier.independent",
+    verifier_id: str = "verifier.independent",
+) -> None:
+    sources = {
+        "method_freeze.json": {
+            "status": "sealed",
+            "frozen_by": "freezer.primary",
+            "frozen_at_utc": "2026-07-30T09:00:00Z",
+        },
+        "method_freeze_validation.json": {
+            "validation_passed": True,
+            "verifier_id": verifier_id,
+            "verified_at_utc": "2026-07-30T09:05:00Z",
+        },
+        "timebase_calibration.json": {
+            "status": "approved",
+            "approval": {
+                "approved": True,
+                "approver_id": "verifier.independent",
+                "approved_at_utc": "2026-07-30T09:10:00Z",
+            },
+        },
+        "contact_registration.json": {
+            "approval": {
+                "approved": True,
+                "approver_id": contact_approver,
+                "approved_at_utc": "2026-07-30T09:15:00Z",
+            }
+        },
+    }
+    for relative, payload in sources.items():
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload), encoding="utf-8")
+    for gate_id, relative in GATE_PATHS.items():
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "status": "passed",
+                    "approval": {
+                        "approved": True,
+                        "approver_id": "verifier.independent",
+                        "approved_at_utc": "2026-07-30T09:20:00Z",
+                    },
+                    "gate_id": gate_id,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+
+def test_identity_bindings_cover_all_governed_approvals(tmp_path: Path) -> None:
+    registry = _sealed_registry()
+    _write_identity_governed_sources(tmp_path)
+
+    result = validate_preacquisition_identity_bindings(tmp_path, registry)
+
+    assert result["valid"] is True
+    assert result["freezer_operator_id"] == "freezer.primary"
+    assert result["verifier_operator_id"] == "verifier.independent"
+    assert result["approval_bindings"]["timebase_calibration"]["operator_id"] == (
+        "verifier.independent"
+    )
+    assert result["approval_bindings"]["contact_registration"]["operator_id"] == (
+        "verifier.independent"
+    )
+    assert len(result["source_sha256"]) == 4 + len(GATE_PATHS)
+
+
+def test_identity_bindings_reject_unknown_contact_approver(tmp_path: Path) -> None:
+    registry = _sealed_registry()
+    _write_identity_governed_sources(tmp_path, contact_approver="unknown.alias")
+
+    result = validate_preacquisition_identity_bindings(tmp_path, registry)
+
+    assert result["valid"] is False
+    assert result["template"] is False
+    assert "not registered" in result["error"]
+
+
+def test_identity_bindings_reject_nonindependent_freeze_verifier(
+    tmp_path: Path,
+) -> None:
+    registry = _sealed_registry()
+    _write_identity_governed_sources(tmp_path, verifier_id="freezer.primary")
+
+    result = validate_preacquisition_identity_bindings(tmp_path, registry)
+
+    assert result["valid"] is False
+    assert "lacks required role" in result["error"]

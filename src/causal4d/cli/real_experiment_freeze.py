@@ -106,9 +106,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     expected_causal4d_commit_sha=git_state["commit_sha"],
                 ),
                 **identity,
-                "operator_registry_artifact_sha256": registry_result[
-                    "artifact_sha256"
-                ],
+                "operator_registry_artifact_sha256": registry_result["artifact_sha256"],
                 "output": str(output.resolve()),
             }
         elif args.command == "attest":
@@ -143,9 +141,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ],
                 "verifier_id": attestation["verifier_id"],
                 **identity,
-                "operator_registry_artifact_sha256": registry_result[
-                    "artifact_sha256"
-                ],
+                "operator_registry_artifact_sha256": registry_result["artifact_sha256"],
                 "output": str(output.resolve()),
             }
         else:
@@ -176,9 +172,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     verify_files=not args.skip_file_hashes,
                 ),
                 **identity,
-                "operator_registry_artifact_sha256": registry_result[
-                    "artifact_sha256"
-                ],
+                "operator_registry_artifact_sha256": registry_result["artifact_sha256"],
                 "checkout_clean": True,
             }
     except (OSError, ValueError, json.JSONDecodeError) as error:

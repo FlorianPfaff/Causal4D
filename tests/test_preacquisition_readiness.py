@@ -137,12 +137,61 @@ def _patch_gate_results(monkeypatch, overrides: dict[str, dict] | None = None) -
         approved_at="2026-07-30T12:10:00Z",
     )
     results.update(overrides or {})
+    registry = {
+        "artifact_sha256": "1" * 64,
+        "sealed_at_utc": "2026-07-30T08:00:00Z",
+    }
 
     def validate(gate_id, *args, **kwargs):
         del args, kwargs
         return deepcopy(results[gate_id])
 
+    def load_registry(protocol, v4, root):
+        del protocol, v4
+        return (
+            {
+                "path": str(Path(root) / "preacquisition/operator_registry.json"),
+                "present": True,
+                "valid": True,
+                "artifact_sha256": registry["artifact_sha256"],
+                "sealed_at_utc": registry["sealed_at_utc"],
+                "error": None,
+            },
+            registry,
+        )
+
+    def identity_bindings(root, supplied_registry):
+        assert supplied_registry is registry
+        return {
+            "path": str(Path(root) / "preacquisition/operator_registry.json"),
+            "present": True,
+            "template": False,
+            "valid": True,
+            "passed": True,
+            "operator_registry_artifact_sha256": registry["artifact_sha256"],
+            "source_sha256": {"identity-fixture": "2" * 64},
+            "error": None,
+        }
+
     monkeypatch.setattr(readiness_module, "_validate_gate_file", validate)
+    monkeypatch.setattr(
+        readiness_module,
+        "load_operator_registry_prerequisite",
+        load_registry,
+    )
+    monkeypatch.setattr(
+        readiness_module,
+        "validate_preacquisition_identity_bindings",
+        identity_bindings,
+    )
+    monkeypatch.setattr(
+        readiness_module,
+        "validate_gate_file_operator_identity",
+        lambda gate_id, path, registry, prerequisites: {
+            "approver_operator_id": f"approver.{gate_id}",
+            "approver_person_identity_sha256": "3" * 64,
+        },
+    )
 
 
 def test_gate_template_binds_the_exact_registered_source_panel() -> None:
@@ -574,3 +623,53 @@ def test_readiness_evidence_digest_is_mount_independent(
 
     assert relocated["evidence_sha256"] == first["evidence_sha256"]
     assert relocated["status_sha256"] != first["status_sha256"]
+
+
+def test_missing_operator_registry_is_incomplete_not_malformed(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    protocol, v2, v4 = _registered_values()
+    _patch_gate_results(monkeypatch)
+    monkeypatch.setattr(
+        readiness_module,
+        "load_operator_registry_prerequisite",
+        lambda protocol, v4, root: (
+            {
+                "path": str(Path(root) / "preacquisition/operator_registry.json"),
+                "present": False,
+                "valid": False,
+                "error": "operator_registry.json is missing",
+            },
+            None,
+        ),
+    )
+    monkeypatch.setattr(
+        readiness_module,
+        "validate_preacquisition_identity_bindings",
+        lambda root, registry: {
+            "path": str(Path(root) / "preacquisition/operator_registry.json"),
+            "present": False,
+            "template": True,
+            "valid": False,
+            "passed": False,
+            "error": "operator identity bindings are incomplete",
+        },
+    )
+
+    status = evaluate_preacquisition_readiness(
+        protocol,
+        v2,
+        v4,
+        tmp_path,
+        _real_status(),
+        verify_file_hashes=True,
+    )
+
+    assert status["valid"] is True
+    assert status["ready"] is False
+    assert "operator_registry" in status["missing_prerequisites"]
+    assert "operator_identity_bindings" in status["missing_prerequisites"]
+    assert status["malformed_prerequisites"] == []
+    assert status["malformed_gates"] == []
+    assert set(status["missing_or_template_gates"]) == set(GATE_PATHS)
