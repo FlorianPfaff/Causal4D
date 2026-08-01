@@ -300,6 +300,63 @@ def _validate_software_environment(
             f"Python environment {field} is missing",
         )
 
+    runtime = checks.get("runtime_environment")
+    _require(isinstance(runtime, Mapping), "runtime environment declaration is missing")
+    report = runtime.get("resolved_dependency_report")
+    _require(
+        isinstance(report, str) and report in evidence_paths,
+        "resolved dependency report is not bound as evidence",
+    )
+    backend = runtime.get("execution_backend")
+    _require(
+        backend in {"numpy_cpu", "warp_cpu", "cuda"},
+        "execution_backend must be numpy_cpu, warp_cpu, or cuda",
+    )
+    for field in ("numpy_version", "scipy_version"):
+        _require(
+            isinstance(runtime.get(field), str) and bool(runtime[field].strip()),
+            f"runtime environment {field} is missing",
+        )
+    for field in (
+        "torch_version",
+        "warp_version",
+        "opencv_version",
+        "cuda_runtime_version",
+        "cuda_driver_version",
+    ):
+        value = runtime.get(field)
+        _require(
+            value is None or (isinstance(value, str) and bool(value.strip())),
+            f"runtime environment {field} is invalid",
+        )
+    if backend in {"warp_cpu", "cuda"}:
+        for field in ("torch_version", "warp_version"):
+            _require(
+                isinstance(runtime.get(field), str) and bool(runtime[field].strip()),
+                f"{backend} requires runtime environment {field}",
+            )
+    if backend == "cuda":
+        for field in ("cuda_runtime_version", "cuda_driver_version"):
+            _require(
+                isinstance(runtime.get(field), str) and bool(runtime[field].strip()),
+                f"cuda requires runtime environment {field}",
+            )
+    containerized = runtime.get("containerized")
+    _require(isinstance(containerized, bool), "containerized must be Boolean")
+    image_digest = runtime.get("container_image_digest")
+    if containerized:
+        _require(
+            isinstance(image_digest, str)
+            and image_digest.startswith("sha256:")
+            and _is_hex_digest(image_digest.removeprefix("sha256:"), 64),
+            "container image digest must be sha256:<64 lowercase hex>",
+        )
+    else:
+        _require(
+            image_digest is None,
+            "non-containerized execution must not declare an image digest",
+        )
+
 
 def _validate_gate_file(
     gate_id: str,

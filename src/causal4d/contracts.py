@@ -6,10 +6,11 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, ClassVar, Literal, Mapping
+from typing import Any, BinaryIO, ClassVar, Literal, Mapping
 
 import numpy as np
 
+from causal4d.atomic_io import atomic_write_binary
 from causal4d.immutable_array import readonly_array as _readonly_array
 from causal4d.immutable_json import validated_json_mapping
 
@@ -671,11 +672,15 @@ Contract = (
 )
 
 
-def save_contract(path: str | Path, artifact: Contract) -> None:
-    """Write a contract as JSON metadata plus non-pickled NumPy arrays."""
+def save_contract(
+    path: str | Path,
+    artifact: Contract,
+    *,
+    overwrite: bool = True,
+) -> None:
+    """Atomically write a validated non-pickled contract archive."""
 
     target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
     descriptor = {
         "contract_version": CONTRACT_VERSION,
         "contract_type": artifact.contract_type,
@@ -684,12 +689,26 @@ def save_contract(path: str | Path, artifact: Contract) -> None:
         "payload": artifact._scalar_payload(),
     }
     arrays = artifact._array_payload()
-    np.savez_compressed(
+
+    def write_archive(handle: BinaryIO) -> None:
+        np.savez_compressed(
+            handle,
+            descriptor_json=np.asarray(
+                json.dumps(descriptor, sort_keys=True, separators=(",", ":"))
+            ),
+            **arrays,
+        )
+
+    def validate_archive(temporary: Path) -> None:
+        restored = load_contract(temporary)
+        if restored.artifact_id != artifact.artifact_id:
+            raise ValueError("written Causal4D artifact failed validation")
+
+    atomic_write_binary(
         target,
-        descriptor_json=np.asarray(
-            json.dumps(descriptor, sort_keys=True, separators=(",", ":"))
-        ),
-        **arrays,
+        write_archive,
+        overwrite=overwrite,
+        validate=validate_archive,
     )
 
 

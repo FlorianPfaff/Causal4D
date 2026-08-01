@@ -16,6 +16,7 @@ from causal4d.real_experiment_freeze import (
     REQUIRED_LOCKED_PATHS,
     build_method_freeze_manifest,
     validate_method_freeze_manifest,
+    write_method_freeze_manifest,
     validate_repository_checkout,
 )
 
@@ -270,3 +271,17 @@ def test_checkout_validation_rejects_tracked_or_untracked_drift(
     (root / "untracked-analysis.py").write_text("print('drift')\n")
     with pytest.raises(ValueError, match="checkout is dirty"):
         validate_repository_checkout(manifest, root)
+
+
+def test_method_freeze_publication_is_once_only(tmp_path: Path) -> None:
+    target = tmp_path / "method_freeze.json"
+    first = {"schema_version": 1, "value": "first"}
+    second = {"schema_version": 1, "value": "second"}
+
+    write_method_freeze_manifest(target, first)
+    original = target.read_bytes()
+    with pytest.raises(FileExistsError):
+        write_method_freeze_manifest(target, second)
+
+    assert target.read_bytes() == original
+    assert json.loads(target.read_text(encoding="utf-8")) == first

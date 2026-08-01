@@ -9,6 +9,7 @@ import pytest
 
 import causal4d.preacquisition_gate_validation as gate_validation_module
 import causal4d.preacquisition_readiness as readiness_module
+import causal4d.preacquisition_readiness_contracts as readiness_contracts
 from causal4d.cli import preacquisition_readiness as readiness_cli
 from causal4d.preacquisition_readiness import (
     GATE_PATHS,
@@ -17,6 +18,7 @@ from causal4d.preacquisition_readiness import (
     evaluate_preacquisition_readiness,
     gate_evidence_sha256,
     gate_evidence_template,
+    readiness_evidence_sha256,
     readiness_status_sha256,
     scaffold_preacquisition_readiness,
     seal_preacquisition_gate,
@@ -278,10 +280,16 @@ def test_software_gate_binds_freeze_attestation_and_distributions(
         "causal4d": "software/causal4d-0.4.1.whl",
         "bayesian_phystwin": "software/bayesian_phystwin-0.4.0.whl",
     }
+    environment_report = "software/resolved-environment.txt"
     for name, relative in paths.items():
         path = tmp_path / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(f"{name}-wheel".encode("utf-8"))
+    report_path = tmp_path / environment_report
+    report_path.write_text(
+        "numpy==1.26.4\nscipy==1.12.0\ntorch==2.5.1\nwarp-lang==1.6.0\n",
+        encoding="utf-8",
+    )
     prerequisites = _prerequisites()
     gate = gate_evidence_template("software_environment_locked", protocol, v2, v4)
     gate["checks"] = {
@@ -315,10 +323,24 @@ def test_software_gate_binds_freeze_attestation_and_distributions(
             "implementation": "CPython",
             "platform": "linux-x86_64",
         },
+        "runtime_environment": {
+            "resolved_dependency_report": environment_report,
+            "execution_backend": "cuda",
+            "containerized": True,
+            "container_image_digest": "sha256:" + "1" * 64,
+            "numpy_version": "1.26.4",
+            "scipy_version": "1.12.0",
+            "torch_version": "2.5.1",
+            "warp_version": "1.6.0",
+            "opencv_version": "4.10.0",
+            "cuda_runtime_version": "12.4",
+            "cuda_driver_version": "550.54",
+        },
     }
     gate["evidence"] = [
         _descriptor(tmp_path, paths["causal4d"]),
         _descriptor(tmp_path, paths["bayesian_phystwin"]),
+        _descriptor(tmp_path, environment_report),
     ]
     _seal_gate_payload(gate)
     gate["approval"]["approved_at_utc"] = "2026-07-30T12:10:00Z"
@@ -364,6 +386,7 @@ def test_readiness_opens_only_when_every_artifact_gate_passes(
     assert status["ready"] is True
     assert status["collection_gate"]["first_confirmatory_execution_allowed"] is True
     assert status["blockers"] == []
+    assert status["evidence_sha256"] == readiness_evidence_sha256(status)
     assert status["status_sha256"] == readiness_status_sha256(status)
 
 
@@ -501,3 +524,53 @@ def test_grouped_readiness_route_is_registered() -> None:
     assert command.lifecycle == "stable"
     assert command.legacy_name is None
     assert command.target.endswith("preacquisition_readiness:main")
+
+
+def test_evidence_descriptor_rejects_symlink_escape(tmp_path: Path) -> None:
+    root = tmp_path / "dataset"
+    root.mkdir()
+    outside = tmp_path / "outside.bin"
+    outside.write_bytes(b"outside")
+    linked = root / "linked.bin"
+    try:
+        linked.symlink_to(outside)
+    except OSError:
+        pytest.skip("symlinks are unavailable on this platform")
+    descriptor = {
+        "path": "linked.bin",
+        "sha256": hashlib.sha256(outside.read_bytes()).hexdigest(),
+        "bytes": outside.stat().st_size,
+    }
+
+    with pytest.raises(ValueError, match="symlink"):
+        readiness_contracts._validate_descriptor(
+            root,
+            descriptor,
+            name="linked evidence",
+            verify_file_hashes=True,
+        )
+
+
+def test_readiness_evidence_digest_is_mount_independent(
+    monkeypatch, tmp_path: Path
+) -> None:
+    protocol, v2, v4 = _registered_values()
+    _patch_gate_results(monkeypatch)
+    first = evaluate_preacquisition_readiness(
+        protocol,
+        v2,
+        v4,
+        tmp_path / "first-mount",
+        _real_status(),
+        verify_file_hashes=True,
+    )
+    relocated = deepcopy(first)
+    relocated["dataset_root"] = "/archive/relocated-dataset"
+    for section in ("prerequisites", "operational_gates"):
+        for record in relocated[section].values():
+            record["path"] = "/archive/" + Path(record.get("path", "evidence")).name
+    relocated["evidence_sha256"] = readiness_evidence_sha256(relocated)
+    relocated["status_sha256"] = readiness_status_sha256(relocated)
+
+    assert relocated["evidence_sha256"] == first["evidence_sha256"]
+    assert relocated["status_sha256"] != first["status_sha256"]

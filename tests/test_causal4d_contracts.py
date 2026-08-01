@@ -242,3 +242,18 @@ def test_contract_metadata_is_deeply_immutable_and_artifact_id_stable(
     restored = load_contract(path)
     assert restored.artifact_id == artifact_id
     assert restored.metadata == belief.metadata
+
+
+def test_contract_publication_can_refuse_overwrite(tmp_path: Path) -> None:
+    context, _ = _context()
+    first = _belief(context)
+    second = TwinBelief(**{**first.__dict__, "metadata": {"revision": 2}})
+    target = tmp_path / "belief.npz"
+
+    save_contract(target, first, overwrite=False)
+    original = target.read_bytes()
+    with pytest.raises(FileExistsError):
+        save_contract(target, second, overwrite=False)
+
+    assert target.read_bytes() == original
+    assert load_contract(target).artifact_id == first.artifact_id

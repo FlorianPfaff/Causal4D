@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 
 def _fsync_directory(path: Path) -> None:
@@ -19,6 +20,40 @@ def _fsync_directory(path: Path) -> None:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def atomic_write_binary(
+    path: str | Path,
+    writer: Callable[[BinaryIO], None],
+    *,
+    overwrite: bool = True,
+    validate: Callable[[Path], None] | None = None,
+) -> None:
+    """Publish a binary artifact atomically after an optional validation pass."""
+
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{target.name}.",
+        suffix=".tmp",
+        dir=target.parent,
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w+b") as handle:
+            writer(handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if validate is not None:
+            validate(temporary)
+        if overwrite:
+            os.replace(temporary, target)
+        else:
+            os.link(temporary, target)
+            temporary.unlink()
+        _fsync_directory(target.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def atomic_write_text(
@@ -79,4 +114,8 @@ def atomic_write_json(
     )
 
 
-__all__ = ["atomic_write_json", "atomic_write_text"]
+__all__ = [
+    "atomic_write_binary",
+    "atomic_write_json",
+    "atomic_write_text",
+]
