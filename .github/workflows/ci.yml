@@ -25,11 +25,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Set up Python 3.10
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.10"
           cache: pip
@@ -71,9 +72,11 @@ jobs:
         python-version: ["3.10", "3.12", "3.14"]
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -95,7 +98,7 @@ jobs:
             --junitxml="pytest-core-${{ matrix.python-version }}.xml"
       - name: Upload pytest report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: pytest-core-${{ matrix.python-version }}
           path: pytest-core-${{ matrix.python-version }}.xml
@@ -105,9 +108,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out Causal4D
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -135,12 +140,13 @@ jobs:
         run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
       - name: Check out pinned Bayesian-PhysTwin
         if: steps.access.outputs.enabled == 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: FlorianPfaff/Bayesian-PhysTwin
           ref: ${{ steps.pin.outputs.sha }}
           token: ${{ secrets.BPT_READ_TOKEN }}
           path: _bpt
+          persist-credentials: false
       - name: Install Causal4D and pinned provider
         if: steps.access.outputs.enabled == 'true'
         run: |
@@ -156,9 +162,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -169,7 +177,7 @@ jobs:
       - name: Validate distribution metadata
         run: python -m twine check dist/*
       - name: Upload distributions
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: python-distributions
           path: dist/
@@ -184,13 +192,15 @@ jobs:
         kind: [wheel, sdist]
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
       - name: Download distributions
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: python-distributions
           path: dist
@@ -228,9 +238,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -239,37 +251,28 @@ jobs:
       - name: Produce deterministic smoke bundles
         run: |
           causal4d-counterfactual-benchmark \
-            --output-dir build/bundles/counterfactual \
-            --seeds 0 \
-            --frames 18 \
-            --training-repeats 1 \
-            --parameter-grid-count 3
+            --output-dir runs/causal4d-counterfactual-v1
           causal4d-latent-contact-benchmark \
-            --output-dir build/bundles/latent-contact \
-            --seeds 0 \
-            --frames 18 \
-            --training-repeats 1 \
-            --parameter-grid-count 3 \
-            --contact-parameter-particles 4
+            --output-dir runs/causal4d-latent-contact-v1
       - name: Verify produced bundles
         run: |
           python scripts/ci/verify_result_bundle.py \
-            build/bundles/counterfactual/manifest.json
+            runs/causal4d-counterfactual-v1/manifest.json
           python scripts/ci/verify_result_bundle.py \
-            build/bundles/latent-contact/manifest.json
+            runs/causal4d-latent-contact-v1/manifest.json
       - name: Archive and consume bundles in a clean location
         run: |
           mkdir -p build/archives build/consumed
-          tar -C build/bundles -czf build/archives/counterfactual.tar.gz counterfactual
-          tar -C build/bundles -czf build/archives/latent-contact.tar.gz latent-contact
+          tar -C runs -czf build/archives/counterfactual.tar.gz causal4d-counterfactual-v1
+          tar -C runs -czf build/archives/latent-contact.tar.gz causal4d-latent-contact-v1
           tar -C build/consumed -xzf build/archives/counterfactual.tar.gz
           tar -C build/consumed -xzf build/archives/latent-contact.tar.gz
           python scripts/ci/verify_result_bundle.py \
-            build/consumed/counterfactual/manifest.json
+            build/consumed/causal4d-counterfactual-v1/manifest.json
           python scripts/ci/verify_result_bundle.py \
-            build/consumed/latent-contact/manifest.json
+            build/consumed/causal4d-latent-contact-v1/manifest.json
       - name: Upload smoke bundles
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: result-bundle-smoke
           path: build/archives/*.tar.gz
@@ -279,9 +282,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
       - name: Validate frozen inventory and checked-in checksums
@@ -298,11 +303,11 @@ jobs:
       contents: write
     steps:
       - name: Download distributions
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: python-distributions
           path: dist
       - name: Publish release assets
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           files: dist/*
