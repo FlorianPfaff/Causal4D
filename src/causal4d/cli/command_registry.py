@@ -124,6 +124,13 @@ GROUPED_COMMANDS = (
         lifecycle="diagnostic",
         legacy_name="causal4d-audit-real-oracle-gap",
     ),
+    CommandSpec(
+        route=("diagnostic", "real-failure-attribution"),
+        target="causal4d.cli.real_failure_attribution:main",
+        summary="Aggregate execution-accounted real failure diagnostics.",
+        lifecycle="diagnostic",
+        legacy_name="causal4d-aggregate-real-failure-attribution",
+    ),
 )
 
 
