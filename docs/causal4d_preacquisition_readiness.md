@@ -162,6 +162,7 @@ causal4d protocol readiness status \
 The resulting status includes the derived collection flags, prerequisite and gate
 validation details, confirmatory-manifest counts, blockers, a portable
 `evidence_sha256` that excludes mount-local paths, and an exact host-local
-`status_sha256`. Only `ready=true` and
-`first_confirmatory_execution_allowed=true` authorize the first confirmatory
-execution.
+`status_sha256`. Use `evidence_sha256` for archive relocation and cross-host
+comparison, and `status_sha256` to identify the exact emitted snapshot. Only
+`ready=true` and `first_confirmatory_execution_allowed=true` authorize the first
+confirmatory execution.
