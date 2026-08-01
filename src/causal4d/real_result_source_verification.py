@@ -228,7 +228,11 @@ def validate_real_result_source_verification(
         payload.get("artifact_kind") == SOURCE_VERIFICATION_ARTIFACT_KIND,
         "unexpected source-verification artifact kind",
     )
-    for field in ("protocol_id", "protocol_design_sha256", "preacquisition_amendment_sha256"):
+    for field in (
+        "protocol_id",
+        "protocol_design_sha256",
+        "preacquisition_amendment_sha256",
+    ):
         value = payload.get(field)
         _require(isinstance(value, str) and bool(value), f"{field} is missing")
     for field in ("method_freeze", "registered_analysis_manifest"):
