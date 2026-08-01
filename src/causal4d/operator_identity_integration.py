@@ -37,12 +37,20 @@ def validate_gate_file_operator_identity(
 ) -> dict[str, Any]:
     """Validate the identity behind one otherwise-valid operational gate."""
 
-    gate = _read_json_mapping(Path(path), name=f"{gate_id} gate")
+    gate_path = Path(path)
+    gate = _read_json_mapping(gate_path, name=f"{gate_id} gate")
     approval = gate.get("approval")
     _require(isinstance(approval, Mapping), f"gate approval is invalid: {gate_id}")
     freezer_digest = prerequisites.get("method_freeze", {}).get(
         "freezer_person_identity_sha256"
     )
+    if gate_id == "software_environment_locked" and freezer_digest is None:
+        method_freeze = _read_json_mapping(
+            gate_path.parent.parent / "method_freeze.json",
+            name="method freeze",
+        )
+        freezer = validate_method_freeze_operator_identity(method_freeze, registry)
+        freezer_digest = freezer["person_identity_sha256"]
     approver = validate_gate_approver_identity(
         gate_id,
         approval.get("approver_id"),
