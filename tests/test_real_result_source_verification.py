@@ -43,9 +43,7 @@ def _source_pair(
             "locked_before_confirmatory_collection": True,
             "target_outcomes_observed_at_freeze": False,
             "protocol": {"design_sha256": freeze_protocol_sha256},
-            "preacquisition": {
-                "amendment_sha256": EXPECTED_PREACQUISITION_SHA256
-            },
+            "preacquisition": {"amendment_sha256": EXPECTED_PREACQUISITION_SHA256},
             "analysis_contract": {
                 "target_outcomes_may_select_method_or_hyperparameters": False,
                 "optional_branches_may_change_primary_analysis": False,
