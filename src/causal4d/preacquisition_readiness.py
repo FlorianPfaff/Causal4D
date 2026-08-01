@@ -7,10 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from causal4d.atomic_io import atomic_write_json
-from causal4d.preacquisition_gate_validation import (
-    _validate_gate_file,
-    seal_preacquisition_gate as seal_preacquisition_gate,
+from causal4d.operator_identity_integration import (
+    seal_registered_preacquisition_gate as seal_preacquisition_gate,
+    validate_gate_file_operator_identity,
 )
+from causal4d.operator_registry import load_operator_registry_prerequisite
+from causal4d.preacquisition_gate_validation import _validate_gate_file
 from causal4d.preacquisition_readiness_contracts import (
     GATE_EVIDENCE_ARTIFACT_KIND as GATE_EVIDENCE_ARTIFACT_KIND,
     GATE_EVIDENCE_SCHEMA_VERSION as GATE_EVIDENCE_SCHEMA_VERSION,
@@ -87,6 +89,55 @@ def scaffold_preacquisition_readiness(
     }
 
 
+def _identity_bound_gate_results(
+    protocol: Mapping[str, Any],
+    v2: Mapping[str, Any],
+    v4: Mapping[str, Any],
+    dataset_root: Path,
+    prerequisites: Mapping[str, Mapping[str, Any]],
+    *,
+    registry: Mapping[str, Any] | None,
+    verify_file_hashes: bool,
+) -> dict[str, dict[str, Any]]:
+    results: dict[str, dict[str, Any]] = {}
+    for gate_id, relative in GATE_PATHS.items():
+        path = dataset_root / relative
+        result = _validate_gate_file(
+            gate_id,
+            path,
+            protocol=protocol,
+            v2=v2,
+            v4=v4,
+            dataset_root=dataset_root,
+            prerequisites=prerequisites,
+            verify_file_hashes=verify_file_hashes,
+        )
+        if result["valid"]:
+            if registry is None:
+                result["valid"] = False
+                result["error"] = "operator registry is unavailable"
+            else:
+                try:
+                    result.update(
+                        validate_gate_file_operator_identity(
+                            gate_id,
+                            path,
+                            registry,
+                            prerequisites,
+                        )
+                    )
+                except (OSError, KeyError, TypeError, ValueError) as error:
+                    message = str(error).strip()
+                    result["valid"] = False
+                    result["error"] = (
+                        f"{type(error).__name__}: {message}"
+                        if message
+                        else type(error).__name__
+                    )
+        results[gate_id] = result
+    return results
+
+
 def evaluate_preacquisition_readiness(
     protocol: Mapping[str, Any],
     v2: Mapping[str, Any],
@@ -99,20 +150,23 @@ def evaluate_preacquisition_readiness(
     """Derive all collection gates from validated artifacts and chronology."""
 
     root = Path(dataset_root)
-    prerequisites = real_status["prerequisites"]
-    gate_results = {
-        gate_id: _validate_gate_file(
-            gate_id,
-            root / relative,
-            protocol=protocol,
-            v2=v2,
-            v4=v4,
-            dataset_root=root,
-            prerequisites=prerequisites,
-            verify_file_hashes=verify_file_hashes,
-        )
-        for gate_id, relative in GATE_PATHS.items()
+    prerequisites = {
+        str(name): dict(value)
+        for name, value in real_status["prerequisites"].items()
     }
+    operator_registry_result, operator_registry = (
+        load_operator_registry_prerequisite(protocol, v4, root)
+    )
+    prerequisites["operator_registry"] = operator_registry_result
+    gate_results = _identity_bound_gate_results(
+        protocol,
+        v2,
+        v4,
+        root,
+        prerequisites,
+        registry=operator_registry,
+        verify_file_hashes=verify_file_hashes,
+    )
 
     prerequisite_names = (
         "dataset_protocol",
@@ -121,6 +175,7 @@ def evaluate_preacquisition_readiness(
         "slip_pilot",
         "timebase_calibration",
         "contact_registration",
+        "operator_registry",
         "method_freeze",
         "method_freeze_validation",
     )
@@ -150,10 +205,32 @@ def evaluate_preacquisition_readiness(
 
     chronology_blockers: list[str] = []
     freeze = prerequisites["method_freeze"]
+    attestation = prerequisites["method_freeze_validation"]
+    registry = prerequisites["operator_registry"]
+    registry_sealed_at = None
+    if registry.get("valid"):
+        registry_sealed_at = _parse_utc_timestamp(
+            registry.get("sealed_at_utc"),
+            name="operator registry sealed_at_utc",
+        )
+        for gate_id, result in gate_results.items():
+            approved_at = result.get("approved_at_utc")
+            if approved_at is not None:
+                approved = _parse_utc_timestamp(
+                    approved_at,
+                    name=f"{gate_id} approved_at_utc",
+                )
+                if registry_sealed_at > approved:
+                    chronology_blockers.append(
+                        f"operator_registry_postdates_gate:{gate_id}"
+                    )
+
     if freeze.get("valid"):
         frozen_at = _parse_utc_timestamp(
             freeze.get("frozen_at_utc"), name="method freeze frozen_at_utc"
         )
+        if registry_sealed_at is not None and registry_sealed_at > frozen_at:
+            chronology_blockers.append("operator_registry_postdates_method_freeze")
         for gate_id in OPERATIONAL_GATES_BEFORE_FREEZE:
             approved_at = gate_results[gate_id].get("approved_at_utc")
             if approved_at is not None:
@@ -167,7 +244,6 @@ def evaluate_preacquisition_readiness(
         software_approved_at = gate_results["software_environment_locked"].get(
             "approved_at_utc"
         )
-        attestation = prerequisites["method_freeze_validation"]
         if software_approved_at is not None:
             approved = _parse_utc_timestamp(
                 software_approved_at,
@@ -186,6 +262,15 @@ def evaluate_preacquisition_readiness(
                     chronology_blockers.append(
                         "software_environment_predates_freeze_attestation"
                     )
+    if registry_sealed_at is not None and attestation.get("valid"):
+        verified_at = _parse_utc_timestamp(
+            attestation.get("verified_at_utc"),
+            name="method freeze verified_at_utc",
+        )
+        if registry_sealed_at > verified_at:
+            chronology_blockers.append(
+                "operator_registry_postdates_freeze_attestation"
+            )
 
     blockers: list[str] = []
     blockers.extend(f"prerequisite:{name}" for name in missing_prerequisites)
@@ -204,6 +289,9 @@ def evaluate_preacquisition_readiness(
             "valid", False
         ),
         "slip_pilot_passed_or_versioned_out": prerequisites["slip_pilot"].get(
+            "valid", False
+        ),
+        "operator_identities_registered": prerequisites["operator_registry"].get(
             "valid", False
         ),
         "actuator_sync_passed": gate_results["actuator_sync_passed"]["valid"],
