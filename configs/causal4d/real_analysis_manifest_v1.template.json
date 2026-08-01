@@ -1,0 +1,12 @@
+{
+  "analysis_id": null,
+  "artifact_kind": "Causal4DRegisteredRealAnalysisManifestTemplate",
+  "method_freeze_sha256": null,
+  "optional_branches_may_change_primary_analysis": false,
+  "preacquisition_amendment_sha256": "0e167538a7824e5ec053031d8359d4e9b4ff89ad61a85666400a86c2a88ac42f",
+  "primary_analysis_locked": false,
+  "protocol_design_sha256": "6d61f2bea96af0ba04faaf3476990b58cd87e0a9c826420c254a012dec647968",
+  "protocol_id": "causal4d-sloth-multi-action-v1",
+  "schema_version": 1,
+  "target_outcomes_may_select_method_or_hyperparameters": false
+}
