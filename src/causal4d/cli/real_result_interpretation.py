@@ -47,7 +47,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         or _default_verification_path(arguments.output)
     )
     if verification_output.resolve() == arguments.output.resolve():
-        parser.error("source-verification output must differ from interpretation output")
+        parser.error(
+            "source-verification output must differ from interpretation output"
+        )
     if not arguments.overwrite:
         existing = [
             str(path)
