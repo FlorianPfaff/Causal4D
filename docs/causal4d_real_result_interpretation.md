@@ -12,6 +12,11 @@ not raw target metrics**. The output is recomputable, content-addressed, and
 fails validation if a headline, supported claim, limitation, or next action is
 edited by hand.
 
+The public command also opens and verifies the concrete sealed method-freeze and
+registered-analysis files whose SHA-256 values appear in the gate summary. A
+well-formed 64-hex string without the corresponding source artifact is therefore
+not sufficient to publish an interpretation.
+
 This reporting contract does not change the estimator, protocol, thresholds,
 folds, exclusion policy, or target outcomes. It fixes how their registered gate
 results may be described.
@@ -35,6 +40,48 @@ Every primary gate is one of `passed`, `failed`, or `not_estimable`. The oracle
 diagnosis is one of `intervention_headroom`, `model_discrepancy_dominant`,
 `mixed`, or `not_estimable`.
 
+## Source-artifact verification
+
+Before applying the decision tree, the command requires two ordinary,
+non-symlinked JSON files.
+
+### Sealed method freeze
+
+The file supplied through `--method-freeze` must:
+
+- have the exact SHA-256 recorded by the gate summary;
+- use the current method-freeze schema and milestone ID;
+- be explicitly sealed before confirmatory collection;
+- record that target outcomes had not been observed at freeze time;
+- bind the same protocol and v4 amendment as the gate summary; and
+- prohibit target-informed method selection and optional-branch replacement of
+  the primary analysis.
+
+The independent freeze-validation command remains responsible for checking the
+complete deployed checkout and every locked file. The interpretation command
+adds a second, local check that the exact sealed file being cited is present and
+internally consistent.
+
+### Registered analysis manifest
+
+The file supplied through `--analysis-manifest` must use artifact kind
+`Causal4DRegisteredRealAnalysisManifest`, bind the same protocol, amendment, and
+method-freeze digest, and state that:
+
+```text
+primary_analysis_locked = true
+target_outcomes_may_select_method_or_hyperparameters = false
+optional_branches_may_change_primary_analysis = false
+```
+
+An intentionally invalid template is checked in at
+`configs/causal4d/real_analysis_manifest_v1.template.json`. It must be completed
+and promoted from the `...Template` artifact kind before target access.
+
+The command publishes a sibling `*.sources.json` record containing the verified
+file sizes and SHA-256 values plus its own canonical digest. This record contains
+no workstation-local path and can be compared after archive relocation.
+
 ## Decision tree
 
 The tree is evaluated in this order:
@@ -56,7 +103,7 @@ A passed calibration gate does not rescue failed factual or transfer gates.
 Oracle diagnostics add mandatory limitations and a post-reporting research
 focus; they cannot change the primary classification.
 
-## Input format
+## Gate-summary format
 
 ```json
 {
@@ -94,10 +141,18 @@ template itself cannot pass validation.
 causal4d evidence interpret-real-result \
   /data/causal4d-sloth-multi-action-v1/real-result-gates.json \
   /data/causal4d-sloth-multi-action-v1/real-result-interpretation.json \
+  --method-freeze \
+  /data/causal4d-sloth-multi-action-v1/method_freeze.json \
+  --analysis-manifest \
+  /data/causal4d-sloth-multi-action-v1/registered-analysis.json \
   --require-complete
 ```
 
-The output contains:
+By default the source-verification record is written beside the interpretation as
+`real-result-interpretation.sources.json`. Use
+`--source-verification-output <path>` to choose another location.
+
+The interpretation output contains:
 
 - the exact gate and provenance identities;
 - the matched rule and stable classification ID;
@@ -109,8 +164,8 @@ The output contains:
 - SHA-256 identities for the interpretation contract and result.
 
 The command returns exit code `3` with `--require-complete` when the resulting
-paper status is `incomplete`. Existing output is not overwritten unless
-`--overwrite` is supplied.
+paper status is `incomplete`. Neither the interpretation nor its source record is
+overwritten unless `--overwrite` is supplied.
 
 ## Non-claims retained for every outcome
 
