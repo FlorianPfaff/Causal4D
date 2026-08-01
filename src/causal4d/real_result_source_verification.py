@@ -12,13 +12,9 @@ from causal4d.real_experiment_freeze import MILESTONE_ID, SCHEMA_VERSION
 from causal4d.real_result_interpretation import RealResultGateSummary
 
 REGISTERED_ANALYSIS_SCHEMA_VERSION: Final = 1
-REGISTERED_ANALYSIS_ARTIFACT_KIND: Final = (
-    "Causal4DRegisteredRealAnalysisManifest"
-)
+REGISTERED_ANALYSIS_ARTIFACT_KIND: Final = "Causal4DRegisteredRealAnalysisManifest"
 SOURCE_VERIFICATION_SCHEMA_VERSION: Final = 1
-SOURCE_VERIFICATION_ARTIFACT_KIND: Final = (
-    "Causal4DRealResultSourceVerification"
-)
+SOURCE_VERIFICATION_ARTIFACT_KIND: Final = "Causal4DRealResultSourceVerification"
 
 
 def _require(condition: bool, message: str) -> None:
@@ -99,15 +95,13 @@ def _validate_method_freeze(
         "method freeze lacks pre-acquisition provenance",
     )
     _require(
-        preacquisition.get("amendment_sha256")
-        == gates.preacquisition_amendment_sha256,
+        preacquisition.get("amendment_sha256") == gates.preacquisition_amendment_sha256,
         "method freeze amendment digest differs from the gate summary",
     )
     analysis = payload.get("analysis_contract")
     _require(isinstance(analysis, Mapping), "method freeze lacks an analysis contract")
     _require(
-        analysis.get("target_outcomes_may_select_method_or_hyperparameters")
-        is False,
+        analysis.get("target_outcomes_may_select_method_or_hyperparameters") is False,
         "method freeze permits target-informed analysis selection",
     )
     _require(
@@ -151,8 +145,7 @@ def _validate_registered_analysis(
         "registered analysis manifest does not lock the primary analysis",
     )
     _require(
-        payload.get("target_outcomes_may_select_method_or_hyperparameters")
-        is False,
+        payload.get("target_outcomes_may_select_method_or_hyperparameters") is False,
         "registered analysis manifest permits target-informed selection",
     )
     _require(
@@ -202,9 +195,7 @@ def verify_real_result_sources(
         "artifact_kind": SOURCE_VERIFICATION_ARTIFACT_KIND,
         "protocol_id": gates.protocol_id,
         "protocol_design_sha256": gates.protocol_design_sha256,
-        "preacquisition_amendment_sha256": (
-            gates.preacquisition_amendment_sha256
-        ),
+        "preacquisition_amendment_sha256": (gates.preacquisition_amendment_sha256),
         "method_freeze": method_descriptor,
         "registered_analysis_manifest": analysis_descriptor,
     }
