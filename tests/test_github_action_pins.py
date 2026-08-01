@@ -10,7 +10,9 @@ _USES_LINE = re.compile(
     r"^\s*(?:-\s*)?uses:\s*(?P<value>[^#\s]+)\s*(?:#\s*(?P<comment>.+))?$"
 )
 _FULL_COMMIT = re.compile(r"^[0-9a-f]{40}$")
-_VERSION_COMMENT = re.compile(r"^v[0-9]+(?:\.[0-9]+){0,2}(?:[-+][A-Za-z0-9.-]+)?$")
+_VERSION_COMMENT = re.compile(
+    r"^v[0-9]+(?:\.[0-9]+){0,2}(?:[-+][A-Za-z0-9.-]+)?$"
+)
 
 
 def _pin_errors(text: str, *, source: str) -> list[str]:
@@ -23,7 +25,9 @@ def _pin_errors(text: str, *, source: str) -> list[str]:
         if value.startswith(("./", "docker://")):
             continue
         if "@" not in value:
-            errors.append(f"{source}:{line_number}: external action has no ref: {value}")
+            errors.append(
+                f"{source}:{line_number}: external action has no ref: {value}"
+            )
             continue
         action, ref = value.rsplit("@", 1)
         if "/" not in action or not _FULL_COMMIT.fullmatch(ref):
@@ -72,11 +76,12 @@ def test_pin_policy_rejects_tags_branches_and_short_shas() -> None:
 
 
 def test_pin_policy_allows_local_docker_and_annotated_commit_uses() -> None:
+    pinned = "0123456789abcdef0123456789abcdef01234567"
     text = "\n".join(
         (
             "- uses: ./local-action",
             "- uses: docker://python:3.12",
-            "- uses: owner/action@0123456789abcdef0123456789abcdef01234567 # v1.2.3",
+            f"- uses: owner/action@{pinned} # v1.2.3",
         )
     )
 
