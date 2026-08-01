@@ -31,9 +31,11 @@ paired prediction differences for:
 - Causal4D versus Bayesian-PhysTwin with nominal `z`;
 - Causal4D versus nominal PhysTwin.
 
-Predictive-variance contributions and numerical-closure diagnostics are
-aggregated separately. Oracle-selected quantities remain nondeployable even
-when they identify a clear failure boundary.
+Every aggregate statistic gives each included execution equal weight; frames,
+nodes, and coordinates are never pooled into pseudo-replicates. Predictive-
+variance contributions and numerical-closure diagnostics are aggregated
+separately. Oracle-selected quantities remain nondeployable even when they
+identify a clear failure boundary.
 
 ## Exact execution accounting
 
