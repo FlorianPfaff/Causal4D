@@ -73,9 +73,7 @@ def _write_registered_sources(
         "locked_before_confirmatory_collection": True,
         "target_outcomes_observed_at_freeze": False,
         "protocol": {"design_sha256": EXPECTED_PROTOCOL_DESIGN_SHA256},
-        "preacquisition": {
-            "amendment_sha256": EXPECTED_PREACQUISITION_SHA256
-        },
+        "preacquisition": {"amendment_sha256": EXPECTED_PREACQUISITION_SHA256},
         "analysis_contract": {
             "target_outcomes_may_select_method_or_hyperparameters": False,
             "optional_branches_may_change_primary_analysis": False,
@@ -213,8 +211,8 @@ def test_cli_verifies_sources_and_can_fail_closed_on_incomplete(
     tmp_path: Path,
     capsys,
 ) -> None:
-    freeze_path, analysis_path, freeze_sha, analysis_sha = (
-        _write_registered_sources(tmp_path)
+    freeze_path, analysis_path, freeze_sha, analysis_sha = _write_registered_sources(
+        tmp_path
     )
     input_path = tmp_path / "gates.json"
     output_path = tmp_path / "interpretation.json"
@@ -246,8 +244,9 @@ def test_cli_verifies_sources_and_can_fail_closed_on_incomplete(
     )
     console = json.loads(capsys.readouterr().out)
     assert console["rule_id"] == "full_chain_supported"
-    assert console["source_verification"]["verification_sha256"] == (
-        verification["verification_sha256"]
+    assert (
+        console["source_verification"]["verification_sha256"]
+        == (verification["verification_sha256"])
     )
 
     incomplete_input = tmp_path / "incomplete.json"
@@ -282,8 +281,8 @@ def test_cli_verifies_sources_and_can_fail_closed_on_incomplete(
 
 
 def test_cli_rejects_source_hash_drift(tmp_path: Path) -> None:
-    freeze_path, analysis_path, freeze_sha, analysis_sha = (
-        _write_registered_sources(tmp_path)
+    freeze_path, analysis_path, freeze_sha, analysis_sha = _write_registered_sources(
+        tmp_path
     )
     gates_path = tmp_path / "gates.json"
     gates_path.write_text(
@@ -316,17 +315,13 @@ def test_cli_rejects_source_hash_drift(tmp_path: Path) -> None:
 def test_checked_in_templates_cannot_pass_as_evidence() -> None:
     root = Path(__file__).parents[1] / "configs" / "causal4d"
     gate_payload = json.loads(
-        (root / "real_result_gate_summary_v1.template.json").read_text(
-            encoding="utf-8"
-        )
+        (root / "real_result_gate_summary_v1.template.json").read_text(encoding="utf-8")
     )
     with pytest.raises(ValueError, match="artifact kind"):
         RealResultGateSummary.from_dict(gate_payload)
 
     analysis_payload = json.loads(
-        (root / "real_analysis_manifest_v1.template.json").read_text(
-            encoding="utf-8"
-        )
+        (root / "real_analysis_manifest_v1.template.json").read_text(encoding="utf-8")
     )
     assert analysis_payload["artifact_kind"].endswith("Template")
     assert analysis_payload["primary_analysis_locked"] is False
