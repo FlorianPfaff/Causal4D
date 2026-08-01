@@ -116,8 +116,21 @@ causal4d protocol readiness seal-gate \
 
 The registry must predate every governed approval. A postdated registry, role change, alias collision, unknown identity, or person-level independence failure blocks readiness and claim status.
 
+## Status-time revalidation
+
+Approval checks are not limited to the commands that create an artifact. Every readiness and claim-status evaluation reopens and validates the complete governed chain:
+
+- method freezer and independent freeze verifier;
+- timebase-calibration approver;
+- contact-registration approver; and
+- every operational readiness-gate approver.
+
+The derived `operator_identity_bindings` prerequisite records the canonical registry digest, the resolved person digests, approval-role bindings, and SHA-256 digests of all governed source artifacts. Missing or template evidence remains valid-but-incomplete. A completed artifact with an unknown, inactive, role-incompatible, postdated, aliased, or non-independent identity fails closed.
+
+This status-time validation prevents manually edited artifacts or legacy free-form identifiers from bypassing the creation-time checks.
+
 ## Evidence identity
 
-The registry carries a canonical `artifact_sha256`. Pre-acquisition readiness and real-evidence status include that digest as a prerequisite. Portable readiness identity removes workstation-local paths but retains the registry digest, so relocating an unchanged dataset preserves evidence identity while changing the roster does not.
+The registry carries a canonical `artifact_sha256`. Pre-acquisition readiness and real-evidence status include that digest as a prerequisite. Portable readiness identity removes workstation-local paths but retains the registry digest and the governed source digests, so relocating an unchanged dataset preserves evidence identity while changing the roster or any approval artifact does not.
 
 Registry templates, dry runs, or scaffold output never count as physical executions and never change the valid evidence boundary from `0/36 acquired` until genuine acquisition begins.
