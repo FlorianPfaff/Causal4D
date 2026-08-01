@@ -10,9 +10,7 @@ _USES_LINE = re.compile(
     r"^\s*(?:-\s*)?uses:\s*(?P<value>[^#\s]+)\s*(?:#\s*(?P<comment>.+))?$"
 )
 _FULL_COMMIT = re.compile(r"^[0-9a-f]{40}$")
-_VERSION_COMMENT = re.compile(
-    r"^v[0-9]+(?:\.[0-9]+){0,2}(?:[-+][A-Za-z0-9.-]+)?$"
-)
+_VERSION_COMMENT = re.compile(r"^v[0-9]+(?:\.[0-9]+){0,2}(?:[-+][A-Za-z0-9.-]+)?$")
 
 
 def _pin_errors(text: str, *, source: str) -> list[str]:
