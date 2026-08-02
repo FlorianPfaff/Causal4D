@@ -37,9 +37,7 @@ def _build_sdist(tmp_path: Path) -> Path:
     try:
         version("build")
     except PackageNotFoundError:
-        pytest.skip(
-            "sdist reproducibility requires the development build frontend"
-        )
+        pytest.skip("sdist reproducibility requires the development build frontend")
     output = tmp_path / "dist"
     output.mkdir()
     result = subprocess.run(
