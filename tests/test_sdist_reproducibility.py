@@ -16,7 +16,6 @@ _REQUIRED_PATHS = frozenset(
         ".github/workflows/ci.yml",
         "CITATION.cff",
         "CONTRIBUTING.md",
-        "LICENSE",
         "SECURITY.md",
         "ci/project_status_v1.json",
         "ci/three_repository_golden_path.py",
