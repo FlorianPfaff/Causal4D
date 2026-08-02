@@ -1,0 +1,14 @@
+include *.md
+include *.cff
+graft .github
+graft ci
+graft configs
+graft docs
+graft milestones
+graft requirements
+graft runs
+graft scripts
+graft tests
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude .DS_Store
