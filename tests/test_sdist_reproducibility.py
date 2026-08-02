@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path, PurePosixPath
 import subprocess
 import sys
@@ -33,10 +34,12 @@ _REQUIRED_PATHS = frozenset(
 
 
 def _build_sdist(tmp_path: Path) -> Path:
-    pytest.importorskip(
-        "build",
-        reason="sdist reproducibility requires the development build frontend",
-    )
+    try:
+        version("build")
+    except PackageNotFoundError:
+        pytest.skip(
+            "sdist reproducibility requires the development build frontend"
+        )
     output = tmp_path / "dist"
     output.mkdir()
     result = subprocess.run(
@@ -49,7 +52,7 @@ def _build_sdist(tmp_path: Path) -> Path:
             str(output),
             str(ROOT),
         ],
-        cwd=ROOT,
+        cwd=tmp_path,
         check=False,
         capture_output=True,
         text=True,
