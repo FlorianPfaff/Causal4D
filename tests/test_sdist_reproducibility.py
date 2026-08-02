@@ -33,12 +33,16 @@ _REQUIRED_PATHS = frozenset(
 def _build_sdist(tmp_path: Path) -> Path:
     output = tmp_path / "dist"
     output.mkdir()
-    script = (
-        "from setuptools.build_meta import build_sdist; "
-        f"print(build_sdist({str(output)!r}))"
-    )
     result = subprocess.run(
-        [sys.executable, "-c", script],
+        [
+            sys.executable,
+            "-m",
+            "build",
+            "--sdist",
+            "--outdir",
+            str(output),
+            str(ROOT),
+        ],
         cwd=ROOT,
         check=False,
         capture_output=True,
