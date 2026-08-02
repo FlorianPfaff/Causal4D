@@ -6,6 +6,8 @@ import subprocess
 import sys
 import tarfile
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 _REQUIRED_PATHS = frozenset(
@@ -31,6 +33,10 @@ _REQUIRED_PATHS = frozenset(
 
 
 def _build_sdist(tmp_path: Path) -> Path:
+    pytest.importorskip(
+        "build",
+        reason="sdist reproducibility requires the development build frontend",
+    )
     output = tmp_path / "dist"
     output.mkdir()
     result = subprocess.run(
@@ -72,8 +78,15 @@ def _relative_archive_paths(archive: Path) -> tuple[str, set[str]]:
     return roots.pop(), relative
 
 
-def test_sdist_contains_repository_validation_assets(tmp_path: Path) -> None:
-    archive = _build_sdist(tmp_path)
+@pytest.fixture(scope="module")
+def built_sdist(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    return _build_sdist(tmp_path_factory.mktemp("sdist"))
+
+
+def test_sdist_contains_repository_validation_assets(
+    built_sdist: Path,
+) -> None:
+    archive = built_sdist
     _, relative = _relative_archive_paths(archive)
     missing = sorted(_REQUIRED_PATHS - relative)
     assert not missing, f"source distribution omitted required assets: {missing}"
@@ -98,8 +111,11 @@ def _extract_regular_files(archive: Path, destination: Path) -> None:
             target.write_bytes(source.read())
 
 
-def test_extracted_sdist_runs_core_contract_tests(tmp_path: Path) -> None:
-    archive = _build_sdist(tmp_path)
+def test_extracted_sdist_runs_core_contract_tests(
+    built_sdist: Path,
+    tmp_path: Path,
+) -> None:
+    archive = built_sdist
     root_name, _ = _relative_archive_paths(archive)
     extracted = tmp_path / "extracted"
     extracted.mkdir()
