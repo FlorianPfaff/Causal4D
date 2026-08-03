@@ -1,0 +1,291 @@
+name: Workstation2 GPU evaluation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/workstation2-evaluation.yml"
+      - ".github/workflows/optional-integrations.yml"
+      - "scripts/ci/workstation2_gpu_qualification.py"
+  workflow_dispatch:
+    inputs:
+      cuda_visible_devices:
+        description: CUDA device list exposed to Torch and Warp
+        required: false
+        default: "0"
+        type: string
+      extended_seeds:
+        description: Independent diagnostic seed range
+        required: false
+        default: "100:120"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workstation2-evaluation-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUNBUFFERED: "1"
+  CUDA_VISIBLE_DEVICES: ${{ inputs.cuda_visible_devices || '0' }}
+  EXTENDED_SEEDS: ${{ inputs.extended_seeds || '100:120' }}
+
+jobs:
+  evaluate:
+    name: CUDA qualification and controlled replication
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 180
+    steps:
+      - name: Check out Causal4D
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Record runner and NVIDIA environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p outputs/workstation2
+          {
+            echo "runner_name=${RUNNER_NAME}"
+            echo "runner_os=${RUNNER_OS}"
+            echo "runner_arch=${RUNNER_ARCH}"
+            echo "cuda_visible_devices=${CUDA_VISIBLE_DEVICES}"
+            echo "git_commit=${GITHUB_SHA}"
+            uname -a
+          } | tee outputs/workstation2/runner.txt
+          command -v nvidia-smi
+          nvidia-smi -L | tee outputs/workstation2/nvidia-smi-L.txt
+          nvidia-smi \
+            --query-gpu=index,name,uuid,driver_version,memory.total,compute_cap \
+            --format=csv,noheader \
+            | tee outputs/workstation2/nvidia-smi.csv
+
+      - name: Install isolated GPU evaluation environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv .workstation2-venv
+          .workstation2-venv/bin/python -m pip install --upgrade pip
+          .workstation2-venv/bin/python -m pip install -e ".[dev,warp]"
+          .workstation2-venv/bin/python -m pip check
+          .workstation2-venv/bin/python -m pip freeze --all \
+            > outputs/workstation2/pip-freeze.txt
+
+      - name: Qualify Torch and Warp on CUDA
+        shell: bash
+        run: |
+          set -euo pipefail
+          .workstation2-venv/bin/python \
+            scripts/ci/workstation2_gpu_qualification.py \
+            --output outputs/workstation2/gpu-qualification.json
+
+      - name: Reproduce the frozen controlled latent-contact bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          .workstation2-venv/bin/causal4d-latent-contact-benchmark \
+            --output-dir outputs/workstation2/frozen-controlled \
+            --seeds 0:5 \
+            --frames 56 \
+            --training-repeats 2 \
+            --parameter-grid-count 5 \
+            --contact-parameter-particles 12 \
+            --observation-fraction 0.20 \
+            --observation-noise-mm 1.5 \
+            --require-gates \
+            | tee outputs/workstation2/frozen-controlled-console.json
+          .workstation2-venv/bin/python scripts/ci/verify_result_bundle.py \
+            outputs/workstation2/frozen-controlled/manifest.json
+          .workstation2-venv/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          expected_path = Path(
+              "milestones/v0.3.0-causal4d-aip/results/controlled/manifest.json"
+          )
+          actual_path = Path(
+              "outputs/workstation2/frozen-controlled/manifest.json"
+          )
+          expected = json.loads(expected_path.read_text(encoding="utf-8"))
+          actual = json.loads(actual_path.read_text(encoding="utf-8"))
+          comparison = {
+              "expected_manifest": str(expected_path),
+              "actual_manifest": str(actual_path),
+              "byte_level_artifact_manifest_match": actual == expected,
+              "expected": expected,
+              "actual": actual,
+          }
+          output = Path("outputs/workstation2/frozen-manifest-comparison.json")
+          output.write_text(
+              json.dumps(comparison, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          if actual != expected:
+              raise SystemExit("frozen controlled artifact hashes changed")
+          PY
+
+      - name: Run an independent-seed controlled replication
+        shell: bash
+        run: |
+          set -euo pipefail
+          .workstation2-venv/bin/causal4d-latent-contact-benchmark \
+            --output-dir outputs/workstation2/independent-seeds \
+            --seeds "${EXTENDED_SEEDS}" \
+            --frames 56 \
+            --training-repeats 2 \
+            --parameter-grid-count 5 \
+            --contact-parameter-particles 12 \
+            --observation-fraction 0.20 \
+            --observation-noise-mm 1.5 \
+            | tee outputs/workstation2/independent-seeds-console.json
+          .workstation2-venv/bin/python scripts/ci/verify_result_bundle.py \
+            outputs/workstation2/independent-seeds/manifest.json
+
+      - name: Summarize evaluation evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          .workstation2-venv/bin/python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path("outputs/workstation2")
+          qualification = json.loads(
+              (root / "gpu-qualification.json").read_text(encoding="utf-8")
+          )
+          comparison = json.loads(
+              (root / "frozen-manifest-comparison.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          frozen_summary = json.loads(
+              (root / "frozen-controlled/summary.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          independent_summary = json.loads(
+              (root / "independent-seeds/summary.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          summary = {
+              "schema_version": 1,
+              "artifact_kind": "Causal4DWorkstation2EvaluationSummary",
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "commit": os.environ["GITHUB_SHA"],
+              "runner_name": os.environ.get("RUNNER_NAME"),
+              "independent_seed_specification": os.environ["EXTENDED_SEEDS"],
+              "gpu_qualification_passed": qualification["passed"],
+              "gpu": qualification["gpu"],
+              "frozen_controlled_manifest_match": comparison[
+                  "byte_level_artifact_manifest_match"
+              ],
+              "frozen_success_gates": frozen_summary["success_gates"],
+              "frozen_aggregate": frozen_summary["aggregate"],
+              "independent_success_gates": independent_summary[
+                  "success_gates"
+              ],
+              "independent_aggregate": independent_summary["aggregate"],
+              "claim_boundary": (
+                  "The seeds 0:5 run is an independent-runner reproduction of "
+                  "the frozen controlled artifact. The additional seeds are a "
+                  "diagnostic replication only and do not modify the frozen "
+                  "method, registered real experiment, or paper claim."
+              ),
+          }
+          (root / "evaluation-summary.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True, allow_nan=False)
+              + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, indent=2, sort_keys=True, allow_nan=False))
+          PY
+
+      - name: Detect sibling BayesianPhysTwin credential
+        id: bpt_access
+        shell: bash
+        env:
+          BPT_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
+        run: |
+          if [[ -n "${BPT_READ_TOKEN}" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "BPT_READ_TOKEN absent; private provider integration skipped." \
+              | tee outputs/workstation2/bpt-provider-skip.txt
+          fi
+
+      - name: Read exact BayesianPhysTwin pin
+        if: steps.bpt_access.outputs.enabled == 'true'
+        id: bpt_pin
+        shell: bash
+        run: |
+          echo "sha=$(.workstation2-venv/bin/python scripts/ci/read_bpt_pin.py)" \
+            >> "$GITHUB_OUTPUT"
+
+      - name: Check out pinned IPS BayesianPhysTwin
+        if: steps.bpt_access.outputs.enabled == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/BayesianPhysTwin
+          ref: ${{ steps.bpt_pin.outputs.sha }}
+          token: ${{ secrets.BPT_READ_TOKEN }}
+          path: _bpt
+          persist-credentials: false
+
+      - name: Run pinned provider integration on workstation2
+        if: steps.bpt_access.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          .workstation2-venv/bin/python -m pip install -e ./_bpt
+          .workstation2-venv/bin/python -m pip check
+          .workstation2-venv/bin/python scripts/ci/run_bpt_integration_tests.py \
+            | tee outputs/workstation2/bpt-provider-integration.txt
+
+      - name: Publish job summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Workstation2 Causal4D evaluation"
+            echo
+            echo "- Runner: \`${RUNNER_NAME}\`"
+            echo "- CUDA devices requested: \`${CUDA_VISIBLE_DEVICES}\`"
+            echo "- Independent seeds: \`${EXTENDED_SEEDS}\`"
+            if [[ -f outputs/workstation2/evaluation-summary.json ]]; then
+              echo "- Evaluation summary was produced."
+            else
+              echo "- Evaluation stopped before the final summary."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload complete evaluation artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: workstation2-causal4d-evaluation
+          path: outputs/workstation2/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove isolated evaluation environment
+        if: always()
+        shell: bash
+        run: rm -rf .workstation2-venv _bpt
