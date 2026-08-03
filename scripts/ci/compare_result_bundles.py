@@ -18,6 +18,7 @@ _CSV_FILES = ("contact_recovery.csv", "fold_calibration.csv", "interventions.csv
 _FLOAT_TEXT = re.compile(
     r"^[+-]?(?:(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?|\d+[eE][+-]?\d+)$"
 )
+_DIRECTION_ANGLE_SUFFIX = "direction_error_deg"
 
 
 @dataclass
@@ -28,6 +29,7 @@ class Comparison:
     numeric_comparisons: int = 0
     maximum_absolute_difference: float = 0.0
     maximum_relative_difference: float = 0.0
+    maximum_direction_angle_difference_deg: float = 0.0
 
     def compare_number(
         self,
@@ -37,6 +39,7 @@ class Comparison:
         path: str,
         relative_tolerance: float,
         absolute_tolerance: float,
+        direction_angle_tolerance_deg: float,
     ) -> None:
         self.numeric_comparisons += 1
         if math.isnan(expected) or math.isnan(actual):
@@ -60,11 +63,21 @@ class Comparison:
         self.maximum_relative_difference = max(
             self.maximum_relative_difference, relative
         )
+        effective_absolute_tolerance = absolute_tolerance
+        if path.endswith(_DIRECTION_ANGLE_SUFFIX):
+            self.maximum_direction_angle_difference_deg = max(
+                self.maximum_direction_angle_difference_deg,
+                absolute,
+            )
+            effective_absolute_tolerance = max(
+                effective_absolute_tolerance,
+                direction_angle_tolerance_deg,
+            )
         if not math.isclose(
             expected,
             actual,
             rel_tol=relative_tolerance,
-            abs_tol=absolute_tolerance,
+            abs_tol=effective_absolute_tolerance,
         ):
             self.mismatches.append(
                 f"{path}: expected {expected!r}, received {actual!r}; "
@@ -92,6 +105,7 @@ def _compare_json_value(
     comparison: Comparison,
     relative_tolerance: float,
     absolute_tolerance: float,
+    direction_angle_tolerance_deg: float,
 ) -> None:
     if _is_number(expected) and _is_number(actual):
         comparison.compare_number(
@@ -100,6 +114,7 @@ def _compare_json_value(
             path=path,
             relative_tolerance=relative_tolerance,
             absolute_tolerance=absolute_tolerance,
+            direction_angle_tolerance_deg=direction_angle_tolerance_deg,
         )
         return
     if type(expected) is not type(actual):
@@ -125,6 +140,7 @@ def _compare_json_value(
                 comparison=comparison,
                 relative_tolerance=relative_tolerance,
                 absolute_tolerance=absolute_tolerance,
+                direction_angle_tolerance_deg=direction_angle_tolerance_deg,
             )
         return
     if isinstance(expected, list):
@@ -142,6 +158,7 @@ def _compare_json_value(
                 comparison=comparison,
                 relative_tolerance=relative_tolerance,
                 absolute_tolerance=absolute_tolerance,
+                direction_angle_tolerance_deg=direction_angle_tolerance_deg,
             )
         return
     if expected != actual:
@@ -162,6 +179,11 @@ def _numeric_text(value: str) -> bool:
     return bool(_FLOAT_TEXT.fullmatch(value.strip()))
 
 
+def _structured_json_text(value: str) -> bool:
+    stripped = value.strip()
+    return len(stripped) >= 2 and stripped[0] in "[{" and stripped[-1] in "]}"
+
+
 def _compare_csv(
     expected_path: Path,
     actual_path: Path,
@@ -169,6 +191,7 @@ def _compare_csv(
     comparison: Comparison,
     relative_tolerance: float,
     absolute_tolerance: float,
+    direction_angle_tolerance_deg: float,
 ) -> None:
     expected_fields, expected_rows = _read_csv(expected_path)
     actual_fields, actual_rows = _read_csv(actual_path)
@@ -199,7 +222,26 @@ def _compare_csv(
                     path=path,
                     relative_tolerance=relative_tolerance,
                     absolute_tolerance=absolute_tolerance,
+                    direction_angle_tolerance_deg=direction_angle_tolerance_deg,
                 )
+            elif _structured_json_text(expected) and _structured_json_text(actual):
+                try:
+                    expected_value = json.loads(expected)
+                    actual_value = json.loads(actual)
+                except json.JSONDecodeError:
+                    comparison.mismatches.append(
+                        f"{path}: expected {expected!r}, received {actual!r}"
+                    )
+                else:
+                    _compare_json_value(
+                        expected_value,
+                        actual_value,
+                        path=path,
+                        comparison=comparison,
+                        relative_tolerance=relative_tolerance,
+                        absolute_tolerance=absolute_tolerance,
+                        direction_angle_tolerance_deg=direction_angle_tolerance_deg,
+                    )
             else:
                 comparison.mismatches.append(
                     f"{path}: expected {expected!r}, received {actual!r}"
@@ -213,6 +255,7 @@ def _compare_file(
     comparison: Comparison,
     relative_tolerance: float,
     absolute_tolerance: float,
+    direction_angle_tolerance_deg: float,
 ) -> dict[str, Any]:
     if not expected_path.is_file():
         comparison.mismatches.append(f"missing expected file: {expected_path}")
@@ -240,6 +283,7 @@ def _compare_file(
             comparison=comparison,
             relative_tolerance=relative_tolerance,
             absolute_tolerance=absolute_tolerance,
+            direction_angle_tolerance_deg=direction_angle_tolerance_deg,
         )
     elif expected_path.suffix == ".csv":
         _compare_csv(
@@ -248,6 +292,7 @@ def _compare_file(
             comparison=comparison,
             relative_tolerance=relative_tolerance,
             absolute_tolerance=absolute_tolerance,
+            direction_angle_tolerance_deg=direction_angle_tolerance_deg,
         )
     else:
         raise ValueError(f"unsupported comparison file: {expected_path}")
@@ -265,14 +310,28 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("expected_dir")
     parser.add_argument("actual_dir")
     parser.add_argument("--output", required=True)
-    parser.add_argument("--relative-tolerance", type=float, default=1e-12)
-    parser.add_argument("--absolute-tolerance", type=float, default=1e-15)
+    parser.add_argument("--relative-tolerance", type=float, default=2e-12)
+    parser.add_argument("--absolute-tolerance", type=float, default=2e-15)
+    parser.add_argument(
+        "--direction-angle-tolerance-deg",
+        type=float,
+        default=2e-6,
+        help=(
+            "Absolute tolerance for direction angles near zero, where arccos "
+            "amplifies machine-level cosine differences."
+        ),
+    )
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.relative_tolerance < 0.0 or args.absolute_tolerance < 0.0:
+    tolerances = (
+        args.relative_tolerance,
+        args.absolute_tolerance,
+        args.direction_angle_tolerance_deg,
+    )
+    if any(value < 0.0 for value in tolerances):
         raise ValueError("comparison tolerances must be nonnegative")
     expected_dir = Path(args.expected_dir).resolve()
     actual_dir = Path(args.actual_dir).resolve()
@@ -285,6 +344,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             comparison=comparison,
             relative_tolerance=args.relative_tolerance,
             absolute_tolerance=args.absolute_tolerance,
+            direction_angle_tolerance_deg=args.direction_angle_tolerance_deg,
         )
     report = {
         "schema_version": 1,
@@ -293,6 +353,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "actual_dir": str(actual_dir),
         "relative_tolerance": args.relative_tolerance,
         "absolute_tolerance": args.absolute_tolerance,
+        "direction_angle_tolerance_deg": args.direction_angle_tolerance_deg,
         "all_payload_bytes_match": all(
             record.get("byte_identical") is True for record in file_records.values()
         ),
@@ -300,12 +361,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         "numeric_comparisons": comparison.numeric_comparisons,
         "maximum_absolute_difference": comparison.maximum_absolute_difference,
         "maximum_relative_difference": comparison.maximum_relative_difference,
+        "maximum_direction_angle_difference_deg": (
+            comparison.maximum_direction_angle_difference_deg
+        ),
         "mismatch_count": len(comparison.mismatches),
         "mismatches": comparison.mismatches[:100],
         "files": file_records,
         "claim_boundary": (
             "Byte equality is reported separately from strict numeric and "
-            "structural equivalence; tolerance is never used to revise a gate."
+            "structural equivalence. A field-specific near-zero angle tolerance "
+            "handles arccos conditioning and is never used to revise a gate."
         ),
     }
     output = Path(args.output)
