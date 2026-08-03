@@ -15,6 +15,7 @@ from causal4d.acquisition_flight_common import (
     _require,
 )
 
+
 @dataclass(frozen=True)
 class HealthThresholds:
     """Operational watchdog thresholds; not scientific acceptance thresholds."""
@@ -178,7 +179,6 @@ def evaluate_health_snapshot(
         "passed": passed,
         "target_outcomes_used": False,
     }
-
 
 
 __all__ = [
