@@ -6,10 +6,12 @@ import argparse
 import json
 from collections.abc import Sequence
 
+from causal4d.operator_bound_real_evidence import (
+    build_operator_bound_real_evidence_status as build_real_evidence_status,
+    validate_operator_bound_real_dataset as validate_real_dataset_v2,
+)
 from causal4d.real_evidence_contract_v2 import (
-    build_real_evidence_status,
     scaffold_real_evidence_v2_templates,
-    validate_real_dataset_v2,
     write_real_evidence_status,
 )
 from causal4d.real_protocol import (
@@ -61,7 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--repository-root",
         help=(
             "clean checkout at the sealed Causal4D commit; required to verify "
-            "method_freeze.json before claim readiness"
+            "method_freeze.json and operator_registry.json before claim readiness"
         ),
     )
     status.add_argument(
@@ -77,7 +79,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--require-complete",
         action="store_true",
         help=(
-            "return exit code 3 until the freeze, registration, timebase, "
+            "return exit code 3 until identities, freeze, registration, timebase, "
             "sessions, executions, and hashes are claim-ready"
         ),
     )

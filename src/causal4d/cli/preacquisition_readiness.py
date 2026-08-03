@@ -6,6 +6,10 @@ import argparse
 import json
 from collections.abc import Sequence
 
+from causal4d.operator_registry import (
+    scaffold_operator_registry,
+    seal_operator_registry,
+)
 from causal4d.preacquisition_readiness import (
     GATE_PATHS,
     build_preacquisition_readiness,
@@ -28,6 +32,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     scaffold.add_argument("repository_root")
     scaffold.add_argument("dataset_root")
+
+    registry_scaffold = subparsers.add_parser(
+        "scaffold-operator-registry",
+        help="write the protocol-bound operator registry template once",
+    )
+    registry_scaffold.add_argument("repository_root")
+    registry_scaffold.add_argument("dataset_root")
+
+    registry_seal = subparsers.add_parser(
+        "seal-operator-registry",
+        help="validate and atomically seal the operator identity roster",
+    )
+    registry_seal.add_argument("repository_root")
+    registry_seal.add_argument("dataset_root")
+    registry_seal.add_argument("source_json")
+    registry_seal.add_argument("--sealed-by", required=True)
+    registry_seal.add_argument("--sealed-at-utc")
 
     seal = subparsers.add_parser(
         "seal-gate",
@@ -62,6 +83,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = scaffold_preacquisition_readiness(
                 args.repository_root,
                 args.dataset_root,
+            )
+        elif args.command == "scaffold-operator-registry":
+            result = scaffold_operator_registry(
+                args.repository_root,
+                args.dataset_root,
+            )
+        elif args.command == "seal-operator-registry":
+            result = seal_operator_registry(
+                args.repository_root,
+                args.dataset_root,
+                args.source_json,
+                sealed_by=args.sealed_by,
+                sealed_at_utc=args.sealed_at_utc,
             )
         elif args.command == "seal-gate":
             result = seal_preacquisition_gate(
