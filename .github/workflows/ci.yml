@@ -119,20 +119,20 @@ jobs:
       - name: Detect private-repository credential
         id: access
         env:
-          BPT_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
+          BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}
         run: |
-          if [[ -n "${BPT_READ_TOKEN}" ]]; then
+          if [[ -n "${BPT_READ_SSH_KEY}" ]]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::BPT_READ_TOKEN is not configured; pinned private-repository integration was not exercised."
+            echo "::warning::BPT_READ_SSH_KEY is not configured; pinned private-repository integration was not exercised."
             echo "### Pinned Bayesian-PhysTwin integration" >> "$GITHUB_STEP_SUMMARY"
-            echo "Skipped because the repository secret \`BPT_READ_TOKEN\` is absent." >> "$GITHUB_STEP_SUMMARY"
+            echo "Skipped because the repository secret \`BPT_READ_SSH_KEY\` is absent." >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Require private-provider integration for releases
         if: startsWith(github.ref, 'refs/tags/v') && steps.access.outputs.enabled != 'true'
         run: |
-          echo "::error::Release tags require BPT_READ_TOKEN and an executed pinned-provider integration."
+          echo "::error::Release tags require BPT_READ_SSH_KEY and an executed pinned-provider integration."
           exit 1
       - name: Read exact Bayesian-PhysTwin pin
         if: steps.access.outputs.enabled == 'true'
@@ -142,9 +142,9 @@ jobs:
         if: steps.access.outputs.enabled == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: FlorianPfaff/Bayesian-PhysTwin
+          repository: IPS-Stuttgart/BayesianPhysTwin
           ref: ${{ steps.pin.outputs.sha }}
-          token: ${{ secrets.BPT_READ_TOKEN }}
+          ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}
           path: _bpt
           persist-credentials: false
       - name: Install Causal4D and pinned provider
