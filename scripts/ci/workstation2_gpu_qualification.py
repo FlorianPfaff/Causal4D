@@ -128,9 +128,7 @@ def run_qualification(args: argparse.Namespace) -> dict[str, Any]:
         torch.add(y, x, alpha=args.alpha, out=torch_output)
     torch.cuda.synchronize()
     torch_seconds = time.perf_counter() - started
-    torch_maximum_error = float(
-        torch.max(torch.abs(torch_output - reference)).item()
-    )
+    torch_maximum_error = float(torch.max(torch.abs(torch_output - reference)).item())
 
     passed = bool(
         maximum_error <= args.maximum_error
