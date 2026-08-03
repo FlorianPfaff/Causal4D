@@ -243,13 +243,9 @@ def _summarize_counterfactual(
                     "hybrid_win_fraction": float(
                         np.mean([value > 0.0 for _, value in case_absolute])
                     ),
-                    "mean_relative_rmse_improvement": float(
-                        np.mean(seed_relative)
-                    ),
+                    "mean_relative_rmse_improvement": float(np.mean(seed_relative)),
                     "relative_improvement_ci95": list(relative_interval),
-                    "mean_absolute_rmse_improvement_m": float(
-                        np.mean(seed_absolute)
-                    ),
+                    "mean_absolute_rmse_improvement_m": float(np.mean(seed_absolute)),
                     "absolute_improvement_ci95_m": list(absolute_interval),
                 }
             )
@@ -387,11 +383,7 @@ def _run_dynamic_contact(
         writer.writeheader()
         writer.writerows(flat_rows)
     _write_json(output / "dynamic-contact" / "cases.json", rows)
-    gate_values = [
-        bool(value)
-        for row in rows
-        for value in dict(row["gates"]).values()
-    ]
+    gate_values = [bool(value) for row in rows for value in dict(row["gates"]).values()]
     summary = {
         "case_count": len(rows),
         "seed_count": len(list(settings["dynamic_seeds"])),
@@ -409,14 +401,10 @@ def _run_dynamic_contact(
             np.min([row["relative_rmse_improvement"] for row in rows])
         ),
         "mean_contact_onset_absolute_error_frames": float(
-            np.mean(
-                [row["contact_onset_absolute_error_frames"] for row in rows]
-            )
+            np.mean([row["contact_onset_absolute_error_frames"] for row in rows])
         ),
         "maximum_contact_onset_absolute_error_frames": float(
-            np.max(
-                [row["contact_onset_absolute_error_frames"] for row in rows]
-            )
+            np.max([row["contact_onset_absolute_error_frames"] for row in rows])
         ),
         "mean_future_coverage": float(
             np.mean([row["future_coverage"] for row in rows])
@@ -613,8 +601,7 @@ def _write_markdown(path: Path, summary: dict[str, Any]) -> None:
             f"- Dynamic-contact cases: `{dynamic['case_count']}`; all gates passed: "
             f"`{dynamic['all_gates_passed']}`; prefix-only: "
             f"`{dynamic['all_prefix_only']}`.",
-            f"- Exact repeated-run determinism: "
-            f"`{summary['determinism']['passed']}`.",
+            f"- Exact repeated-run determinism: `{summary['determinism']['passed']}`.",
             "",
             "These runs are diagnostic and do not replace the registered "
             "same-object physical experiment.",
@@ -692,9 +679,7 @@ def main() -> int:
     _write_markdown(output / "summary.md", summary)
     _write_manifest(output)
 
-    integrity_passed = bool(determinism["passed"]) and bool(
-        dynamic["all_prefix_only"]
-    )
+    integrity_passed = bool(determinism["passed"]) and bool(dynamic["all_prefix_only"])
     print(
         json.dumps(
             {
