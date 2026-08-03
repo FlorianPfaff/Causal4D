@@ -250,13 +250,13 @@ jobs:
         run: python -m pip install -e .
       - name: Produce deterministic smoke bundles
         run: |
-          causal4d-counterfactual-benchmark \
+          causal4d benchmark counterfactual \
             --output-dir build/bundles/counterfactual \
             --seeds 0 \
             --frames 18 \
             --training-repeats 1 \
             --parameter-grid-count 3
-          causal4d-latent-contact-benchmark \
+          causal4d benchmark latent-contact \
             --output-dir build/bundles/latent-contact \
             --seeds 0 \
             --frames 18 \
