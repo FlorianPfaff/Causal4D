@@ -44,9 +44,7 @@ def evidence_check(
         ]
         structural_errors = {
             "invalid_prerequisites": invalid_prerequisites,
-            "invalid_session_ids": list(
-                evidence_status.get("invalid_session_ids", [])
-            ),
+            "invalid_session_ids": list(evidence_status.get("invalid_session_ids", [])),
             "unexpected_execution_directories": list(
                 evidence_status.get("unexpected_execution_directories", [])
             ),
@@ -236,9 +234,9 @@ def next_execution_checks(
                 for identifier in completed
                 if identifier in expected_execution_ids
             }
-            terminal_journal_ids = set(
-                validation["completed_execution_ids"]
-            ) | set(validation["aborted_execution_ids"])
+            terminal_journal_ids = set(validation["completed_execution_ids"]) | set(
+                validation["aborted_execution_ids"]
+            )
             _require(
                 validation["protocol_id"] == protocol_id,
                 "session journal protocol differs from the registered protocol",
