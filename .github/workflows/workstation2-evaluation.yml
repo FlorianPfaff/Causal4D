@@ -205,18 +205,32 @@ jobs:
           print(json.dumps(summary, indent=2, sort_keys=True, allow_nan=False))
           PY
 
-      - name: Detect sibling BayesianPhysTwin credential
+      - name: Detect sibling BayesianPhysTwin access
         id: bpt_access
         shell: bash
         env:
           BPT_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
         run: |
+          set -euo pipefail
+          status="000"
           if [[ -n "${BPT_READ_TOKEN}" ]]; then
+            status=$(curl --silent --show-error --output /dev/null \
+              --write-out '%{http_code}' \
+              --header 'Accept: application/vnd.github+json' \
+              --header "Authorization: Bearer ${BPT_READ_TOKEN}" \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              https://api.github.com/repos/IPS-Stuttgart/BayesianPhysTwin)
+          fi
+          echo "http_status=${status}" >> "$GITHUB_OUTPUT"
+          if [[ "${status}" == "200" ]]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "BPT_READ_TOKEN absent; private provider integration skipped." \
-              | tee outputs/workstation2/bpt-provider-skip.txt
+            {
+              echo "Pinned BayesianPhysTwin integration skipped."
+              echo "Repository access probe returned HTTP ${status}."
+              echo "Update BPT_READ_TOKEN access for IPS-Stuttgart/BayesianPhysTwin."
+            } | tee outputs/workstation2/bpt-provider-skip.txt
           fi
 
       - name: Read exact BayesianPhysTwin pin
@@ -257,6 +271,7 @@ jobs:
             echo "- Runner: \`${RUNNER_NAME}\`"
             echo "- CUDA devices requested: \`${CUDA_VISIBLE_DEVICES}\`"
             echo "- Independent seeds: \`${EXTENDED_SEEDS}\`"
+            echo "- BPT access probe: HTTP \`${{ steps.bpt_access.outputs.http_status || 'not-run' }}\`"
             if [[ -f outputs/workstation2/evaluation-summary.json ]]; then
               echo "- Evaluation summary was produced."
               .workstation2-venv/bin/python - <<'PY'
