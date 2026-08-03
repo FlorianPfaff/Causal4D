@@ -130,8 +130,7 @@ def _compare_json_value(
     if isinstance(expected, list):
         if len(expected) != len(actual):
             comparison.mismatches.append(
-                f"{path}: list length differs ({len(expected)} versus "
-                f"{len(actual)})"
+                f"{path}: list length differs ({len(expected)} versus {len(actual)})"
             )
         for index, (expected_item, actual_item) in enumerate(
             zip(expected, actual, strict=False)
@@ -176,8 +175,7 @@ def _compare_csv(
     label = expected_path.name
     if expected_fields != actual_fields:
         comparison.mismatches.append(
-            f"{label}: header differs ({expected_fields!r} versus "
-            f"{actual_fields!r})"
+            f"{label}: header differs ({expected_fields!r} versus {actual_fields!r})"
         )
         return
     if len(expected_rows) != len(actual_rows):
