@@ -115,9 +115,7 @@ def append_journal_event(
                     "completed_execution_ids": list(
                         validation["completed_execution_ids"]
                     ),
-                    "aborted_execution_ids": list(
-                        validation["aborted_execution_ids"]
-                    ),
+                    "aborted_execution_ids": list(validation["aborted_execution_ids"]),
                 }
                 _require(
                     last["event_type"] not in _FINAL_EVENT_TYPES,
