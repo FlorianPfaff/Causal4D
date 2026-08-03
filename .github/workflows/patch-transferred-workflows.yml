@@ -49,9 +49,9 @@ jobs:
                       "[self-hosted, Linux, X64, nvidia-smi]",
                   )
               path.write_text(text, encoding="utf-8")
-          if replacements != 5:
+          if replacements != 6:
               raise SystemExit(
-                  f"expected five active provider references, found {replacements}"
+                  f"expected six active provider references, found {replacements}"
               )
           PY
           git rm .github/workflows/patch-transferred-workflows.yml
