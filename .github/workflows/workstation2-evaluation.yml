@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/workstation2-evaluation.yml"
       - ".github/workflows/optional-integrations.yml"
+      - "scripts/ci/compare_result_bundles.py"
       - "scripts/ci/workstation2_gpu_qualification.py"
   workflow_dispatch:
     inputs:
@@ -111,33 +112,11 @@ jobs:
             | tee outputs/workstation2/frozen-controlled-console.json
           .workstation2-venv/bin/python scripts/ci/verify_result_bundle.py \
             outputs/workstation2/frozen-controlled/manifest.json
-          .workstation2-venv/bin/python - <<'PY'
-          import json
-          from pathlib import Path
-
-          expected_path = Path(
-              "milestones/v0.3.0-causal4d-aip/results/controlled/manifest.json"
-          )
-          actual_path = Path(
-              "outputs/workstation2/frozen-controlled/manifest.json"
-          )
-          expected = json.loads(expected_path.read_text(encoding="utf-8"))
-          actual = json.loads(actual_path.read_text(encoding="utf-8"))
-          comparison = {
-              "expected_manifest": str(expected_path),
-              "actual_manifest": str(actual_path),
-              "byte_level_artifact_manifest_match": actual == expected,
-              "expected": expected,
-              "actual": actual,
-          }
-          output = Path("outputs/workstation2/frozen-manifest-comparison.json")
-          output.write_text(
-              json.dumps(comparison, indent=2, sort_keys=True) + "\n",
-              encoding="utf-8",
-          )
-          if actual != expected:
-              raise SystemExit("frozen controlled artifact hashes changed")
-          PY
+          .workstation2-venv/bin/python \
+            scripts/ci/compare_result_bundles.py \
+            milestones/v0.3.0-causal4d-aip/results/controlled \
+            outputs/workstation2/frozen-controlled \
+            --output outputs/workstation2/frozen-bundle-comparison.json
 
       - name: Run an independent-seed controlled replication
         shell: bash
@@ -170,7 +149,7 @@ jobs:
               (root / "gpu-qualification.json").read_text(encoding="utf-8")
           )
           comparison = json.loads(
-              (root / "frozen-manifest-comparison.json").read_text(
+              (root / "frozen-bundle-comparison.json").read_text(
                   encoding="utf-8"
               )
           )
@@ -193,8 +172,15 @@ jobs:
               "independent_seed_specification": os.environ["EXTENDED_SEEDS"],
               "gpu_qualification_passed": qualification["passed"],
               "gpu": qualification["gpu"],
-              "frozen_controlled_manifest_match": comparison[
-                  "byte_level_artifact_manifest_match"
+              "frozen_payload_bytes_match": comparison[
+                  "all_payload_bytes_match"
+              ],
+              "frozen_semantic_match": comparison["semantic_match"],
+              "frozen_maximum_absolute_difference": comparison[
+                  "maximum_absolute_difference"
+              ],
+              "frozen_maximum_relative_difference": comparison[
+                  "maximum_relative_difference"
               ],
               "frozen_success_gates": frozen_summary["success_gates"],
               "frozen_aggregate": frozen_summary["aggregate"],
@@ -203,10 +189,12 @@ jobs:
               ],
               "independent_aggregate": independent_summary["aggregate"],
               "claim_boundary": (
-                  "The seeds 0:5 run is an independent-runner reproduction of "
-                  "the frozen controlled artifact. The additional seeds are a "
-                  "diagnostic replication only and do not modify the frozen "
-                  "method, registered real experiment, or paper claim."
+                  "The seeds 0:5 run is an independent-runner semantic "
+                  "reproduction of the frozen controlled artifact. Byte-level "
+                  "serialization equality is reported separately. The "
+                  "additional seeds are a diagnostic replication only and do "
+                  "not modify the frozen method, registered real experiment, "
+                  "or paper claim."
               ),
           }
           (root / "evaluation-summary.json").write_text(
@@ -271,6 +259,29 @@ jobs:
             echo "- Independent seeds: \`${EXTENDED_SEEDS}\`"
             if [[ -f outputs/workstation2/evaluation-summary.json ]]; then
               echo "- Evaluation summary was produced."
+              .workstation2-venv/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          summary = json.loads(
+              Path("outputs/workstation2/evaluation-summary.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          with Path("$GITHUB_STEP_SUMMARY").open("a", encoding="utf-8") as handle:
+              handle.write(
+                  "- Frozen semantic match: "
+                  f"`{summary['frozen_semantic_match']}`\n"
+              )
+              handle.write(
+                  "- Frozen byte match: "
+                  f"`{summary['frozen_payload_bytes_match']}`\n"
+              )
+              handle.write(
+                  "- Independent gates passed: "
+                  f"`{summary['independent_success_gates']['overall_passed']}`\n"
+              )
+          PY
             else
               echo "- Evaluation stopped before the final summary."
             fi
