@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: apply-single-cli-pr-${{ github.event.pull_request.number }}
@@ -142,8 +143,6 @@ jobs:
               path = diff[index].decode("utf-8")
               index += 1
               if status_code == "D":
-                  # Staging transport files are absent from current main, so no tree
-                  # deletion entry is needed when constructing from main's base tree.
                   continue
               if status_code not in {"A", "M", "T"}:
                   raise SystemExit(f"unsupported diff status: {status_code} {path}")
