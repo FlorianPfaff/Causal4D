@@ -18,9 +18,9 @@ import warp as wp
 
 @wp.kernel
 def _saxpy_kernel(
-    x: wp.array(dtype=wp.float32),
-    y: wp.array(dtype=wp.float32),
-    output: wp.array(dtype=wp.float32),
+    x: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+    y: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+    output: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
     alpha: float,
 ) -> None:
     index = wp.tid()
