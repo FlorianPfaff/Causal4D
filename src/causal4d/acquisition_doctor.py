@@ -98,9 +98,7 @@ def build_acquisition_doctor_report(
     )
     collection_complete = next_execution is None and not failures
     ready_to_record = (
-        next_execution is not None
-        and not failures
-        and not journal_requires_review
+        next_execution is not None and not failures and not journal_requires_review
     )
     report: dict[str, Any] = {
         "schema_version": 1,
