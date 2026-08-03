@@ -95,6 +95,7 @@ jobs:
           from pathlib import Path
           import stat
           import subprocess
+          import urllib.error
           import urllib.request
 
           repository = os.environ["GH_REPO"]
@@ -115,8 +116,12 @@ jobs:
                       "Content-Type": "application/json",
                   },
               )
-              with urllib.request.urlopen(request) as response:
-                  return json.load(response)
+              try:
+                  with urllib.request.urlopen(request) as response:
+                      return json.load(response)
+              except urllib.error.HTTPError as error:
+                  print(error.read().decode("utf-8", errors="replace"))
+                  raise
 
           main_ref = api("GET", "/git/ref/heads/main")
           base_sha = main_ref["object"]["sha"]
@@ -137,9 +142,8 @@ jobs:
               path = diff[index].decode("utf-8")
               index += 1
               if status_code == "D":
-                  entries.append(
-                      {"path": path, "mode": "100644", "type": "blob", "sha": None}
-                  )
+                  # Staging transport files are absent from current main, so no tree
+                  # deletion entry is needed when constructing from main's base tree.
                   continue
               if status_code not in {"A", "M", "T"}:
                   raise SystemExit(f"unsupported diff status: {status_code} {path}")
