@@ -123,9 +123,7 @@ def test_runtime_inventory_detects_missing_or_mismatched_grouped_legacy(
     )
     report = validate_runtime_command_inventory(require_installed=True)
     assert report["valid"] is False
-    assert report["missing_grouped_legacy_executables"] == [
-        "causal4d-real-calibration"
-    ]
+    assert report["missing_grouped_legacy_executables"] == ["causal4d-real-calibration"]
     assert report["target_mismatches"][0]["legacy_name"] == "causal4d-real-protocol"
     assert report["ungrouped_legacy_executables"] == [
         "causal4d-unmapped-research-command"
@@ -146,9 +144,7 @@ def test_commands_validate_reports_source_checkout_without_install(
     report = json.loads(capsys.readouterr().out)
     assert report["installed_distribution_present"] is False
     assert report["valid"] is True
-    assert root.main(
-        ["commands", "validate", "--json", "--require-installed"]
-    ) == 2
+    assert root.main(["commands", "validate", "--json", "--require-installed"]) == 2
 
 
 def test_command_spec_rejects_invalid_routes() -> None:
