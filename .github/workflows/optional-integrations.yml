@@ -61,7 +61,7 @@ jobs:
             tests/test_deform360_visual_hull.py
 
   bpt-vision:
-    name: Bayesian-PhysTwin OpenCV collection
+    name: BayesianPhysTwin OpenCV collection
     runs-on: ubuntu-latest
     steps:
       - name: Check out Causal4D
@@ -88,11 +88,11 @@ jobs:
         if: steps.access.outputs.enabled == 'true'
         id: pin
         run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
-      - name: Check out pinned Bayesian-PhysTwin
+      - name: Check out pinned BayesianPhysTwin
         if: steps.access.outputs.enabled == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: FlorianPfaff/Bayesian-PhysTwin
+          repository: IPS-Stuttgart/BayesianPhysTwin
           ref: ${{ steps.pin.outputs.sha }}
           token: ${{ secrets.BPT_READ_TOKEN }}
           path: _bpt
@@ -136,11 +136,11 @@ jobs:
         if: steps.access.outputs.enabled == 'true'
         id: pin
         run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
-      - name: Check out pinned Bayesian-PhysTwin
+      - name: Check out pinned BayesianPhysTwin
         if: steps.access.outputs.enabled == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: FlorianPfaff/Bayesian-PhysTwin
+          repository: IPS-Stuttgart/BayesianPhysTwin
           ref: ${{ steps.pin.outputs.sha }}
           token: ${{ secrets.BPT_READ_TOKEN }}
           path: _bpt
@@ -174,7 +174,7 @@ jobs:
   gpu:
     name: CUDA / Warp self-hosted smoke
     if: github.event_name == 'workflow_dispatch' && inputs.run_gpu
-    runs-on: [self-hosted, linux, x64, gpu]
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
     steps:
       - name: Check out Causal4D
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -191,10 +191,10 @@ jobs:
       - name: Read exact provider pin
         id: pin
         run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
-      - name: Check out pinned Bayesian-PhysTwin
+      - name: Check out pinned BayesianPhysTwin
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: FlorianPfaff/Bayesian-PhysTwin
+          repository: IPS-Stuttgart/BayesianPhysTwin
           ref: ${{ steps.pin.outputs.sha }}
           token: ${{ secrets.BPT_READ_TOKEN }}
           path: _bpt
