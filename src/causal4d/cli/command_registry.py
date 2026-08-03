@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 import importlib.metadata
-from typing import Literal
+from typing import Any, Literal
 
 Lifecycle = Literal["stable", "diagnostic", "experimental", "legacy"]
 
@@ -97,6 +97,12 @@ GROUPED_COMMANDS = (
         lifecycle="stable",
     ),
     CommandSpec(
+        route=("protocol", "acquisition"),
+        target="causal4d.cli.acquisition_operations:main",
+        summary="Run the acquisition doctor, watchdog, and append-only journal.",
+        lifecycle="stable",
+    ),
+    CommandSpec(
         route=("evidence", "observation-lineage"),
         target="causal4d.cli.observation_lineage:main",
         summary="Validate or bind observation provenance.",
@@ -156,26 +162,44 @@ def grouped_commands() -> tuple[CommandSpec, ...]:
     return GROUPED_COMMANDS
 
 
-def installed_legacy_commands() -> tuple[CommandSpec, ...]:
-    """Discover legacy scripts without importing their target modules."""
-
+def _installed_console_scripts() -> dict[str, str] | None:
     try:
         distribution = importlib.metadata.distribution("causal4d")
     except importlib.metadata.PackageNotFoundError:
-        return ()
-    commands = []
+        return None
+    scripts: dict[str, str] = {}
+    duplicates: list[str] = []
     for entry_point in distribution.entry_points:
         if entry_point.group != "console_scripts":
             continue
-        if not entry_point.name.startswith("causal4d-"):
+        if entry_point.name in scripts:
+            duplicates.append(entry_point.name)
+        scripts[entry_point.name] = entry_point.value
+    if duplicates:
+        raise RuntimeError(
+            "installed console script names are duplicated: "
+            + ", ".join(sorted(set(duplicates)))
+        )
+    return scripts
+
+
+def installed_legacy_commands() -> tuple[CommandSpec, ...]:
+    """Discover legacy scripts without importing their target modules."""
+
+    scripts = _installed_console_scripts()
+    if scripts is None:
+        return ()
+    commands = []
+    for name, target in scripts.items():
+        if not name.startswith("causal4d-"):
             continue
         commands.append(
             CommandSpec(
-                route=("legacy", entry_point.name.removeprefix("causal4d-")),
-                target=entry_point.value,
-                summary=f"Compatibility route for {entry_point.name}.",
+                route=("legacy", name.removeprefix("causal4d-")),
+                target=target,
+                summary=f"Compatibility route for {name}.",
                 lifecycle="legacy",
-                legacy_name=entry_point.name,
+                legacy_name=name,
             )
         )
     return tuple(sorted(commands, key=lambda command: command.route))
@@ -186,6 +210,63 @@ def command_inventory(*, include_legacy: bool = False) -> tuple[CommandSpec, ...
     if include_legacy:
         commands.extend(installed_legacy_commands())
     return tuple(commands)
+
+
+def validate_runtime_command_inventory(
+    *,
+    require_installed: bool = False,
+) -> dict[str, Any]:
+    """Check grouped legacy mappings against installed console-script metadata.
+
+    This validation imports no command target modules. It prevents a grouped
+    route from silently drifting away from the historical executable retained by
+    a frozen manifest, while reporting the still-ungrouped compatibility surface.
+    """
+
+    commands = grouped_commands()
+    scripts = _installed_console_scripts()
+    installed = scripts is not None
+    missing: list[str] = []
+    mismatched: list[dict[str, str]] = []
+    grouped_legacy = {
+        command.legacy_name: command
+        for command in commands
+        if command.legacy_name is not None
+    }
+    if scripts is not None:
+        for legacy_name, command in grouped_legacy.items():
+            target = scripts.get(legacy_name)
+            if target is None:
+                missing.append(legacy_name)
+            elif target != command.target:
+                mismatched.append(
+                    {
+                        "legacy_name": legacy_name,
+                        "registered_target": command.target,
+                        "installed_target": target,
+                    }
+                )
+        ungrouped = sorted(
+            name
+            for name in scripts
+            if name.startswith("causal4d-") and name not in grouped_legacy
+        )
+    else:
+        ungrouped = []
+    valid = not missing and not mismatched and (installed or not require_installed)
+    return {
+        "schema_version": 1,
+        "artifact_kind": "Causal4DCommandInventoryValidation",
+        "valid": valid,
+        "installed_distribution_present": installed,
+        "require_installed": require_installed,
+        "grouped_route_count": len(commands),
+        "grouped_legacy_count": len(grouped_legacy),
+        "missing_grouped_legacy_executables": sorted(missing),
+        "target_mismatches": mismatched,
+        "ungrouped_legacy_executables": ungrouped,
+        "ungrouped_legacy_count": len(ungrouped),
+    }
 
 
 def find_command(name: str, *, include_legacy: bool = True) -> CommandSpec:
