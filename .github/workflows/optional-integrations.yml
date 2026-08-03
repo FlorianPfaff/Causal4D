@@ -28,9 +28,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -63,9 +65,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out Causal4D
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -86,12 +90,13 @@ jobs:
         run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
       - name: Check out pinned Bayesian-PhysTwin
         if: steps.access.outputs.enabled == 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: FlorianPfaff/Bayesian-PhysTwin
           ref: ${{ steps.pin.outputs.sha }}
           token: ${{ secrets.BPT_READ_TOKEN }}
           path: _bpt
+          persist-credentials: false
       - name: Install BPT tests with explicit vision runtime
         if: steps.access.outputs.enabled == 'true'
         run: |
@@ -108,9 +113,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out Causal4D
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -131,12 +138,13 @@ jobs:
         run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
       - name: Check out pinned Bayesian-PhysTwin
         if: steps.access.outputs.enabled == 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: FlorianPfaff/Bayesian-PhysTwin
           ref: ${{ steps.pin.outputs.sha }}
           token: ${{ secrets.BPT_READ_TOKEN }}
           path: _bpt
+          persist-credentials: false
       - name: Install Warp CPU stack
         if: steps.access.outputs.enabled == 'true'
         run: |
@@ -169,9 +177,11 @@ jobs:
     runs-on: [self-hosted, linux, x64, gpu]
     steps:
       - name: Check out Causal4D
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
       - name: Require private-repository credential
@@ -182,12 +192,13 @@ jobs:
         id: pin
         run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
       - name: Check out pinned Bayesian-PhysTwin
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: FlorianPfaff/Bayesian-PhysTwin
           ref: ${{ steps.pin.outputs.sha }}
           token: ${{ secrets.BPT_READ_TOKEN }}
           path: _bpt
+          persist-credentials: false
       - name: Install GPU integration stack
         run: |
           python -m pip install -e ".[dev,vision,warp]"

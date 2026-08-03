@@ -1,0 +1,11 @@
+# Default ownership for the public research codebase.
+* @FlorianPfaff
+
+# Acquisition, claim, and release boundaries require maintainer review.
+/.github/workflows/ @FlorianPfaff
+/configs/causal4d/ @FlorianPfaff
+/milestones/ @FlorianPfaff
+/scripts/ci/ @FlorianPfaff
+/src/causal4d/preacquisition_* @FlorianPfaff
+/src/causal4d/real_* @FlorianPfaff
+/src/causal4d/execution_block_calibration.py @FlorianPfaff
