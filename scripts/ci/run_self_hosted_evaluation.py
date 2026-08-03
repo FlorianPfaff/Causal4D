@@ -147,8 +147,8 @@ def _bootstrap_mean_interval(
         means.append(np.mean(array[indices], axis=1))
         remaining -= count
     bootstrap = np.concatenate(means)
-    lower, upper = np.quantile(bootstrap, [0.025, 0.975])
-    return float(lower), float(upper)
+    interval = np.asarray(np.quantile(bootstrap, [0.025, 0.975]), dtype=float)
+    return float(interval[0]), float(interval[1])
 
 
 def _seed_means(rows: list[dict[str, Any]], metric: str) -> list[float]:
