@@ -1,48 +1,13 @@
-name: Patch self-hosted evaluation typing
+name: Temporary evaluation patch cleanup
 
 on:
-  push:
-    branches:
-      - agent/self-hosted-evaluation
-    paths:
-      - ".github/workflows/patch-self-hosted-evaluation.yml"
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  patch:
+  noop:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out branch
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: agent/self-hosted-evaluation
-          persist-credentials: true
-      - name: Patch, format, and commit
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("scripts/ci/run_self_hosted_evaluation.py")
-          text = path.read_text(encoding="utf-8")
-          old = '''    lower, upper = np.quantile(bootstrap, [0.025, 0.975])
-              return float(lower), float(upper)
-          '''
-          new = '''    interval = np.asarray(
-              np.quantile(bootstrap, [0.025, 0.975]), dtype=float
-          )
-              return float(interval[0]), float(interval[1])
-          '''
-          if text.count(old) != 1:
-              raise SystemExit("expected bootstrap interval block exactly once")
-          path.write_text(text.replace(old, new), encoding="utf-8")
-          PY
-          python -m pip install "ruff==0.16.1"
-          python -m ruff format scripts/ci/run_self_hosted_evaluation.py
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add scripts/ci/run_self_hosted_evaluation.py
-          git commit -m "Fix bootstrap interval typing"
-          git push origin HEAD:agent/self-hosted-evaluation
+      - run: echo "The one-time typing patch has already been applied."
