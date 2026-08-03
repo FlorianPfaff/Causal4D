@@ -97,7 +97,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          .workstation2-venv/bin/causal4d-latent-contact-benchmark \
+          .workstation2-venv/bin/causal4d benchmark latent-contact \
             --output-dir outputs/workstation2/frozen-controlled \
             --seeds 0:5 \
             --frames 56 \
@@ -119,7 +119,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          .workstation2-venv/bin/causal4d-latent-contact-benchmark \
+          .workstation2-venv/bin/causal4d benchmark latent-contact \
             --output-dir outputs/workstation2/independent-seeds \
             --seeds "${EXTENDED_SEEDS}" \
             --frames 56 \
