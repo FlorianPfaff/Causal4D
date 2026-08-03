@@ -61,7 +61,7 @@ jobs:
             tests/test_deform360_visual_hull.py
 
   bpt-vision:
-    name: Bayesian-PhysTwin OpenCV collection
+    name: BayesianPhysTwin OpenCV collection
     runs-on: ubuntu-latest
     steps:
       - name: Check out Causal4D
@@ -73,34 +73,33 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Detect private-repository credential
+      - name: Detect private-repository deploy key
         id: access
         env:
-          BPT_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
+          BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}
         run: |
-          if [[ -n "${BPT_READ_TOKEN}" ]]; then
+          if [[ -n "${BPT_READ_SSH_KEY}" ]]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::BPT_READ_TOKEN is absent; BPT OpenCV collection was not exercised."
+            echo "::warning::BPT_READ_SSH_KEY is absent; BPT OpenCV collection was not exercised."
           fi
       - name: Read exact provider pin
         if: steps.access.outputs.enabled == 'true'
         id: pin
         run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
-      - name: Check out pinned Bayesian-PhysTwin
+      - name: Check out pinned BayesianPhysTwin
         if: steps.access.outputs.enabled == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: FlorianPfaff/Bayesian-PhysTwin
+          repository: IPS-Stuttgart/BayesianPhysTwin
           ref: ${{ steps.pin.outputs.sha }}
-          token: ${{ secrets.BPT_READ_TOKEN }}
+          ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}
           path: _bpt
           persist-credentials: false
       - name: Install BPT tests with explicit vision runtime
         if: steps.access.outputs.enabled == 'true'
-        run: |
-          python -m pip install -e "./_bpt[dev]" opencv-python
+        run: python -m pip install -e "./_bpt[dev]" opencv-python
       - name: Run BPT tests that collect OpenCV modules
         if: steps.access.outputs.enabled == 'true'
         run: |
@@ -121,28 +120,28 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Detect private-repository credential
+      - name: Detect private-repository deploy key
         id: access
         env:
-          BPT_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
+          BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}
         run: |
-          if [[ -n "${BPT_READ_TOKEN}" ]]; then
+          if [[ -n "${BPT_READ_SSH_KEY}" ]]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::BPT_READ_TOKEN is absent; Warp/provider integration was not exercised."
+            echo "::warning::BPT_READ_SSH_KEY is absent; Warp/provider integration was not exercised."
           fi
       - name: Read exact provider pin
         if: steps.access.outputs.enabled == 'true'
         id: pin
         run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
-      - name: Check out pinned Bayesian-PhysTwin
+      - name: Check out pinned BayesianPhysTwin
         if: steps.access.outputs.enabled == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: FlorianPfaff/Bayesian-PhysTwin
+          repository: IPS-Stuttgart/BayesianPhysTwin
           ref: ${{ steps.pin.outputs.sha }}
-          token: ${{ secrets.BPT_READ_TOKEN }}
+          ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}
           path: _bpt
           persist-credentials: false
       - name: Install Warp CPU stack
@@ -174,7 +173,7 @@ jobs:
   gpu:
     name: CUDA / Warp self-hosted smoke
     if: github.event_name == 'workflow_dispatch' && inputs.run_gpu
-    runs-on: [self-hosted, linux, x64, gpu]
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
     steps:
       - name: Check out Causal4D
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -184,19 +183,19 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - name: Require private-repository credential
+      - name: Require private-repository deploy key
         env:
-          BPT_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
-        run: test -n "${BPT_READ_TOKEN}"
+          BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}
+        run: test -n "${BPT_READ_SSH_KEY}"
       - name: Read exact provider pin
         id: pin
         run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
-      - name: Check out pinned Bayesian-PhysTwin
+      - name: Check out pinned BayesianPhysTwin
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: FlorianPfaff/Bayesian-PhysTwin
+          repository: IPS-Stuttgart/BayesianPhysTwin
           ref: ${{ steps.pin.outputs.sha }}
-          token: ${{ secrets.BPT_READ_TOKEN }}
+          ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}
           path: _bpt
           persist-credentials: false
       - name: Install GPU integration stack
