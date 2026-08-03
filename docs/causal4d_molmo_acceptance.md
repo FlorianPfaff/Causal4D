@@ -87,7 +87,7 @@ self-digest checked before any CLI can unlock positive beta candidates.
 Generate a forecast at the checkpoint's rate:
 
 ```bash
-causal4d-molmo-phystwin-forecast \
+causal4d archive semantic forecast-v1 \
   CASE/final_data.pkl RAW_CASE MOLMO_CHECKPOINT molmo_15fps.npz \
   --train-end-frame 59 --forecast-fps 15 \
   --caption 'instruction=A person lifts the sloth upward with one hand.' \
@@ -98,7 +98,7 @@ causal4d-molmo-phystwin-forecast \
 Evaluate before beta selection:
 
 ```bash
-causal4d-evaluate-molmo-acceptance \
+causal4d diagnostic semantic acceptance \
   configs/causal4d/molmo_acceptance_v1.json \
   runs/causal4d-molmo-acceptance-v1/acceptance_result.json
 ```
@@ -107,7 +107,7 @@ The beta-fitting CLI enforces this boundary. Without a passed acceptance
 artifact, requested positive candidates are reduced to `(0,)`:
 
 ```bash
-causal4d-fit-semantic-trust source_manifest.json semantic_trust.json \
+causal4d experiment semantic fit-trust source_manifest.json semantic_trust.json \
   --betas 0,1,3,6,12 \
   --molmo-acceptance-json \
   runs/causal4d-molmo-acceptance-v1/acceptance_result.json

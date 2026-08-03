@@ -34,8 +34,8 @@ Ruff-formatted without forcing unrelated historical files into the same change.
 Configure the least-privilege repository secret `BPT_READ_TOKEN` with read
 access to both private repositories:
 
-- `FlorianPfaff/Bayesian-PhysTwin`;
-- `FlorianPfaff/Prob4D`.
+- `IPS-Stuttgart/BayesianPhysTwin`;
+- `IPS-Stuttgart/Prob4D`.
 
 The historical secret name is retained so existing repository configuration
 does not need to change. Trusted same-repository pull requests, pushes,

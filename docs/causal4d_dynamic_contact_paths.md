@@ -88,7 +88,7 @@ one constant-regime path with unit weight.
 Run:
 
 ```bash
-causal4d-dynamic-contact-benchmark \
+causal4d benchmark dynamic-contact \
   --require-gates \
   --output-json runs/dynamic-contact-delayed-onset-v1.json
 ```

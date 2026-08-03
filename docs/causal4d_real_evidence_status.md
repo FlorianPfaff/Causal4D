@@ -33,7 +33,7 @@ Create the independent freeze attestation from a second operator account or
 review step after sealing:
 
 ```bash
-causal4d-real-experiment-freeze attest \
+causal4d protocol freeze attest \
   /data/causal4d-sloth-multi-action-v1/method_freeze.json \
   configs/causal4d/sloth_multi_action_v1.json \
   /opt/causal4d-frozen \
@@ -60,7 +60,7 @@ Create the acquisition tree with the CLI so the version-2 prerequisite and
 same-grasp templates are installed as well as the execution templates:
 
 ```bash
-causal4d-real-protocol scaffold \
+causal4d protocol real scaffold \
   configs/causal4d/sloth_multi_action_v1.json \
   /data/causal4d-sloth-multi-action-v1
 ```
@@ -109,7 +109,7 @@ A grasp identifier reused across sessions is rejected.
 Write an observational progress snapshot at any stage:
 
 ```bash
-causal4d-real-protocol status \
+causal4d protocol real status \
   configs/causal4d/sloth_multi_action_v1.json \
   /data/causal4d-sloth-multi-action-v1 \
   --output-json \
@@ -144,7 +144,7 @@ Run the final gate from, or point it at, a clean checkout of the exact frozen
 Causal4D commit:
 
 ```bash
-causal4d-real-protocol status \
+causal4d protocol real status \
   configs/causal4d/sloth_multi_action_v1.json \
   /data/causal4d-sloth-multi-action-v1 \
   --repository-root /opt/causal4d-frozen \

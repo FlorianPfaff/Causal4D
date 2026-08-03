@@ -181,7 +181,7 @@ leave-one-view-out correction transfer.
 Run one case:
 
 ```bash
-causal4d-diagnose-phystwin-discrepancy-location \
+causal4d diagnostic discrepancy localize \
   /path/to/PhysTwin \
   /path/to/case/final_data.pkl \
   /path/to/case/inference.pkl \
@@ -197,7 +197,7 @@ causal4d-diagnose-phystwin-discrepancy-location \
 Aggregate completed case summaries:
 
 ```bash
-causal4d-aggregate-phystwin-discrepancy-location \
+causal4d diagnostic discrepancy aggregate-localization \
   /path/to/output/aggregate.json \
   /path/to/output/single_lift_sloth/summary.json \
   /path/to/output/double_lift_sloth/summary.json \

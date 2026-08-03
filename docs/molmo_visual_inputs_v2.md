@@ -1,8 +1,8 @@
 # Digest-bound PhysTwin visual inputs for MolmoMotion
 
-The command `causal4d-molmo-phystwin-forecast-v2` prepares MolmoMotion queries
+The command `causal4d experiment semantic forecast` prepares MolmoMotion queries
 through `bayesian_phystwin.causal4d_artifacts_v2`. It is additive; the historical
-`causal4d-molmo-phystwin-forecast` command remains available for frozen runs.
+`causal4d archive semantic forecast-v1` command remains available for frozen runs.
 
 ## Manifest
 

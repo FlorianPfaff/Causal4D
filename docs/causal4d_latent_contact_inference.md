@@ -168,7 +168,7 @@ possible futures before contact is observed.
 ## Run and artifacts
 
 ```bash
-causal4d-latent-contact-benchmark \
+causal4d benchmark latent-contact \
   --seeds 0:5 \
   --observation-fraction 0.20 \
   --contact-parameter-particles 12 \

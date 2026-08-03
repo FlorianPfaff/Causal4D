@@ -95,12 +95,12 @@ The canonical registry is published atomically and cannot be replaced or reseale
 Use registered operator IDs, not names:
 
 ```bash
-causal4d-real-experiment-freeze seal \
+causal4d protocol freeze seal \
   /opt/causal4d-frozen \
   /data/causal4d-sloth-multi-action-v1/method_freeze.json \
   --frozen-by freezer.primary
 
-causal4d-real-experiment-freeze attest \
+causal4d protocol freeze attest \
   /data/causal4d-sloth-multi-action-v1/method_freeze.json \
   configs/causal4d/sloth_multi_action_v1.json \
   /opt/causal4d-frozen \

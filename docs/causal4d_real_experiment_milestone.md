@@ -36,10 +36,10 @@ The following rules apply to the primary real-experiment analysis:
   amendment, mechanism-gate control evidence, scope document, and protocol
   document are sealed before the first confirmatory execution.
 - The confirmatory uncertainty path is
-  `causal4d-execution-block-calibration`: one preregistered execution per
+  `causal4d calibration execution-block`: one preregistered execution per
   independent session, nine calibration units per outer fold, and the locked
   rank-9-of-9 threshold at nominal 90% coverage.
-- `causal4d-real-calibration` remains an explicitly diagnostic coordinate-level
+- `causal4d calibration real` remains an explicitly diagnostic coordinate-level
   affine-calibration path and cannot produce the confirmatory calibration claim.
 - Target outcomes may not select methods, hyperparameters, exclusions,
   calibration transforms, thresholds, or optional branches.
@@ -60,7 +60,7 @@ Start from a clean checkout of the commit intended for acquisition. Scaffold the
 non-overwriting dataset and readiness evidence first:
 
 ```bash
-causal4d-real-protocol scaffold \
+causal4d protocol real scaffold \
   configs/causal4d/sloth_multi_action_v1.json \
   /data/causal4d-sloth-multi-action-v1
 
@@ -74,12 +74,12 @@ nonconfirmatory dry-run gates. These operational approvals must predate the
 method freeze. Then write and independently attest the freeze manifest:
 
 ```bash
-causal4d-real-experiment-freeze seal \
+causal4d protocol freeze seal \
   /opt/causal4d-frozen \
   /data/causal4d-sloth-multi-action-v1/method_freeze.json \
   --frozen-by "<operator-or-principal-investigator>"
 
-causal4d-real-experiment-freeze attest \
+causal4d protocol freeze attest \
   /data/causal4d-sloth-multi-action-v1/method_freeze.json \
   configs/causal4d/sloth_multi_action_v1.json \
   /opt/causal4d-frozen \
@@ -106,7 +106,7 @@ Before every acquisition session, verify that the checkout still matches the
 sealed commit and that no locked file has drifted:
 
 ```bash
-causal4d-real-experiment-freeze validate \
+causal4d protocol freeze validate \
   /data/causal4d-sloth-multi-action-v1/method_freeze.json \
   /opt/causal4d-frozen \
   --expected-causal4d-commit "$(git -C /opt/causal4d-frozen rev-parse HEAD)"
@@ -157,7 +157,7 @@ not redesign the method in response to target behavior.
 Before analysis, run:
 
 ```bash
-causal4d-real-protocol validate-dataset \
+causal4d protocol real validate-dataset \
   configs/causal4d/sloth_multi_action_v1.json \
   /data/causal4d-sloth-multi-action-v1
 ```
@@ -177,7 +177,7 @@ Report the preregistered primary comparisons:
 The primary targets are factual continuation, chronological same-grasp transfer,
 new-contact transfer with fresh `kappa_cf`, and the 12 locked cross-action/contact
 calibration folds. Every fold must be fitted and evaluated through
-`causal4d-execution-block-calibration`; the target evaluation may not revise the
+`causal4d calibration execution-block`; the target evaluation may not revise the
 source-frozen threshold.
 
 ## Mandatory report

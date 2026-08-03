@@ -124,7 +124,7 @@ proposal oracle improved track error by only `0.307 mm`.
 The CLI writes a provenance-complete JSON summary and one row per component:
 
 ```bash
-causal4d-audit-real-oracle-gap \
+causal4d diagnostic real oracle-gap \
   current.bank.npz expanded108.bank.npz belief.npz physical.npz \
   CASE/final_data.pkl CASE/inference.pkl \
   real_oracle_audit.json real_oracle_components.csv

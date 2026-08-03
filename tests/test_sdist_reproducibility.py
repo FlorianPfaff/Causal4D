@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 _REQUIRED_PATHS = frozenset(
     {
         ".github/workflows/ci.yml",
+        "CHANGELOG.md",
         "CITATION.cff",
         "CONTRIBUTING.md",
         "SECURITY.md",
@@ -23,6 +24,7 @@ _REQUIRED_PATHS = frozenset(
         "configs/causal4d/sloth_multi_action_v1.json",
         "configs/causal4d/sloth_multi_action_v1_schedule.csv",
         "docs/causal4d_paper_scope.md",
+        "docs/command_migration_0_5.md",
         "milestones/v0.3.0-causal4d-aip/README.md",
         "runs/causal4d-real-undercoverage-v1/manifest.json",
         "scripts/release/capture_file_manifest.py",

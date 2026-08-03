@@ -17,7 +17,7 @@ factor-bundle manifest and payload pair.
 ## Observation-belief validation
 
 ```bash
-causal4d-observation-lineage validate \
+causal4d evidence observation-lineage validate \
   observation_belief.npz \
   twin_belief.npz
 ```
@@ -86,7 +86,7 @@ not establish empirical observation quality or downstream benefit.
 ## Exact factor-bundle validation
 
 ```bash
-causal4d-observation-lineage validate-factor-bundle \
+causal4d evidence observation-lineage validate-factor-bundle \
   observation_factors.json \
   twin_belief.npz
 ```
@@ -120,7 +120,7 @@ explicit acknowledgement.
 For a marginalized observation belief:
 
 ```bash
-causal4d-observation-lineage bind \
+causal4d evidence observation-lineage bind \
   observation_belief.npz \
   unbound_twin_belief.npz \
   bound_twin_belief.npz \
@@ -130,7 +130,7 @@ causal4d-observation-lineage bind \
 For an exact Prob4D factor bundle:
 
 ```bash
-causal4d-observation-lineage bind-factor-bundle \
+causal4d evidence observation-lineage bind-factor-bundle \
   observation_factors.json \
   unbound_twin_belief.npz \
   bound_twin_belief.npz \

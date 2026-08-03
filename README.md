@@ -27,7 +27,7 @@ The software implements explicit abduction, intervention, and prediction:
 
 This repository is the canonical home of Causal4D. It was extracted with
 history from
-[Bayesian-PhysTwin](https://github.com/FlorianPfaff/Bayesian-PhysTwin);
+[Bayesian-PhysTwin](https://github.com/IPS-Stuttgart/BayesianPhysTwin);
 the migration boundary is recorded in
 [docs/migration_from_bayesian_phystwin.md](docs/migration_from_bayesian_phystwin.md).
 
@@ -42,7 +42,7 @@ prospective mechanism gates.
 
 ### Bayesian-PhysTwin integration
 
-[Bayesian-PhysTwin](https://github.com/FlorianPfaff/Bayesian-PhysTwin) supplies
+[Bayesian-PhysTwin](https://github.com/IPS-Stuttgart/BayesianPhysTwin) supplies
 the uncertain deformable-object twin: state and parameter particles, graph
 geometry, PhysTwin/Warp replay, and perception/discrepancy artifacts. Causal4D
 consumes those artifacts and owns the intervention and counterfactual
@@ -67,7 +67,7 @@ confirmations.
 
 ### Prob4D
 
-[Prob4D](https://github.com/FlorianPfaff/Prob4D) is a separate, newly developed
+[Prob4D](https://github.com/IPS-Stuttgart/Prob4D) is a separate, newly developed
 probabilistic 4D observation and calibration feeder. It is not assumed prior
 literature and is not part of Causal4D's core causal claim. Causal4D may consume
 versioned Prob4D observation artifacts through a narrow interface, but camera
@@ -101,39 +101,42 @@ stays lightweight.
 
 ## Command-line interface
 
-The package now provides a grouped, lazily imported command surface while
-retaining every historical `causal4d-*` executable for frozen manifests:
+Causal4D 0.5 installs exactly one executable. All stable, diagnostic,
+experimental, public-study, and archived operations are typed grouped routes:
 
 ```bash
 causal4d --help
 causal4d commands list
+causal4d commands describe protocol/real
 causal4d commands migrate causal4d-real-protocol
-causal4d benchmark counterfactual --output-dir runs/causal4d-counterfactual-v1
+causal4d commands validate --require-installed
 ```
 
-See [the command-line interface](docs/command_line.md) for lifecycle and
-compatibility rules.
+The 67 historical `causal4d-*` console scripts are no longer installed. Their
+successor routes remain available, while frozen tags and milestone environments
+retain the original executables. See [the command-line interface](docs/command_line.md)
+and [the complete 0.5 migration table](docs/command_migration_0_5.md).
 
 ## Quick Start
 
 Run the controlled counterfactual benchmark:
 
 ```bash
-causal4d-counterfactual-benchmark \
+causal4d benchmark counterfactual \
   --output-dir runs/causal4d-counterfactual-v1
 ```
 
 Run the latent-contact benchmark:
 
 ```bash
-causal4d-latent-contact-benchmark \
+causal4d benchmark latent-contact \
   --output-dir runs/causal4d-latent-contact-v1
 ```
 
 Validate the locked same-object real protocol:
 
 ```bash
-causal4d-real-protocol validate-protocol \
+causal4d protocol real validate-protocol \
   configs/causal4d/sloth_multi_action_v1.json
 ```
 
@@ -162,7 +165,7 @@ nonconfirmatory dry-run gates. Then seal the exact clean Causal4D commit,
 Bayesian-PhysTwin pin, protocol files, analysis boundary, and reporting contract:
 
 ```bash
-causal4d-real-experiment-freeze seal \
+causal4d protocol freeze seal \
   /opt/causal4d-frozen \
   /data/causal4d-sloth-multi-action-v1/method_freeze.json \
   --frozen-by "<operator-or-principal-investigator>"
@@ -171,7 +174,7 @@ causal4d-real-experiment-freeze seal \
 Independently validate and attest that exact freeze before collection:
 
 ```bash
-causal4d-real-experiment-freeze attest \
+causal4d protocol freeze attest \
   /data/causal4d-sloth-multi-action-v1/method_freeze.json \
   configs/causal4d/sloth_multi_action_v1.json \
   /opt/causal4d-frozen \
@@ -203,7 +206,7 @@ for its evidence and exit-code contracts.
 Track acquisition progress without counting templates as evidence:
 
 ```bash
-causal4d-real-protocol status \
+causal4d protocol real status \
   configs/causal4d/sloth_multi_action_v1.json \
   /data/causal4d-sloth-multi-action-v1 \
   --output-json \

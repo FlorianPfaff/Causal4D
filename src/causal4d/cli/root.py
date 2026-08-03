@@ -14,6 +14,7 @@ from causal4d.cli.command_registry import (
     command_inventory,
     find_command,
     grouped_commands,
+    historical_commands,
     validate_runtime_command_inventory,
 )
 
@@ -32,9 +33,8 @@ def _root_help() -> str:
     lines = [
         "usage: causal4d <group> <command> [arguments]",
         "       causal4d commands {list,describe,migrate,validate} ...",
-        "       causal4d legacy <historical-suffix> [arguments]",
         "",
-        "Grouped command surface for Causal4D. Command modules are imported lazily.",
+        "Single executable for all Causal4D commands. Modules are imported lazily.",
         "",
         "groups:",
     ]
@@ -42,17 +42,18 @@ def _root_help() -> str:
         lines.append(f"  {group}")
         for command in commands:
             suffix = " ".join(command.route[1:])
-            lines.append(f"    {suffix:<24} {command.summary}")
+            lines.append(f"    {suffix:<40} {command.summary}")
     lines.extend(
         (
             "",
             "introspection:",
-            "  commands list [--json] [--include-legacy]",
-            "  commands describe <route-or-legacy-name> [--json]",
-            "  commands migrate <historical-executable> [--json]",
+            "  commands list [--json] [--removed-only]",
+            "  commands describe <route-or-removed-executable> [--json]",
+            "  commands migrate <removed-executable> [--json]",
             "  commands validate [--json] [--require-installed]",
             "",
-            "Use 'causal4d <group> <command> --help' for command-specific help.",
+            "Historical causal4d-* executables were removed in 0.5.0.",
+            "Use 'causal4d commands migrate <old-name>' for the successor route.",
         )
     )
     return "\n".join(lines)
@@ -75,7 +76,7 @@ def _invoke(command: CommandSpec, arguments: Sequence[str]) -> int:
         result = function(list(arguments))
     else:
         original_argv = sys.argv
-        sys.argv = [command.legacy_name or "causal4d", *arguments]
+        sys.argv = [command.invocation_text, *arguments]
         try:
             result = function()
         finally:
@@ -86,15 +87,19 @@ def _invoke(command: CommandSpec, arguments: Sequence[str]) -> int:
 def _commands_list(arguments: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="causal4d commands list")
     parser.add_argument("--json", action="store_true")
-    parser.add_argument("--include-legacy", action="store_true")
+    parser.add_argument("--removed-only", action="store_true")
     parsed = parser.parse_args(arguments)
-    inventory = command_inventory(include_legacy=parsed.include_legacy)
+    inventory = command_inventory(removed_only=parsed.removed_only)
     if parsed.json:
         print(json.dumps([command.as_dict() for command in inventory], indent=2))
     else:
         for command in inventory:
-            legacy = f" [{command.legacy_name}]" if command.legacy_name else ""
-            print(f"{command.route_name:<38} {command.lifecycle:<12}{legacy}")
+            historical = (
+                f" [removed: {command.historical_name}]"
+                if command.historical_name
+                else ""
+            )
+            print(f"{command.route_name:<52} {command.lifecycle:<12}{historical}")
     return 0
 
 
@@ -112,35 +117,50 @@ def _commands_describe(arguments: Sequence[str]) -> int:
         print(json.dumps(command.as_dict(), indent=2, sort_keys=True))
     else:
         print(f"route: {command.route_name}")
+        print(f"invocation: {command.invocation_text}")
         print(f"target: {command.target}")
         print(f"lifecycle: {command.lifecycle}")
+        print(f"claim-bearing: {str(command.claim_bearing).lower()}")
         print(f"summary: {command.summary}")
-        if command.legacy_name:
-            print(f"legacy executable: {command.legacy_name}")
+        if command.historical_name:
+            print(
+                "removed executable: "
+                f"{command.historical_name} (removed in {command.removed_in})"
+            )
         if command.extras:
             print(f"optional extras: {', '.join(command.extras)}")
+        if command.requires:
+            print(f"external requirements: {', '.join(command.requires)}")
     return 0
 
 
 def _commands_migrate(arguments: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="causal4d commands migrate")
-    parser.add_argument("legacy_name")
+    parser.add_argument("historical_name")
     parser.add_argument("--json", action="store_true")
     parsed = parser.parse_args(arguments)
-    requested = parsed.legacy_name
+    requested = parsed.historical_name
     if not requested.startswith("causal4d-"):
         requested = f"causal4d-{requested}"
     matches = [
-        command for command in grouped_commands() if command.legacy_name == requested
+        command
+        for command in historical_commands()
+        if command.historical_name == requested
     ]
     if not matches:
-        parser.error(f"no grouped route is registered for {requested}")
+        parser.error(f"no successor route is registered for {requested}")
     command = matches[0]
-    payload = {"legacy_name": requested, "route": list(command.route)}
+    payload = {
+        "historical_name": requested,
+        "removed_in": command.removed_in,
+        "route": list(command.route),
+        "invocation": list(command.invocation),
+        "invocation_text": command.invocation_text,
+    }
     if parsed.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
-        print(f"{requested} -> causal4d {command.route_name}")
+        print(f"{requested} -> {command.invocation_text}")
     return 0
 
 
@@ -158,18 +178,16 @@ def _commands_validate(arguments: Sequence[str]) -> int:
         state = "valid" if report["valid"] else "invalid"
         print(f"command inventory: {state}")
         print(f"grouped routes: {report['grouped_route_count']}")
+        print(f"historical mappings: {report['historical_executable_count']}")
         print(f"installed distribution: {report['installed_distribution_present']}")
-        print(f"ungrouped legacy executables: {report['ungrouped_legacy_count']}")
-        missing = report["missing_grouped_legacy_executables"]
-        if missing:
-            print("missing grouped legacy executables: " + ", ".join(missing))
-        mismatches = report["target_mismatches"]
-        for mismatch in mismatches:
-            print(
-                "target mismatch: "
-                f"{mismatch['legacy_name']} -> {mismatch['installed_target']} "
-                f"(registered {mismatch['registered_target']})"
-            )
+        for name in report["missing_console_scripts"]:
+            print(f"missing console script: {name}")
+        for name in report["unexpected_console_scripts"]:
+            print(f"unexpected console script: {name}")
+        for name in report["target_mismatches"]:
+            print(f"console-script target mismatch: {name}")
+        for name in report["removed_historical_executables_installed"]:
+            print(f"removed historical executable still installed: {name}")
     return 0 if report["valid"] else 2
 
 
@@ -177,7 +195,7 @@ def _commands(arguments: Sequence[str]) -> int:
     if not arguments or arguments[0] in {"-h", "--help"}:
         print(
             "usage: causal4d commands {list,describe,migrate,validate} ...\n\n"
-            "Inspect the typed command registry and legacy migrations."
+            "Inspect current routes and removed executable migrations."
         )
         return 0
     operation, *remaining = arguments
@@ -194,7 +212,7 @@ def _commands(arguments: Sequence[str]) -> int:
 
 def _resolve_route(arguments: Sequence[str]) -> tuple[CommandSpec, list[str]]:
     for command in sorted(
-        command_inventory(include_legacy=True),
+        grouped_commands(),
         key=lambda item: len(item.route),
         reverse=True,
     ):
@@ -202,6 +220,21 @@ def _resolve_route(arguments: Sequence[str]) -> tuple[CommandSpec, list[str]]:
         if tuple(arguments[:width]) == command.route:
             return command, list(arguments[width:])
     raise KeyError(" ".join(arguments))
+
+
+def _print_removed_migration(name: str) -> bool:
+    try:
+        command = find_command(name)
+    except KeyError:
+        return False
+    if command.historical_name != name:
+        return False
+    print(
+        f"error: {name} was removed in {command.removed_in}; "
+        f"use '{command.invocation_text}'",
+        file=sys.stderr,
+    )
+    return True
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -214,6 +247,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     if arguments[0] == "commands":
         return _commands(arguments[1:])
+    if arguments[0].startswith("causal4d-") and _print_removed_migration(arguments[0]):
+        return 2
     try:
         command, remaining = _resolve_route(arguments)
     except KeyError:

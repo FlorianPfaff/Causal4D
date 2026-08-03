@@ -151,7 +151,7 @@ selected after observing this result.
 Full parameter-support audit:
 
 ```bash
-causal4d-audit-parameter-support \
+causal4d diagnostic parameter-support \
   full81/known.bank.npz full81/known.twin_belief.npz CASE/final_data.pkl \
   parameter_support_audit.json parameter_support_audit.csv \
   --counts 4 8 16 32 81 \
@@ -161,7 +161,7 @@ causal4d-audit-parameter-support \
 Graph discrepancy comparison:
 
 ```bash
-causal4d-evaluate-graph-temporal-discrepancy \
+causal4d diagnostic discrepancy graph-temporal \
   known_action.physical.npz CASE/final_data.pkl CASE/optimal_params.pkl \
   parameter_profile.npz graph_temporal_discrepancy.json \
   --rank-candidates 4 8 16 32
@@ -170,11 +170,11 @@ causal4d-evaluate-graph-temporal-discrepancy \
 Source-only calibration:
 
 ```bash
-causal4d-real-calibration fit \
+causal4d calibration real fit \
   configs/causal4d/sloth_real_calibration_sources_v1.json \
   affine_calibration.json
 
-causal4d-real-calibration evaluate \
+causal4d calibration real evaluate \
   affine_calibration.json \
   configs/causal4d/sloth_real_calibration_target_v1.json \
   target_calibration_evaluation.json

@@ -81,7 +81,7 @@ The repository can generate a small PokeFlex-shaped fixture containing no real
 or restricted data:
 
 ```bash
-causal4d-pokeflex-fixture \
+causal4d public pokeflex fixture \
   runs/causal4d_public_pokeflex_readiness_v1/synthetic_fixture \
   --objects 1 \
   --takes-per-object 5 \
@@ -91,7 +91,7 @@ causal4d-pokeflex-fixture \
 Run the same preflight that will later inspect the gated data:
 
 ```bash
-causal4d-pokeflex-preflight \
+causal4d public pokeflex preflight \
   runs/causal4d_public_pokeflex_readiness_v1/synthetic_fixture \
   runs/causal4d_public_pokeflex_readiness_v1/synthetic_preflight.json \
   --config configs/causal4d_public/pokeflex_readiness_v1.json

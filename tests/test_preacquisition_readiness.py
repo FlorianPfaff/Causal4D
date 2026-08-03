@@ -571,7 +571,7 @@ def test_grouped_readiness_route_is_registered() -> None:
 
     command = find_command("protocol/readiness")
     assert command.lifecycle == "stable"
-    assert command.legacy_name is None
+    assert command.historical_name is None
     assert command.target.endswith("preacquisition_readiness:main")
 
 

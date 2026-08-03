@@ -123,7 +123,7 @@ Install the package in editable mode, then run:
 ```bash
 python3 -m pip install -e ".[dev]"
 
-causal4d-counterfactual-benchmark \
+causal4d benchmark counterfactual \
   --seeds 0:5 \
   --frames 56 \
   --training-repeats 2 \

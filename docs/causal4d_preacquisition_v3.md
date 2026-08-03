@@ -112,7 +112,7 @@ to the nearest other experimental region.
 Generate an incomplete operator template with:
 
 ```bash
-causal4d-contact-registration template \
+causal4d protocol contact-registration template \
   configs/causal4d/sloth_multi_action_v1.json \
   /path/to/contact_registration.v2.template.json \
   --camera-id camera_0 \
@@ -122,17 +122,17 @@ causal4d-contact-registration template \
 ```
 
 No slip pilot may begin until the completed artifact passes
-`causal4d-contact-registration validate` and carries independent approval.
+`causal4d protocol contact-registration validate` and carries independent approval.
 
 ## Commands
 
 ```bash
-causal4d-preacquisition-protocol-v3 generate \
+causal4d archive preacquisition v3 generate \
   configs/causal4d/sloth_multi_action_v1.json \
   configs/causal4d/sloth_preacquisition_v2.json \
   configs/causal4d/sloth_preacquisition_v3.json
 
-causal4d-preacquisition-protocol-v3 validate \
+causal4d archive preacquisition v3 validate \
   configs/causal4d/sloth_multi_action_v1.json \
   configs/causal4d/sloth_preacquisition_v2.json \
   configs/causal4d/sloth_preacquisition_v3.json

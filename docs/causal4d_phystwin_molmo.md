@@ -97,7 +97,7 @@ through immutable NPZ artifacts.
 ### 1. MolmoMotion forecasts
 
 ```bash
-causal4d-molmo-phystwin-forecast \
+causal4d archive semantic forecast-v1 \
   CASE/final_data.pkl RAW_CASE MOLMO_CHECKPOINT molmo.npz \
   --train-end-frame 59 \
   --caption 'instruction=A person lifts the object upward with one hand.' \
@@ -108,7 +108,7 @@ causal4d-molmo-phystwin-forecast \
 ### 2. Physical rollout bank
 
 ```bash
-causal4d-phystwin-rollout-bank \
+causal4d experiment phystwin rollout-bank \
   PHYSTWIN_REPO CASE parameter_profile.npz refit_checkpoint.pt hidden.npz \
   --action-setting hidden \
   --parameter-particles 4 \
@@ -118,7 +118,7 @@ causal4d-phystwin-rollout-bank \
 ### 3. Evaluation
 
 ```bash
-causal4d-evaluate-phystwin-molmo \
+causal4d diagnostic semantic phystwin-evaluation \
   hidden.npz CASE/final_data.pkl molmo.npz result.json
 ```
 

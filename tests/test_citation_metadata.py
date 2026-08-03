@@ -25,11 +25,11 @@ def test_citation_metadata_matches_package_version_and_repository() -> None:
     assert _required_scalar(citation, "type") == "software"
     assert _required_scalar(citation, "version") == version_match.group(1)
     assert _required_scalar(citation, "repository-code") == (
-        "https://github.com/FlorianPfaff/Causal4D"
+        "https://github.com/IPS-Stuttgart/Causal4D"
     )
     assert "family-names: Pfaff" in citation
     assert "given-names: Florian" in citation
     assert (
-        'Citation = "https://github.com/FlorianPfaff/Causal4D/blob/main/CITATION.cff"'
+        'Citation = "https://github.com/IPS-Stuttgart/Causal4D/blob/main/CITATION.cff"'
     ) in pyproject
     assert "\t" not in citation

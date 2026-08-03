@@ -93,7 +93,7 @@ attachment.
 Generate the incomplete operator template with:
 
 ```bash
-causal4d-contact-registration template \
+causal4d protocol contact-registration template \
   configs/causal4d/sloth_multi_action_v1.json \
   configs/causal4d/contact_registration_v3.template.json \
   --camera-id camera_0 \
@@ -108,10 +108,10 @@ schema 3. No physical contact has been registered or approved.
 ## Commands
 
 ```bash
-causal4d-audit-mechanism-gate-controls \
+causal4d diagnostic mechanism-gate-controls \
   runs/causal4d_preacquisition_v4/mechanism_gate_controls.json
 
-causal4d-preacquisition-protocol-v4 validate \
+causal4d protocol preacquisition-v4 validate \
   configs/causal4d/sloth_multi_action_v1.json \
   configs/causal4d/sloth_preacquisition_v2.json \
   configs/causal4d/sloth_preacquisition_v3.json \

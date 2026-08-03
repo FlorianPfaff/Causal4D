@@ -75,7 +75,7 @@ receiving the same pseudo-measurement weight as a native-rate view.
 Run the locked preflight before model fitting:
 
 ```bash
-causal4d-deform360-preflight \
+causal4d public deform360 preflight \
   /mnt/lexar4tb/datasets/deform360/data-7fea8e2/raw/001-rope \
   results/causal4d_public/deform360_001_rope_preflight.json \
   --config configs/causal4d_public/deform360_001_rope_v1.json \
@@ -93,10 +93,10 @@ have been checksummed and sealed.
 The contact comparison itself is staged so the oracle cannot be opened early:
 
 ```bash
-causal4d-deform360-contact fit RAW_001_ROPE PROCESSED_ROOT contact_model.json \
+causal4d public deform360 contact fit RAW_001_ROPE PROCESSED_ROOT contact_model.json \
   --config configs/causal4d_public/deform360_001_rope_v1.json
 
-causal4d-deform360-contact seal PROCESSED_ROOT contact_model.json \
+causal4d public deform360 contact seal PROCESSED_ROOT contact_model.json \
   target_contact_predictions.json \
   --config configs/causal4d_public/deform360_001_rope_v1.json
 ```
@@ -133,14 +133,14 @@ gated SAM3 stage.
 Run and seal the source-only view audit first:
 
 ```bash
-causal4d-deform360-sam2-views PROCESSED_ROOT 0 source_episode_0_views.json \
+causal4d public deform360 sam2-views PROCESSED_ROOT 0 source_episode_0_views.json \
   --config configs/causal4d_public/deform360_001_rope_v1.json \
   --sam2-repository /path/to/pinned/sam2 \
   --checkpoint /path/to/sam2.1_hiera_small.pt
 ```
 
 ```bash
-causal4d-deform360-sam2-masks PROCESSED_ROOT 0 source_episode_0_masks.json \
+causal4d public deform360 sam2-masks PROCESSED_ROOT 0 source_episode_0_masks.json \
   --config configs/causal4d_public/deform360_001_rope_v1.json \
   --sam2-repository /path/to/pinned/sam2 \
   --checkpoint /path/to/sam2.1_hiera_small.pt \
@@ -163,7 +163,7 @@ attempted, deterministic segmentation failures are recorded, and at least eight
 successful cameras are required:
 
 ```bash
-causal4d-deform360-sam2-prefix \
+causal4d public deform360 sam2-prefix \
   PROCESSED_ROOT target_contact_predictions.json source_episode_0_views.json \
   deform360_001_rope_preflight.json target_prefix_masks \
   target_prefix_masks.json \
@@ -180,7 +180,7 @@ probe keeps the pinned Splatfacto trainer but fixes a 256-point minimum and
 audits robust PCA spans plus opacity-weighted projection containment:
 
 ```bash
-causal4d-deform360-splat-probe \
+causal4d public deform360 splat-probe \
   PROCESSED_ROOT source_episode_0_views.json \
   deform360_001_rope_preflight.json source0_splat_probe \
   source0_splat_probe.json \
@@ -197,7 +197,7 @@ source-only centerline command first builds the tight coarse hull, then carves a
 chain at normalized arc-length locations:
 
 ```bash
-causal4d-deform360-rope-sequence \
+causal4d public deform360 rope-sequence \
   PROCESSED_ROOT 0 source_episode_0_views.json \
   deform360_001_rope_preflight.json source0_centerlines.npz \
   source0_centerlines.json \
@@ -217,7 +217,7 @@ Each source centerline sequence is paired with its source-only contact state,
 vision-recovered controller trajectory, and a controller-to-rope contact offset:
 
 ```bash
-causal4d-deform360-rope-observation \
+causal4d public deform360 rope-observation \
   PROCESSED_ROOT contact_model.json source0_centerlines.json \
   source0_observation.npz source0_observation.json \
   --config configs/causal4d_public/deform360_001_rope_v1.json
@@ -232,7 +232,7 @@ Fit the finite 200-candidate forward grid and its leave-one-action-out check
 using only the five accepted source observations:
 
 ```bash
-causal4d-deform360-rope-fit \
+causal4d public deform360 rope-fit \
   source0_observation.json source3_observation.json \
   source4_observation.json source5_observation.json \
   source8_observation.json \
@@ -260,7 +260,7 @@ silently changing the camera policy. Reconstruct the six-frame target prefix
 using only those masks and the accepted source centerline artifacts:
 
 ```bash
-causal4d-deform360-rope-prefix \
+causal4d public deform360 rope-prefix \
   PROCESSED_ROOT target_prefix_masks.json \
   target_prefix_geometry.npz target_prefix_geometry.json \
   --config configs/causal4d_public/deform360_001_rope_v1.json \
@@ -280,7 +280,7 @@ Build and checksum both deployable open-loop rollouts before opening any target
 future mask or full target tactile stream:
 
 ```bash
-causal4d-deform360-rope-predict \
+causal4d public deform360 rope-predict \
   PROCESSED_ROOT target_contact_predictions.json shared_forward_fit.json \
   target_prefix_geometry.json held_out_predictions.npz \
   held_out_predictions.json \
@@ -296,33 +296,33 @@ Only after the preceding seal may the full target tactile stream and target
 suffix masks be opened:
 
 ```bash
-causal4d-deform360-contact evaluate \
+causal4d public deform360 contact evaluate \
   PROCESSED_ROOT contact_model.json target_contact_predictions.json \
   target_contact_oracle.json \
   --config configs/causal4d_public/deform360_001_rope_v1.json \
   --held-out-prediction-seal-sha256 \
   add9b28154159f71e9bd7d631d68cbfd73e0b63ba8a487cedace5bead48ec667
 
-causal4d-deform360-rope-oracle \
+causal4d public deform360 rope-oracle \
   PROCESSED_ROOT held_out_predictions.json target_contact_oracle.json \
   shared_forward_fit.json target_prefix_geometry.json \
   oracle_tactile_prediction.json \
   --config configs/causal4d_public/deform360_001_rope_v1.json
 
-causal4d-deform360-sam2-suffix \
+causal4d public deform360 sam2-suffix \
   PROCESSED_ROOT held_out_predictions.json target_prefix_masks.json \
   target_suffix_masks target_suffix_masks.json \
   --config configs/causal4d_public/deform360_001_rope_v1.json \
   --sam2-repository /path/to/pinned/sam2 \
   --checkpoint /path/to/sam2.1_hiera_small.pt
 
-causal4d-deform360-rope-future \
+causal4d public deform360 rope-future \
   PROCESSED_ROOT held_out_predictions.json target_prefix_geometry.json \
   target_suffix_masks.json target_future_geometry.npz \
   target_future_geometry.json \
   --config configs/causal4d_public/deform360_001_rope_v1.json
 
-causal4d-deform360-rope-evaluate \
+causal4d public deform360 rope-evaluate \
   held_out_predictions.json target_prefix_geometry.json \
   target_future_geometry.json oracle_tactile_prediction.json \
   held_out_evaluation.json
