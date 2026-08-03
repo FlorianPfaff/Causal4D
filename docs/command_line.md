@@ -8,6 +8,7 @@ causal4d --help
 causal4d --version
 causal4d commands list
 causal4d commands list --json --include-legacy
+causal4d commands validate --json --require-installed
 ```
 
 The grouped routes cover the stable benchmark, protocol, evidence, and
@@ -19,6 +20,7 @@ causal4d benchmark latent-contact --output-dir runs/latent-contact
 causal4d protocol real validate-protocol configs/causal4d/sloth_multi_action_v1.json
 causal4d protocol freeze validate method_freeze.json protocol.json checkout/
 causal4d protocol readiness status checkout/ dataset/ --verify-file-hashes
+causal4d protocol acquisition doctor protocol.json checkout/ dataset/
 causal4d evidence observation-lineage validate observation.npz twin_belief.npz
 ```
 
@@ -29,9 +31,15 @@ gate after hash validation, and derives whether execution 1 is permitted. With
 `2` means malformed or contradictory evidence. See
 [the readiness contract](causal4d_preacquisition_readiness.md).
 
+`protocol acquisition` adds the method-neutral pre-session doctor, live health
+snapshot evaluator, and append-only, hash-chained session journal. It verifies
+the frozen checkout, sealed readiness, storage, locked acquisition order, and
+journal recovery state without reading target outcomes. See
+[the acquisition flight recorder](causal4d_acquisition_flight_recorder.md).
+
 Command modules are imported only after a route is selected. Therefore root
-help, version reporting, and registry inspection stay independent of optional
-Bayesian-PhysTwin, Warp, vision, and GPU dependencies.
+help, version reporting, registry inspection, and registry validation stay
+independent of optional Bayesian-PhysTwin, Warp, vision, and GPU dependencies.
 
 ## Registry and migration
 
@@ -42,6 +50,13 @@ extras, and historical executable name. Inspect one entry with:
 causal4d commands describe protocol/real
 causal4d commands migrate causal4d-real-protocol
 ```
+
+`commands validate` compares every grouped historical mapping with the installed
+wheel's `console_scripts` metadata without importing command modules. It fails
+when a grouped historical executable is missing or maps to a different Python
+target, and reports the still-ungrouped compatibility surface. In a source-only
+checkout it reports that no installed distribution was found; use
+`--require-installed` in wheel/sdist and release checks.
 
 `commands migrate` reports the preferred grouped spelling without changing the
 historical executable. To invoke an installed compatibility entry point through

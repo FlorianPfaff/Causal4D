@@ -14,6 +14,7 @@ from causal4d.cli.command_registry import (
     command_inventory,
     find_command,
     grouped_commands,
+    validate_runtime_command_inventory,
 )
 
 
@@ -30,7 +31,7 @@ def _root_help() -> str:
         groups.setdefault(command.route[0], []).append(command)
     lines = [
         "usage: causal4d <group> <command> [arguments]",
-        "       causal4d commands {list,describe,migrate} ...",
+        "       causal4d commands {list,describe,migrate,validate} ...",
         "       causal4d legacy <historical-suffix> [arguments]",
         "",
         "Grouped command surface for Causal4D. Command modules are imported lazily.",
@@ -49,6 +50,7 @@ def _root_help() -> str:
             "  commands list [--json] [--include-legacy]",
             "  commands describe <route-or-legacy-name> [--json]",
             "  commands migrate <historical-executable> [--json]",
+            "  commands validate [--json] [--require-installed]",
             "",
             "Use 'causal4d <group> <command> --help' for command-specific help.",
         )
@@ -142,10 +144,39 @@ def _commands_migrate(arguments: Sequence[str]) -> int:
     return 0
 
 
+def _commands_validate(arguments: Sequence[str]) -> int:
+    parser = argparse.ArgumentParser(prog="causal4d commands validate")
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--require-installed", action="store_true")
+    parsed = parser.parse_args(arguments)
+    report = validate_runtime_command_inventory(
+        require_installed=parsed.require_installed
+    )
+    if parsed.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        state = "valid" if report["valid"] else "invalid"
+        print(f"command inventory: {state}")
+        print(f"grouped routes: {report['grouped_route_count']}")
+        print(f"installed distribution: {report['installed_distribution_present']}")
+        print(f"ungrouped legacy executables: {report['ungrouped_legacy_count']}")
+        missing = report["missing_grouped_legacy_executables"]
+        if missing:
+            print("missing grouped legacy executables: " + ", ".join(missing))
+        mismatches = report["target_mismatches"]
+        for mismatch in mismatches:
+            print(
+                "target mismatch: "
+                f"{mismatch['legacy_name']} -> {mismatch['installed_target']} "
+                f"(registered {mismatch['registered_target']})"
+            )
+    return 0 if report["valid"] else 2
+
+
 def _commands(arguments: Sequence[str]) -> int:
     if not arguments or arguments[0] in {"-h", "--help"}:
         print(
-            "usage: causal4d commands {list,describe,migrate} ...\n\n"
+            "usage: causal4d commands {list,describe,migrate,validate} ...\n\n"
             "Inspect the typed command registry and legacy migrations."
         )
         return 0
@@ -156,6 +187,8 @@ def _commands(arguments: Sequence[str]) -> int:
         return _commands_describe(remaining)
     if operation == "migrate":
         return _commands_migrate(remaining)
+    if operation == "validate":
+        return _commands_validate(remaining)
     raise SystemExit(f"unknown commands operation: {operation}")
 
 

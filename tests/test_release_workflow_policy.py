@@ -11,4 +11,4 @@ def test_tag_release_requires_private_provider_integration() -> None:
     assert "Require private-provider integration for releases" in text
     assert "startsWith(github.ref, 'refs/tags/v')" in text
     assert "steps.access.outputs.enabled != 'true'" in text
-    assert "Release tags require BPT_READ_TOKEN" in text
+    assert "Release tags require BPT_READ_SSH_KEY" in text
