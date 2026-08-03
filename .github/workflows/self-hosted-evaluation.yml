@@ -1,0 +1,248 @@
+name: Self-hosted research evaluation
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Evaluation scale
+        required: true
+        default: standard
+        type: choice
+        options:
+          - smoke
+          - standard
+          - full
+      run_bpt:
+        description: Run the pinned Bayesian-PhysTwin provider checks
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: self-hosted-evaluation-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONHASHSEED: "0"
+  PYTHONUNBUFFERED: "1"
+  EVAL_PROFILE: ${{ inputs.profile || 'standard' }}
+
+jobs:
+  evaluate:
+    name: Higher-powered controlled and GPU diagnostics
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 480
+    steps:
+      - name: Check out Causal4D
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Create isolated environment
+        shell: bash
+        run: |
+          python -m venv .venv
+          echo "VIRTUAL_ENV=${PWD}/.venv" >> "${GITHUB_ENV}"
+          echo "${PWD}/.venv/bin" >> "${GITHUB_PATH}"
+
+      - name: Record runner and GPU identity
+        shell: bash
+        run: |
+          mkdir -p self-hosted-evaluation
+          {
+            echo "runner_name=${RUNNER_NAME}"
+            echo "runner_os=${RUNNER_OS}"
+            echo "runner_arch=${RUNNER_ARCH}"
+            echo "repository=${GITHUB_REPOSITORY}"
+            echo "sha=${GITHUB_SHA}"
+            echo "profile=${EVAL_PROFILE}"
+            uname -a
+            lscpu
+          } | tee self-hosted-evaluation/runner-info.txt
+          nvidia-smi | tee self-hosted-evaluation/nvidia-smi.txt
+
+      - name: Install Causal4D evaluation stack
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,warp]"
+          python -m pip check
+
+      - name: Verify CUDA and run a Warp parity probe
+        shell: bash
+        run: |
+          cat > self-hosted-evaluation/warp_parity_probe.py <<'PY'
+          import json
+          from pathlib import Path
+          import time
+
+          import numpy as np
+          import torch
+          import warp as wp
+
+          if not torch.cuda.is_available():
+              raise SystemExit("PyTorch cannot see CUDA")
+          wp.init()
+          devices = wp.get_cuda_devices()
+          if not devices:
+              raise SystemExit("Warp cannot see a CUDA device")
+
+          @wp.kernel
+          def affine(
+              source: wp.array(dtype=wp.float32),
+              target: wp.array(dtype=wp.float32),
+          ):
+              index = wp.tid()
+              target[index] = source[index] * 1.0001 + 0.001
+
+          values = np.linspace(-1.0, 1.0, 1_000_000, dtype=np.float32)
+
+          def run(device: str) -> tuple[np.ndarray, float]:
+              source = wp.array(values, dtype=wp.float32, device=device)
+              target = wp.empty(values.size, dtype=wp.float32, device=device)
+              for _ in range(3):
+                  wp.launch(
+                      affine,
+                      dim=values.size,
+                      inputs=[source, target],
+                      device=device,
+                  )
+              wp.synchronize()
+              started = time.perf_counter()
+              for _ in range(20):
+                  wp.launch(
+                      affine,
+                      dim=values.size,
+                      inputs=[source, target],
+                      device=device,
+                  )
+              wp.synchronize()
+              return target.numpy(), time.perf_counter() - started
+
+          cpu_values, cpu_seconds = run("cpu")
+          gpu_values, gpu_seconds = run("cuda:0")
+          max_difference = float(np.max(np.abs(cpu_values - gpu_values)))
+          payload = {
+              "torch_version": torch.__version__,
+              "torch_cuda_version": torch.version.cuda,
+              "gpu_name": torch.cuda.get_device_name(0),
+              "warp_version": getattr(wp, "__version__", None),
+              "warp_cuda_devices": [str(device) for device in devices],
+              "element_count": int(values.size),
+              "launch_count": 20,
+              "cpu_seconds": cpu_seconds,
+              "gpu_seconds": gpu_seconds,
+              "gpu_speedup": cpu_seconds / max(gpu_seconds, 1e-12),
+              "maximum_cpu_gpu_absolute_difference": max_difference,
+          }
+          output = Path("self-hosted-evaluation/warp-parity.json")
+          output.write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          if max_difference > 1e-6:
+              raise SystemExit("Warp CPU/CUDA parity tolerance exceeded")
+          PY
+          python self-hosted-evaluation/warp_parity_probe.py
+
+      - name: Run focused evaluation-contract tests
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m pytest -ra \
+            tests/test_causal4d_benchmark.py \
+            tests/test_causal4d_contact_evaluation.py \
+            tests/test_dynamic_contact.py \
+            tests/test_deform360_phystwin_feasibility.py \
+            tests/test_deform360_replication_warp.py \
+            | tee self-hosted-evaluation/focused-tests.log
+
+      - name: Run higher-powered diagnostic evaluation
+        shell: bash
+        run: |
+          set -o pipefail
+          python scripts/ci/run_self_hosted_evaluation.py \
+            --profile "${EVAL_PROFILE}" \
+            --output-dir self-hosted-evaluation/results \
+            | tee self-hosted-evaluation/evaluation.log
+
+      - name: Detect private Bayesian-PhysTwin credential
+        if: ${{ inputs.run_bpt }}
+        id: access
+        shell: bash
+        env:
+          BPT_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
+        run: |
+          if [[ -n "${BPT_READ_TOKEN}" ]]; then
+            echo "enabled=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "enabled=false" >> "${GITHUB_OUTPUT}"
+            echo "::warning::BPT_READ_TOKEN is absent; provider checks were skipped."
+          fi
+
+      - name: Read exact Bayesian-PhysTwin provider pin
+        if: steps.access.outputs.enabled == 'true'
+        id: pin
+        run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "${GITHUB_OUTPUT}"
+
+      - name: Check out pinned Bayesian-PhysTwin
+        if: steps.access.outputs.enabled == 'true'
+        id: bpt_checkout
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/Bayesian-PhysTwin
+          ref: ${{ steps.pin.outputs.sha }}
+          token: ${{ secrets.BPT_READ_TOKEN }}
+          path: _bpt
+          persist-credentials: false
+
+      - name: Report unavailable Bayesian-PhysTwin access
+        if: >-
+          steps.access.outputs.enabled == 'true' &&
+          steps.bpt_checkout.outcome != 'success'
+        shell: bash
+        run: |
+          echo "::warning::BPT_READ_TOKEN could not read IPS-Stuttgart/Bayesian-PhysTwin; provider checks were skipped."
+
+      - name: Install pinned Bayesian-PhysTwin
+        if: steps.bpt_checkout.outcome == 'success'
+        run: |
+          python -m pip install -e ./_bpt
+          python -m pip check
+
+      - name: Run pinned provider integration tests
+        if: steps.bpt_checkout.outcome == 'success'
+        shell: bash
+        run: |
+          set -o pipefail
+          python scripts/ci/run_bpt_integration_tests.py \
+            | tee self-hosted-evaluation/bpt-integration.log
+
+      - name: Record resolved environment
+        if: always()
+        shell: bash
+        run: |
+          python -m pip freeze \
+            | tee self-hosted-evaluation/pip-freeze.txt
+          git status --short \
+            | tee self-hosted-evaluation/git-status.txt
+
+      - name: Upload evaluation bundle
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: causal4d-self-hosted-${{ github.run_id }}-${{ github.run_attempt }}
+          path: self-hosted-evaluation
+          if-no-files-found: error
+          retention-days: 30
