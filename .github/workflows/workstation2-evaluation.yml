@@ -268,19 +268,18 @@ jobs:
                   encoding="utf-8"
               )
           )
-          with Path("$GITHUB_STEP_SUMMARY").open("a", encoding="utf-8") as handle:
-              handle.write(
-                  "- Frozen semantic match: "
-                  f"`{summary['frozen_semantic_match']}`\n"
-              )
-              handle.write(
-                  "- Frozen byte match: "
-                  f"`{summary['frozen_payload_bytes_match']}`\n"
-              )
-              handle.write(
-                  "- Independent gates passed: "
-                  f"`{summary['independent_success_gates']['overall_passed']}`\n"
-              )
+          print(
+              "- Frozen semantic match: "
+              f"`{summary['frozen_semantic_match']}`"
+          )
+          print(
+              "- Frozen byte match: "
+              f"`{summary['frozen_payload_bytes_match']}`"
+          )
+          print(
+              "- Independent gates passed: "
+              f"`{summary['independent_success_gates']['overall_passed']}`"
+          )
           PY
             else
               echo "- Evaluation stopped before the final summary."
