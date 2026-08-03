@@ -85,7 +85,7 @@ jobs:
       - name: Verify CUDA and run a Warp parity probe
         shell: bash
         run: |
-          python - <<'PY'
+          cat > self-hosted-evaluation/warp_parity_probe.py <<'PY'
           import json
           from pathlib import Path
           import time
@@ -158,6 +158,7 @@ jobs:
           if max_difference > 1e-6:
               raise SystemExit("Warp CPU/CUDA parity tolerance exceeded")
           PY
+          python self-hosted-evaluation/warp_parity_probe.py
 
       - name: Run focused evaluation-contract tests
         shell: bash
