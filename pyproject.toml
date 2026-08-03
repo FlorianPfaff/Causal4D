@@ -7,6 +7,7 @@ name = "causal4d"
 version = "0.4.1"
 description = "Bayesian intervention abduction and interventional prediction for deformable-object dynamics"
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
 authors = [
   { name = "Florian Pfaff" },
