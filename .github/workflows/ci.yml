@@ -116,23 +116,38 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Detect private-repository credential
+      - name: Detect private-provider repository access
         id: access
         env:
           BPT_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
         run: |
+          set -euo pipefail
+          status="000"
           if [[ -n "${BPT_READ_TOKEN}" ]]; then
+            status=$(curl --silent --show-error --output /dev/null \
+              --write-out '%{http_code}' \
+              --header 'Accept: application/vnd.github+json' \
+              --header "Authorization: Bearer ${BPT_READ_TOKEN}" \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              https://api.github.com/repos/IPS-Stuttgart/BayesianPhysTwin)
+          fi
+          echo "http_status=${status}" >> "$GITHUB_OUTPUT"
+          if [[ "${status}" == "200" ]]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::BPT_READ_TOKEN is not configured; pinned private-repository integration was not exercised."
-            echo "### Pinned Bayesian-PhysTwin integration" >> "$GITHUB_STEP_SUMMARY"
-            echo "Skipped because the repository secret \`BPT_READ_TOKEN\` is absent." >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::BPT_READ_TOKEN cannot read IPS-Stuttgart/BayesianPhysTwin (HTTP ${status}); pinned provider integration was not exercised."
+            {
+              echo "### Pinned Bayesian-PhysTwin integration"
+              echo
+              echo "Skipped because the repository-access probe returned HTTP \`${status}\`."
+              echo "Update the least-privilege \`BPT_READ_TOKEN\` grant for \`IPS-Stuttgart/BayesianPhysTwin\`."
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Require private-provider integration for releases
         if: startsWith(github.ref, 'refs/tags/v') && steps.access.outputs.enabled != 'true'
         run: |
-          echo "::error::Release tags require BPT_READ_TOKEN and an executed pinned-provider integration."
+          echo "::error::Release tags require BPT_READ_TOKEN with read access to IPS-Stuttgart/BayesianPhysTwin and an executed pinned-provider integration."
           exit 1
       - name: Read exact Bayesian-PhysTwin pin
         if: steps.access.outputs.enabled == 'true'
