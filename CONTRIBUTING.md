@@ -57,6 +57,13 @@ array must be defensively copied and marked read-only. Nested JSON-like metadata
 must be recursively immutable or copied on export. Add adversarial tests that mutate
 constructor inputs and attempt mutation through the resulting artifact.
 
+### Keep one executable and one command registry
+
+Current packages install only the `causal4d` executable. Add new operations as
+typed grouped routes in `causal4d.cli.command_registry`; do not add another
+`[project.scripts]` entry or recreate a removed `causal4d-*` wrapper. Historical
+names are migration metadata only. Frozen tags retain their original surfaces.
+
 ### Use versioned provider boundaries
 
 Production code must consume Bayesian-PhysTwin and Prob4D through their declared,
@@ -126,6 +133,8 @@ promotion. When a change is maintenance-only, state that boundary explicitly.
 
 ## Licensing
 
-A repository license has not yet been selected. Do not add, replace, or infer a
-license in a technical pull request. Licensing requires an explicit maintainer and,
-where applicable, institutional rights-holder decision.
+Causal4D is distributed under the MIT License in `LICENSE`. Contributions are
+accepted for inclusion under those terms. Do not replace the repository license or
+apply different terms to datasets, checkpoints, evidence bundles, or paper assets
+without an explicit maintainer and, where applicable, institutional rights-holder
+decision.

@@ -38,11 +38,11 @@ REQUIRED_LOCKED_PATHS = (
     "pyproject.toml",
 )
 REQUIRED_ANALYSIS_ENTRYPOINTS = (
-    "causal4d-real-protocol",
-    "causal4d-execution-block-calibration",
-    "causal4d-evaluate-physical-counterfactual",
+    "causal4d protocol real",
+    "causal4d calibration execution-block",
+    "causal4d evidence physical-counterfactual evaluate",
 )
-DIAGNOSTIC_ONLY_ANALYSIS_ENTRYPOINTS = ("causal4d-real-calibration",)
+DIAGNOSTIC_ONLY_ANALYSIS_ENTRYPOINTS = ("causal4d calibration real",)
 _SHA40 = re.compile(r"^[0-9a-f]{40}$")
 _SHA64 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -221,7 +221,7 @@ def _analysis_contract() -> dict[str, Any]:
         "diagnostic_only_entrypoints": list(DIAGNOSTIC_ONLY_ANALYSIS_ENTRYPOINTS),
         "allowed_observation_prefix_frames": 6,
         "confirmatory_calibration": {
-            "entrypoint": "causal4d-execution-block-calibration",
+            "entrypoint": "causal4d calibration execution-block",
             "confidence_level": 0.90,
             "outer_fold_count": 12,
             "expected_calibration_units_per_outer_fold": 9,

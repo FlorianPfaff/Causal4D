@@ -128,13 +128,13 @@ def test_freeze_binds_method_files_dependency_and_registered_calibration(
 
     analysis = manifest["analysis_contract"]
     assert analysis["entrypoints"] == list(REQUIRED_ANALYSIS_ENTRYPOINTS)
-    assert "causal4d-execution-block-calibration" in analysis["entrypoints"]
-    assert "causal4d-real-calibration" not in analysis["entrypoints"]
+    assert "causal4d calibration execution-block" in analysis["entrypoints"]
+    assert "causal4d calibration real" not in analysis["entrypoints"]
     assert analysis["diagnostic_only_entrypoints"] == list(
         DIAGNOSTIC_ONLY_ANALYSIS_ENTRYPOINTS
     )
     assert analysis["confirmatory_calibration"] == {
-        "entrypoint": "causal4d-execution-block-calibration",
+        "entrypoint": "causal4d calibration execution-block",
         "confidence_level": 0.90,
         "outer_fold_count": 12,
         "expected_calibration_units_per_outer_fold": 9,
@@ -178,7 +178,7 @@ def test_freeze_rejects_file_drift_and_target_informed_selection(
 
     changed = deepcopy(manifest)
     changed["analysis_contract"]["confirmatory_calibration"]["entrypoint"] = (
-        "causal4d-real-calibration"
+        "causal4d calibration real"
     )
     with pytest.raises(ValueError, match="analysis contract"):
         validate_method_freeze_manifest(changed, root)

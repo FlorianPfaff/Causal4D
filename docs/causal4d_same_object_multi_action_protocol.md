@@ -159,7 +159,7 @@ Timestamped streams additionally name their shared clock.
 Create the complete non-overwriting acquisition skeleton with:
 
 ```bash
-causal4d-real-protocol scaffold \
+causal4d protocol real scaffold \
   configs/causal4d/sloth_multi_action_v1.json \
   /path/to/causal4d-sloth-multi-action-v1
 ```
@@ -183,7 +183,7 @@ checksums are populated.
 Validate a complete acquisition, including every file hash, with:
 
 ```bash
-causal4d-real-protocol validate-dataset \
+causal4d protocol real validate-dataset \
   configs/causal4d/sloth_multi_action_v1.json \
   /path/to/causal4d-sloth-multi-action-v1
 ```

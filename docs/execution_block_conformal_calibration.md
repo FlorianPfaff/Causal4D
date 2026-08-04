@@ -2,7 +2,7 @@
 
 The confirmatory Causal4D real protocol treats an independent execution/session,
 not an individual coordinate or point-frame, as the calibration unit. The
-`causal4d-execution-block-calibration` command implements that registered
+`causal4d calibration execution-block` command implements that registered
 boundary without changing the older affine-calibration diagnostic.
 
 ## Method
@@ -31,7 +31,7 @@ using the eighth score.
 
 The source manifest is schema version 1 and identifies one outer fold. Every
 case must have an `execution_id`, a `session_id`, and the existing prediction
-inputs accepted by `causal4d-real-calibration`.
+inputs accepted by `causal4d calibration real`.
 
 ```json
 {
@@ -73,7 +73,7 @@ artifact.
 Fit and seal the calibration artifact with:
 
 ```bash
-causal4d-execution-block-calibration fit \
+causal4d calibration execution-block fit \
   source-fold.json \
   execution-block-calibration.json \
   --confidence-level 0.90 \
@@ -96,7 +96,7 @@ different protocol, amendment, or method freeze is rejected before any target
 case is scored.
 
 ```bash
-causal4d-execution-block-calibration evaluate \
+causal4d calibration execution-block evaluate \
   execution-block-calibration.json \
   target-fold.json \
   target-evaluation.json

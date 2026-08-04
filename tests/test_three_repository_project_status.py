@@ -33,7 +33,7 @@ def test_project_status_matches_causal4d_and_provider_contract() -> None:
 
     assert summary["status_id"] == "causal4d-project-status-v1"
     assert summary["claim_status"] == "controlled_passed_real_pending"
-    assert summary["versions"] == {"causal4d": "0.4.1"}
+    assert summary["versions"] == {"causal4d": "0.5.0"}
     assert len(summary["status_sha256"]) == 64
 
 

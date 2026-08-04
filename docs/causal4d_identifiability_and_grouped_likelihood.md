@@ -115,7 +115,7 @@ The factual-abduction CLI can construct frame-grouped evidence directly from
 the permitted object tracks:
 
 ```bash
-causal4d-abduct-phystwin-intervention \
+causal4d experiment phystwin abduct-intervention \
   known.bank.npz belief.npz CASE/final_data.pkl \
   factual.npz factual_eval.json \
   --grouped-observation-likelihood \
@@ -128,7 +128,7 @@ A source-frozen identifiability artifact is a non-pickled NPZ containing
 arrays. Guarded use is:
 
 ```bash
-causal4d-abduct-phystwin-intervention \
+causal4d experiment phystwin abduct-intervention \
   known.bank.npz belief.npz CASE/final_data.pkl \
   factual.npz factual_eval.json \
   --grouped-observation-likelihood \

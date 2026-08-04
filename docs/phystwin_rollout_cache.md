@@ -8,8 +8,8 @@ simulations instead of restarting the complete hypothesis-by-particle grid.
 Caching is enabled by default for:
 
 ```text
-causal4d-phystwin-rollout-bank
-causal4d-counterfactual-phystwin
+causal4d experiment phystwin rollout-bank
+causal4d experiment phystwin counterfactual
 ```
 
 Without an explicit option, the cache is written beside the primary output as

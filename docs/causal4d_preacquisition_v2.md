@@ -89,7 +89,7 @@ measured_positions_m
 Run:
 
 ```bash
-causal4d-calibrate-actuator-realization \
+causal4d protocol actuator-realization \
   /path/to/actuator_trace.npz \
   /path/to/actuator_realization.json \
   --execution-id dry-run-1
@@ -112,11 +112,11 @@ contact registration
 Generate or validate the amendment with:
 
 ```bash
-causal4d-preacquisition-protocol generate \
+causal4d archive preacquisition v2 generate \
   configs/causal4d/sloth_multi_action_v1.json \
   configs/causal4d/sloth_preacquisition_v2.json
 
-causal4d-preacquisition-protocol validate \
+causal4d archive preacquisition v2 validate \
   configs/causal4d/sloth_multi_action_v1.json \
   configs/causal4d/sloth_preacquisition_v2.json
 ```

@@ -11,15 +11,22 @@ WORKFLOW = (
 )
 
 
-def test_trusted_events_cannot_pass_by_skipping_private_repositories() -> None:
+def test_continuous_and_explicit_private_provider_policy_is_fail_closed() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
     assert "credential-gate:" in text
-    assert "Require private-repository read access" in text
+    assert "Require BayesianPhysTwin read access" in text
+    assert "BPT_READ_SSH_KEY" in text
+    assert "ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}" in text
+    assert "Probe Prob4D repository access" in text
+    assert "PROB4D_READ_TOKEN" in text
+    assert "Credentialed three-repository gate unavailable" in text
+    assert "no current-Prob4D execution or evidence is admitted" in text
+    assert "Reject unavailable Prob4D gate on explicit validation events" in text
+    assert "github.event_name != 'pull_request'" in text
+    assert "github.event_name != 'push'" in text
     assert "exit 1" in text
-    assert "needs: credential-gate" in text
     assert "steps.access.outputs.enabled" not in text
-    assert "the required three-repository golden path cannot run" in text
 
 
 def test_external_fork_limitation_is_separate_and_explicit() -> None:
@@ -31,7 +38,7 @@ def test_external_fork_limitation_is_separate_and_explicit() -> None:
     assert "maintainers must run the installed-wheel golden path" in text
 
 
-def test_strict_claim_bearing_path_is_mandatory_and_fail_closed() -> None:
+def test_strict_claim_bearing_path_is_mandatory_when_prob4d_is_available() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
     assert "Run strict claim-bearing provider-v2 admission path" in text
@@ -43,6 +50,7 @@ def test_strict_claim_bearing_path_is_mandatory_and_fail_closed() -> None:
     assert text.count("set -o pipefail") >= 2
     assert text.count('python" -m json.tool') >= 2
     assert text.count('test -s "$RUNNER_TEMP/three-repository-') >= 2
+    assert text.count("steps.prob4d-access.outputs.available == 'true'") >= 10
 
 
 def test_built_wheels_receive_persistent_content_identities() -> None:

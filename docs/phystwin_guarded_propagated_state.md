@@ -95,7 +95,7 @@ of three development cases passes the forecast-blind gate.
 Run one case from its frozen localization directory:
 
 ```bash
-causal4d-diagnose-phystwin-propagated-state \
+causal4d diagnostic state propagated \
   /path/to/PhysTwin \
   /path/to/phystwin-discrepancy-localization-v1/single_lift_sloth \
   /path/to/output/single_lift_sloth
@@ -104,7 +104,7 @@ causal4d-diagnose-phystwin-propagated-state \
 Aggregate case summaries:
 
 ```bash
-causal4d-aggregate-phystwin-propagated-state \
+causal4d diagnostic state aggregate-propagated \
   /path/to/output/aggregate.json \
   /path/to/output/*/summary.json
 ```

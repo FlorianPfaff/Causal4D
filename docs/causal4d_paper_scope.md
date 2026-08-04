@@ -86,7 +86,7 @@ Before the first confirmatory execution, the acquisition team must seal:
   well-powered negative result.
 
 The machine-readable seal is produced and validated with
-`causal4d-real-experiment-freeze`. A method-affecting change requires collection
+`causal4d protocol freeze`. A method-affecting change requires collection
 to stop and a new protocol/version before target outcomes are inspected. After
 target inspection, defects and failed gates are reported as limitations rather
 than repaired under the same registration.

@@ -1,18 +1,17 @@
 # Command-line interface
 
-Causal4D provides one grouped executable while retaining every historical
-`causal4d-*` entry point for frozen manifests and compatibility.
+Causal4D 0.5 installs exactly one executable:
 
 ```bash
 causal4d --help
 causal4d --version
-causal4d commands list
-causal4d commands list --json --include-legacy
-causal4d commands validate --json --require-installed
 ```
 
-The grouped routes cover the stable benchmark, protocol, evidence, and
-calibration workflows:
+Every operation is a typed, lazily imported grouped route. Root help, command
+inventory, migration lookup, and metadata validation do not import optional
+BayesianPhysTwin, Warp, vision, or GPU dependencies.
+
+## Stable workflows
 
 ```bash
 causal4d benchmark counterfactual --output-dir runs/counterfactual
@@ -22,53 +21,59 @@ causal4d protocol freeze validate method_freeze.json protocol.json checkout/
 causal4d protocol readiness status checkout/ dataset/ --verify-file-hashes
 causal4d protocol acquisition doctor protocol.json checkout/ dataset/
 causal4d evidence observation-lineage validate observation.npz twin_belief.npz
+causal4d calibration execution-block --help
 ```
 
-`protocol readiness` is the fail-closed gate before confirmatory collection. It
-scaffolds non-overwriting operational evidence templates, seals one completed
-gate after hash validation, and derives whether execution 1 is permitted. With
-`--require-ready`, exit code `0` means ready, `3` means valid but incomplete, and
-`2` means malformed or contradictory evidence. See
-[the readiness contract](causal4d_preacquisition_readiness.md).
+`protocol readiness` is the fail-closed gate before confirmatory collection.
+`protocol acquisition` provides the method-neutral pre-session doctor, health
+snapshot evaluator, and append-only session journal.
 
-`protocol acquisition` adds the method-neutral pre-session doctor, live health
-snapshot evaluator, and append-only, hash-chained session journal. It verifies
-the frozen checkout, sealed readiness, storage, locked acquisition order, and
-journal recovery state without reading target outcomes. See
-[the acquisition flight recorder](causal4d_acquisition_flight_recorder.md).
+## Authoritative registry
 
-Command modules are imported only after a route is selected. Therefore root
-help, version reporting, registry inspection, and registry validation stay
-independent of optional Bayesian-PhysTwin, Warp, vision, and GPU dependencies.
+The registry records, for every supported route:
 
-## Registry and migration
+- the grouped route and Python target;
+- lifecycle: stable, diagnostic, experimental, public-study, or archive;
+- optional extras and external providers;
+- owner and claim-bearing status;
+- the removed historical executable, when one existed; and
+- the release in which that executable was removed.
 
-The registry records the route, Python target, lifecycle, owner, optional
-extras, and historical executable name. Inspect one entry with:
+Inspect it without importing command modules:
 
 ```bash
-causal4d commands describe protocol/real
+causal4d commands list
+causal4d commands list --json
+causal4d commands list --removed-only
+causal4d commands describe diagnostic/real/oracle-gap --json
+causal4d commands validate --json --require-installed
+```
+
+`commands validate` requires installed package metadata to expose only:
+
+```text
+causal4d = causal4d.cli.root:main
+```
+
+Any installed `causal4d-*` wrapper, missing primary executable, duplicate route,
+or target mismatch fails validation.
+
+## Removed executables
+
+Version 0.5 removed all 67 historical `causal4d-*` console scripts. Removed names
+are migration metadata, not runnable aliases:
+
+```bash
 causal4d commands migrate causal4d-real-protocol
+# causal4d-real-protocol -> causal4d protocol real
 ```
 
-`commands validate` compares every grouped historical mapping with the installed
-wheel's `console_scripts` metadata without importing command modules. It fails
-when a grouped historical executable is missing or maps to a different Python
-target, and reports the still-ungrouped compatibility surface. In a source-only
-checkout it reports that no installed distribution was found; use
-`--require-installed` in wheel/sdist and release checks.
+See [the complete 0.5 migration table](command_migration_0_5.md). Frozen tags and
+the exact environments retained under `milestones/` preserve historical command
+surfaces; current releases do not recreate them.
 
-`commands migrate` reports the preferred grouped spelling without changing the
-historical executable. To invoke an installed compatibility entry point through
-the root command, use its suffix after `legacy`; all remaining arguments are
-passed through unchanged:
+## Contribution rule
 
-```bash
-causal4d legacy real-protocol --help
-```
-
-Historical executable names remain runnable and continue to be stored verbatim
-in frozen result manifests. New stable command families should add a grouped
-route instead of adding another top-level executable. A legacy script may be
-removed from ordinary installations only in a versioned compatibility change;
-frozen tags and recorded environments must remain reproducible.
+New command functionality must be added to the grouped registry. Adding another
+`[project.scripts]` entry is a packaging-policy violation. Installed wheel and
+source-distribution CI invokes `--help` for every registered grouped route.

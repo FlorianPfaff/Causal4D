@@ -10,7 +10,7 @@ different kinds of information that must not be conflated:
 
 The current contract records:
 
-- Causal4D `0.4.1`;
+- Causal4D `0.5.0`;
 - Bayesian-PhysTwin compatibility `>=0.4,<0.5`;
 - Prob4D development compatibility `>=0.3,<0.4`;
 - a passed controlled counterfactual result;

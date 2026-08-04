@@ -48,11 +48,11 @@ The Python packages remain `causal4d` and `causal4d_public`. Existing
 
 | Previous command | Canonical command |
 | --- | --- |
-| `bpt-structural-protocol` | `causal4d-structural-protocol` |
-| `bpt-diagnose-phystwin-discrepancy-location` | `causal4d-diagnose-phystwin-discrepancy-location` |
-| `bpt-aggregate-phystwin-discrepancy-location` | `causal4d-aggregate-phystwin-discrepancy-location` |
-| `bpt-diagnose-phystwin-propagated-state` | `causal4d-diagnose-phystwin-propagated-state` |
-| `bpt-aggregate-phystwin-propagated-state` | `causal4d-aggregate-phystwin-propagated-state` |
+| `bpt-structural-protocol` | `causal4d protocol structural` |
+| `bpt-diagnose-phystwin-discrepancy-location` | `causal4d diagnostic discrepancy localize` |
+| `bpt-aggregate-phystwin-discrepancy-location` | `causal4d diagnostic discrepancy aggregate-localization` |
+| `bpt-diagnose-phystwin-propagated-state` | `causal4d diagnostic state propagated` |
+| `bpt-aggregate-phystwin-propagated-state` | `causal4d diagnostic state aggregate-propagated` |
 
 Frozen tags continue to reproduce their historical tree. New development uses
 `bayesian_phystwin.causal4d_provider_v2` for immutable replay requests,

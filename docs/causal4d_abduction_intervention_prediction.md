@@ -257,44 +257,44 @@ calibrated physical risk.
 Export a complete endpoint belief:
 
 ```bash
-causal4d-export-bpt-belief \
+causal4d evidence bpt-belief export \
   PHYSTWIN_REPO CASE parameter_profile.npz refit_checkpoint.pt belief.npz
 ```
 
 Build an observed-action bank and abduce the factual intervention:
 
 ```bash
-causal4d-phystwin-rollout-bank \
+causal4d experiment phystwin rollout-bank \
   PHYSTWIN_REPO CASE parameter_profile.npz refit_checkpoint.pt known.npz \
   --action-setting known --twin-belief belief.npz
 
-causal4d-abduct-phystwin-intervention \
+causal4d experiment phystwin abduct-intervention \
   known.npz belief.npz CASE/final_data.pkl factual.npz factual_eval.json
 ```
 
 Apply a counterfactual and evaluate a physical holdout:
 
 ```bash
-causal4d-counterfactual-phystwin \
+causal4d experiment phystwin counterfactual \
   PHYSTWIN_REPO CASE parameter_profile.npz refit_checkpoint.pt \
   belief.npz factual.npz physical.npz \
   --counterfactual-action-id history_reverse --contact-policy new_contact
 
-causal4d-evaluate-physical-counterfactual \
+causal4d evidence physical-counterfactual evaluate \
   physical.npz CASE/final_data.pkl beta0_eval.json
 ```
 
 Create and gate a separate MolmoMotion task posterior:
 
 ```bash
-causal4d-build-molmo-task-posterior \
+causal4d experiment semantic build-task-posterior \
   physical.npz molmo.npz instruction task.npz --beta 0
 
-causal4d-fit-semantic-trust source_manifest.json semantic_trust.json \
+causal4d experiment semantic fit-trust source_manifest.json semantic_trust.json \
   --minimum-relative-improvement 0.005 \
   --molmo-acceptance-json molmo_acceptance_result.json
 
-causal4d-adaptive-molmo-task-posterior \
+causal4d experiment semantic adaptive-task-posterior \
   physical.npz molmo.npz instruction semantic_trust.json \
   adaptive_task.npz trust_decision.json
 ```
