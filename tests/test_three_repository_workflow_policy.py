@@ -21,9 +21,9 @@ def test_trusted_events_cannot_pass_by_skipping_private_repositories() -> None:
     assert "steps.access.outputs.enabled" not in text
     assert "the required three-repository golden path cannot run" in text
     assert "BPT_READ_SSH_KEY" in text
-    assert "PROB4D_READ_TOKEN" in text
-    assert "ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}" in text
-    assert "token: ${{ secrets.PROB4D_READ_TOKEN }}" in text
+    assert text.count("ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}") == 2
+    assert "secrets.BPT_READ_TOKEN" not in text
+    assert "secrets.PROB4D_READ_TOKEN" not in text
 
 
 def test_external_fork_limitation_is_separate_and_explicit() -> None:
