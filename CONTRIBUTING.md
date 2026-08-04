@@ -126,6 +126,13 @@ promotion. When a change is maintenance-only, state that boundary explicitly.
 
 ## Licensing
 
-A repository license has not yet been selected. Do not add, replace, or infer a
-license in a technical pull request. Licensing requires an explicit maintainer and,
-where applicable, institutional rights-holder decision.
+Causal4D source code and associated project documentation are distributed under
+the [MIT License](LICENSE). Unless agreed otherwise in writing before submission,
+contributions accepted into this repository are provided under the same license.
+By submitting a contribution, you represent that you have the right to provide it
+under those terms.
+
+Identify third-party code, data, checkpoints, or other assets explicitly. Their
+licenses and attribution requirements must permit the proposed use; the Causal4D
+MIT License does not relicense external material. See
+[docs/licensing.md](docs/licensing.md) for the complete repository licensing scope.
