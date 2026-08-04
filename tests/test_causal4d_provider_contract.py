@@ -180,7 +180,10 @@ def test_exact_provider_descriptor_constructs_the_same_manifest() -> None:
     from_descriptor = PhysicalBeliefProviderManifest.from_provider_descriptor(
         _descriptor()
     )
-    direct = _manifest(metadata=_descriptor()["metadata"])
+    direct = _manifest(
+        capabilities=BAYESIAN_PHYSTWIN_PROVIDER_CAPABILITIES,
+        metadata=_descriptor()["metadata"],
+    )
 
     assert from_descriptor.manifest_id == direct.manifest_id
     assert from_descriptor.capabilities == tuple(
