@@ -12,5 +12,8 @@
 - Require installed wheel and source-distribution tests to exercise `--help` for
   every grouped route and reject any residual historical wrapper.
 - Update the registered real-analysis command strings to grouped invocations.
+- Preserve the same fail-closed provenance, evidence, and posterior validation
+  inside each handler; the migration changes invocation paths, not scientific
+  semantics or admissibility checks.
 
 Frozen tags, milestone files, and recorded environments are unchanged.
