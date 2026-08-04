@@ -217,7 +217,11 @@ def enumerate_contact_paths(
         for regime, probability in enumerate(initial)
         if probability > settings.minimum_transition_probability
     ]
-    retained_mass = 1.0
+    retained_mass = float(
+        np.sum(initial[initial > settings.minimum_transition_probability])
+    )
+    if not beam:
+        raise RuntimeError("contact-path beam removed all initial probability mass")
     for frame in range(1, len(activation)):
         transition = contact_transition_matrix(
             activation[frame],
