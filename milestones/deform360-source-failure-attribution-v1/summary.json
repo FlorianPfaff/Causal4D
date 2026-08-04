@@ -5,6 +5,12 @@
   "protocol_config_sha256": "f0aab308345807b2183f653306a062d4ad0295584b6b283deb99d29b3c247934",
   "source_backend_decision_result_sha256": "3603d273f6263dfe682631b9d9c72ae73b11ec2707a649f6d065cb6855e343a2",
   "full_attribution_result_sha256": "8da1a6112a7afb959a6bf81c3f870a8135d8414b599db98d67656ba40e98c9eb",
+  "environment": {
+    "python": "3.12",
+    "dependency_lock_path": "requirements/diagnostics/deform360-source-failure-py312.txt",
+    "dependency_lock_sha256": "e8258eeae724e775651af0449d3e0708dae2fd4d04d2316f109792aad2862895",
+    "dependency_lock_bytes": 489
+  },
   "registered_thresholds": {
     "maximum_p99_relative_edge_strain": 0.5,
     "minimum_relative_improvement": 0.05,
