@@ -31,6 +31,12 @@ evidence. Source-panel executions remain source-only and cannot increment the
 
 ### Fixed
 
+- Reject coercible or schema-drifted Causal4D contract descriptors, archive
+  inventories, support indices, and grouped-observation indices before they can
+  change content identity or evidence selection. Preserve exact JSON numeric
+  types during loading so integer-valued semantic temperatures round-trip.
+- Reject non-finite grouped Student-t mixture controls and observation prefixes
+  that exceed the scored rollout instead of propagating invalid likelihoods.
 - Preserve the initial prior mass removed by contact-path pruning, including
   one-frame paths, and fail explicitly when the threshold removes every initial
   contact regime.
