@@ -236,9 +236,7 @@ def test_provider_descriptor_rejects_schema_and_type_drift() -> None:
     string_capabilities = _descriptor(capabilities="artifact_checksums")
     malformed.append((string_capabilities, "must be a sequence of strings"))
 
-    fractional_artifact = _descriptor(
-        artifact_schema_versions={"TwinBelief": 1.5}
-    )
+    fractional_artifact = _descriptor(artifact_schema_versions={"TwinBelief": 1.5})
     malformed.append((fractional_artifact, "must be a positive integer"))
 
     malformed_metadata = _descriptor(metadata=[])
@@ -256,7 +254,9 @@ def test_compatibility_requirements_reject_coercible_values() -> None:
         validate_provider_compatibility(manifest, required_capabilities=(1,))
     with pytest.raises(ValueError, match="supported_schema_versions\[0\]"):
         validate_provider_compatibility(manifest, supported_schema_versions=(True,))
-    with pytest.raises(ValueError, match="supported_provider_versions must be a string"):
+    with pytest.raises(
+        ValueError, match="supported_provider_versions must be a string"
+    ):
         validate_provider_compatibility(manifest, supported_provider_versions=1)
     with pytest.raises(ValueError, match="required_artifact_versions key"):
         validate_provider_compatibility(

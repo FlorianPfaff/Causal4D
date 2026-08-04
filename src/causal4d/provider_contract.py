@@ -322,7 +322,7 @@ def validate_provider_compatibility(
                 unsupported_provider_version = manifest.provider_version
 
     required_versions = _validated_artifact_versions(
-        required_artifact_versions or {},
+        ({} if required_artifact_versions is None else required_artifact_versions),
         name="required_artifact_versions",
         allow_empty=True,
     )
