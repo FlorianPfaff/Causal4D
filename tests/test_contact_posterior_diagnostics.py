@@ -13,6 +13,7 @@ from causal4d.contact_posterior_diagnostics import (
     _diffused_force_field,
     _enrich_rows,
     _posterior_diagnostic_metrics,
+    _trajectory_lookup,
     _validate_recomputed_parity,
 )
 
@@ -29,6 +30,7 @@ def _posterior_row(node_truth: str, node_map: str) -> dict[str, object]:
     return {
         "seed": 100,
         "object": "rope",
+        "held_out_topology": True,
         "source_objects": "cloth;soft_block",
         "world_condition": "shifted_contact",
         "setting": "online_adaptation",
@@ -58,8 +60,11 @@ def _interventions() -> list[dict[str, object]]:
     common = {
         "seed": 100,
         "object": "rope",
+        "held_out_topology": True,
+        "source_objects": "cloth;soft_block",
         "world_condition": "shifted_contact",
         "setting": "online_adaptation",
+        "observation_fraction": 0.2,
     }
     return [
         {**common, "method": "nominal_physics", "trajectory_rmse_m": 0.004},
@@ -139,3 +144,29 @@ def test_recomputed_contact_identity_must_match_bundle() -> None:
     changed["node_correct"] = False
     with pytest.raises(ValueError, match="node_map"):
         _validate_recomputed_parity([retained], [changed], DiagnosticConfig())
+
+
+def test_duplicate_posterior_identities_are_rejected() -> None:
+    row = _posterior_row("5", "5")
+    retained = {
+        key: str(value) if isinstance(value, bool) else value
+        for key, value in row.items()
+    }
+    with pytest.raises(
+        ValueError,
+        match="duplicate retained posterior row identity",
+    ):
+        _validate_recomputed_parity(
+            [retained, dict(retained)],
+            [row],
+            DiagnosticConfig(),
+        )
+
+
+def test_duplicate_intervention_methods_are_rejected() -> None:
+    rows = _interventions()
+    with pytest.raises(
+        ValueError,
+        match="duplicate intervention method row",
+    ):
+        _trajectory_lookup([*rows, dict(rows[0])])
