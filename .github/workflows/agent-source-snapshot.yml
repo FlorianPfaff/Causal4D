@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/causal4d-source-audit-20260805
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
