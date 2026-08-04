@@ -28,7 +28,7 @@ def _load_runtime_dependencies() -> None:
         ParameterSupportAuditConfig,
         audit_parameter_support,
     )
-    from causal4d.phystwin_backend import load_rollout_bank
+    from causal4d.rollout_bank_io import load_rollout_bank
 
 
 def _sha256(path: str | Path) -> str:
