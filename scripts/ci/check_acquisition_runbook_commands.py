@@ -167,9 +167,7 @@ def _validate_causal4d_command(
             path=path,
             line=line,
             command=command,
-            message=(
-                "removed historical executable; use its grouped `causal4d` route"
-            ),
+            message=("removed historical executable; use its grouped `causal4d` route"),
         )
     if executable != PRIMARY_EXECUTABLE:
         return None
