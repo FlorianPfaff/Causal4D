@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/deform360-source-failure-attribution.yml"
+      - "requirements/diagnostics/deform360-source-failure-py312.txt"
       - "scripts/ci/analyze_deform360_source_failure.py"
       - "src/causal4d_public/deform360_source_failure_attribution.py"
       - "tests/test_deform360_source_failure_attribution.py"
@@ -15,6 +16,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/deform360-source-failure-attribution.yml"
+      - "requirements/diagnostics/deform360-source-failure-py312.txt"
       - "scripts/ci/analyze_deform360_source_failure.py"
       - "src/causal4d_public/deform360_source_failure_attribution.py"
       - "tests/test_deform360_source_failure_attribution.py"
@@ -44,9 +46,34 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: requirements/diagnostics/deform360-source-failure-py312.txt
 
-      - name: Install development environment
-        run: python -m pip install -e ".[dev]"
+      - name: Install locked diagnostic environment
+        run: |
+          python -m pip install --upgrade "pip==26.2"
+          python -m pip install \
+            -r requirements/diagnostics/deform360-source-failure-py312.txt
+          python -m pip install --no-deps -e .
+          python -m pip check
+          python - <<'PY'
+          from importlib.metadata import version
+
+          expected = {
+              "numpy": "2.5.1",
+              "packaging": "26.2",
+              "scipy": "1.18.0",
+              "pytest": "9.1.1",
+              "iniconfig": "2.3.0",
+              "pluggy": "1.6.0",
+              "Pygments": "2.20.0",
+              "ruff": "0.16.1",
+          }
+          observed = {name: version(name) for name in expected}
+          if observed != expected:
+              raise SystemExit(
+                  f"locked diagnostic environment differs: {observed!r}"
+              )
+          PY
 
       - name: Validate implementation and contracts
         run: |
@@ -88,6 +115,7 @@ jobs:
             echo "commit=${GITHUB_SHA}"
             echo "workflow_run_id=${GITHUB_RUN_ID}"
             echo "runner=${RUNNER_NAME}"
+            echo "dependency_lock=requirements/diagnostics/deform360-source-failure-py312.txt"
             python --version
             uname -a
           } > outputs/deform360-source-failure/environment.txt
