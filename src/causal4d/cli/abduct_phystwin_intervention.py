@@ -60,6 +60,23 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dynamic-likelihood-weight", type=float, default=0.25)
     parser.add_argument("--degrees-of-freedom", type=float, default=4.0)
     parser.add_argument(
+        "--likelihood-semantics",
+        choices=("legacy_v1", "normalized_v2"),
+        default="legacy_v1",
+        help=(
+            "Dense prefix-likelihood contract. legacy_v1 preserves the registered "
+            "path; normalized_v2 is an opt-in development comparator."
+        ),
+    )
+    parser.add_argument(
+        "--difference-correlation",
+        type=float,
+        default=0.0,
+        help=(
+            "Adjacent-frame observation correlation used only by normalized_v2."
+        ),
+    )
+    parser.add_argument(
         "--grouped-observation-likelihood",
         action="store_true",
         help=(
@@ -144,6 +161,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         likelihood_power=args.likelihood_power,
         dynamic_likelihood_weight=args.dynamic_likelihood_weight,
         degrees_of_freedom=args.degrees_of_freedom,
+        likelihood_semantics=args.likelihood_semantics,
+        difference_correlation=args.difference_correlation,
     )
     grouped_evidence = None
     if args.grouped_observation_likelihood:
