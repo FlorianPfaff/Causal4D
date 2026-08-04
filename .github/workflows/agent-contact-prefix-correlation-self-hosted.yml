@@ -1,0 +1,109 @@
+name: Temporary self-hosted contact-prefix correlation evaluation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/agent-contact-prefix-correlation-self-hosted.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-contact-prefix-correlation-self-hosted-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONHASHSEED: "0"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  evaluate:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 360
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install and record environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e ".[dev]"
+          python -m pip check
+          mkdir -p outputs/contact-prefix-correlation-self-hosted
+          python -m pip freeze --all \
+            > outputs/contact-prefix-correlation-self-hosted/pip-freeze.txt
+          {
+            echo "runner_name=${RUNNER_NAME}"
+            echo "runner_os=${RUNNER_OS}"
+            echo "runner_arch=${RUNNER_ARCH}"
+            echo "repository=${GITHUB_REPOSITORY}"
+            echo "commit=${GITHUB_SHA}"
+            echo "workflow_run_id=${GITHUB_RUN_ID}"
+            echo "seeds=300:320"
+            uname -a
+          } > outputs/contact-prefix-correlation-self-hosted/environment.txt
+
+      - name: Run fresh source-only panel
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ci/run_contact_correlation_diagnostic.py \
+            --output-dir \
+              outputs/contact-prefix-correlation-self-hosted/results \
+            --seeds "300:320" \
+            --frame-block-sizes "2,3,4" \
+            --whitening-shrinkages "0.10,0.25,0.50,0.75" \
+            --generalized-bayes-rates "0.25,0.50,0.75,1.00" \
+            | tee \
+              outputs/contact-prefix-correlation-self-hosted/console.json
+
+      - name: Publish decision summary
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          path = Path(
+              "outputs/contact-prefix-correlation-self-hosted/results/"
+              "contact-correlation-diagnostic.json"
+          )
+          print("### Fresh contact-prefix correlation result")
+          if not path.is_file():
+              print("Diagnostic did not produce a summary.")
+          else:
+              result = json.loads(path.read_text(encoding="utf-8"))
+              for row in result["decision"]:
+                  print(
+                      f"- {row['policy']}: "
+                      f"promotion_candidate={row['promotion_candidate']}, "
+                      f"interpretation={row['interpretation']}"
+                  )
+              print(
+                  "- Any candidate meeting the joint rule: "
+                  f"{result['any_promotion_candidate']}"
+              )
+          PY
+
+      - name: Upload complete evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: contact-prefix-correlation-self-hosted-${{ github.run_id }}
+          path: outputs/contact-prefix-correlation-self-hosted/
+          if-no-files-found: error
+          retention-days: 30
