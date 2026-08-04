@@ -94,26 +94,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      PRIVATE_REPOSITORY_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
+      BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}
+      PROB4D_READ_SSH_KEY: ${{ secrets.PROB4D_READ_SSH_KEY }}
     steps:
-      - name: Enforce private-repository credential
+      - name: Enforce private-repository deploy keys
+        shell: bash
         run: |
-          if [[ -z "${PRIVATE_REPOSITORY_READ_TOKEN}" ]]; then
-            echo "::error::BPT_READ_TOKEN is not configured; the required three-repository golden path cannot run."
+          missing=()
+          [[ -n "${BPT_READ_SSH_KEY}" ]] || missing+=("BPT_READ_SSH_KEY")
+          [[ -n "${PROB4D_READ_SSH_KEY}" ]] || missing+=("PROB4D_READ_SSH_KEY")
+          if (( ${#missing[@]} )); then
+            echo "::error::Required private-repository deploy keys are absent: ${missing[*]}"
             {
               echo "### Three-repository installed-wheel compatibility"
               echo
-              echo "**Failed:** the repository secret \`BPT_READ_TOKEN\` is absent."
+              echo "**Failed:** required read-only deploy-key secrets are absent."
               echo
               echo "This check is not allowed to pass by skipping its private repositories."
-              echo "Configure a least-privilege token with read access to:"
+              echo "Configure repository-scoped read-only deploy keys and store their private keys as:"
               echo
-              echo "- \`IPS-Stuttgart/BayesianPhysTwin\`;"
-              echo "- \`IPS-Stuttgart/Prob4D\`."
+              echo "- \`BPT_READ_SSH_KEY\` for \`IPS-Stuttgart/BayesianPhysTwin\`;"
+              echo "- \`PROB4D_READ_SSH_KEY\` for \`IPS-Stuttgart/Prob4D\`."
+              echo
+              echo "Missing in this run: \`${missing[*]}\`."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
-          echo "Private-repository credential is configured."
+          echo "Both private-provider deploy keys are configured."
 
   external-pull-request:
     name: External PR cannot access private providers
@@ -140,8 +147,6 @@ jobs:
     if: needs.credential-gate.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      PRIVATE_REPOSITORY_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
     steps:
       - name: Check out Causal4D
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -154,7 +159,7 @@ jobs:
         with:
           repository: IPS-Stuttgart/BayesianPhysTwin
           ref: ${{ inputs.bpt_ref || 'main' }}
-          token: ${{ secrets.BPT_READ_TOKEN }}
+          ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}
           path: bayesian-phystwin
           persist-credentials: false
 
@@ -163,7 +168,7 @@ jobs:
         with:
           repository: IPS-Stuttgart/Prob4D
           ref: ${{ inputs.prob4d_ref || 'main' }}
-          token: ${{ secrets.BPT_READ_TOKEN }}
+          ssh-key: ${{ secrets.PROB4D_READ_SSH_KEY }}
           path: prob4d
           persist-credentials: false
 
