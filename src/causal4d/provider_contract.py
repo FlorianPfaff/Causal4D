@@ -189,7 +189,7 @@ class PhysicalBeliefProviderManifest:
         cls,
         values: Mapping[Any, Any],
     ) -> PhysicalBeliefProviderManifest:
-        """Construct a manifest from the exact provider-v1 descriptor schema."""
+        """Construct a manifest from the exact provider descriptor schema."""
 
         if not isinstance(values, Mapping):
             raise ValueError("provider descriptor must be a mapping")
@@ -358,7 +358,15 @@ def load_bayesian_phystwin_provider_manifest(
     from bayesian_phystwin.causal4d_provider_v1 import causal4d_provider_manifest
 
     values = causal4d_provider_manifest(provider_revision=provider_revision)
-    return PhysicalBeliefProviderManifest.from_provider_descriptor(values)
+    manifest = PhysicalBeliefProviderManifest.from_provider_descriptor(values)
+    if (
+        provider_revision is not None
+        and manifest.provider_revision != provider_revision
+    ):
+        raise ValueError(
+            "provider descriptor revision does not match requested revision"
+        )
+    return manifest
 
 
 def validate_bayesian_phystwin_provider(
