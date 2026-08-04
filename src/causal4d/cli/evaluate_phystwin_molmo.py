@@ -15,11 +15,11 @@ def _load_runtime_dependencies() -> None:
     global write_phystwin_evaluation
 
     from causal4d.molmo_adapter import load_molmo_forecasts
-    from causal4d.phystwin_backend import load_rollout_bank
     from causal4d.phystwin_evaluation import (
         evaluate_phystwin_rollout_bank,
         write_phystwin_evaluation,
     )
+    from causal4d.rollout_bank_io import load_rollout_bank
 
 
 def build_parser() -> argparse.ArgumentParser:
