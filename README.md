@@ -260,3 +260,11 @@ runs/                  small checked-in diagnostic result bundles
 scripts/remote/        reproducible remote execution wrappers
 tests/                 unit, protocol, parity, and artifact-boundary tests
 ```
+
+## License
+
+Causal4D software and its associated project documentation are available under the
+[MIT License](LICENSE). Third-party datasets, model checkpoints, provider
+repositories, and externally sourced artifacts retain their own terms and are not
+relicensed by this repository. See [docs/licensing.md](docs/licensing.md) for the
+scope, historical-version policy, contribution terms, and citation boundary.
