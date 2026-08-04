@@ -119,8 +119,7 @@ def test_admission_verifies_before_analysis_and_removes_host_path(
 
 
 def test_integrity_failure_prevents_analyzer_execution(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     analyzed = False
 
@@ -141,8 +140,7 @@ def test_integrity_failure_prevents_analyzer_execution(
 
 
 def test_verifier_manifest_disagreement_is_rejected(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     source = _source_report()
     source["manifest_sha256"] = "c" * 64
@@ -186,6 +184,4 @@ def test_analyzer_manifest_disagreement_is_rejected(
     )
 
     with pytest.raises(ValueError, match="analyzer and admission"):
-        admission.analyze_admitted_contact_posterior_bundle(
-            tmp_path
-        )
+        admission.analyze_admitted_contact_posterior_bundle(tmp_path)
