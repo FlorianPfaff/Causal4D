@@ -33,6 +33,7 @@ _RUNTIME_ENVIRONMENT_KEYS = (
 )
 _DISTRIBUTIONS = ("causal4d", "numpy", "scipy")
 
+
 def _normalize_json_value(value: Any) -> Any:
     if isinstance(value, float) and not math.isfinite(value):
         return str(value)
@@ -164,10 +165,9 @@ def write_reproduction_manifest(path: Path, manifest: Mapping[str, Any]) -> None
     """Write a canonical UTF-8 reproduction manifest."""
 
     if path.is_symlink():
-        raise ValueError("reproduction manifest must not be a symlink: {path}")
+        raise ValueError(f"reproduction manifest must not be a symlink: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(manifest, indent=2, sort_keys=True, allow_nan=False) + "\n",
         encoding="utf-8",
     )
-
