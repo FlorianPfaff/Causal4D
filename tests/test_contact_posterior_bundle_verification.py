@@ -111,3 +111,17 @@ def test_bundle_rejects_nonfinite_manifest_values(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="non-finite JSON number"):
         verify_embedded_result_bundle(bundle)
+
+
+def test_bundle_rejects_extra_manifest_fields(tmp_path: Path) -> None:
+    bundle = _bundle(tmp_path / "bundle")
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["unexpected"] = True
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="exact schema"):
+        verify_embedded_result_bundle(bundle)
