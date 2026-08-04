@@ -27,7 +27,7 @@ The software implements explicit abduction, intervention, and prediction:
 
 This repository is the canonical home of Causal4D. It was extracted with
 history from
-[Bayesian-PhysTwin](https://github.com/FlorianPfaff/Bayesian-PhysTwin);
+[BayesianPhysTwin](https://github.com/IPS-Stuttgart/BayesianPhysTwin);
 the migration boundary is recorded in
 [docs/migration_from_bayesian_phystwin.md](docs/migration_from_bayesian_phystwin.md).
 
@@ -40,9 +40,9 @@ latent-contact inference, intervention abduction, counterfactual operators,
 discrepancy transfer, semantic trust gates, physical validation, and
 prospective mechanism gates.
 
-### Bayesian-PhysTwin integration
+### BayesianPhysTwin integration
 
-[Bayesian-PhysTwin](https://github.com/FlorianPfaff/Bayesian-PhysTwin) supplies
+[BayesianPhysTwin](https://github.com/IPS-Stuttgart/BayesianPhysTwin) supplies
 the uncertain deformable-object twin: state and parameter particles, graph
 geometry, PhysTwin/Warp replay, and perception/discrepancy artifacts. Causal4D
 consumes those artifacts and owns the intervention and counterfactual
@@ -50,7 +50,7 @@ inference. Frozen scientific operations use the versioned
 `causal4d_provider_v1` facade, while production replay uses
 `causal4d_provider_v2` through the `PhysTwinReplayProvider` protocol. Graph and
 released visual artifacts use separately versioned provider facades; production
-source does not import Bayesian-PhysTwin internals.
+source does not import BayesianPhysTwin internals.
 
 Install the `phystwin` extra for these adapters. Core controlled benchmarks do
 not require Warp or the PhysTwin checkout. See
@@ -67,7 +67,7 @@ confirmations.
 
 ### Prob4D
 
-[Prob4D](https://github.com/FlorianPfaff/Prob4D) is a separate, newly developed
+[Prob4D](https://github.com/IPS-Stuttgart/Prob4D) is a separate, newly developed
 probabilistic 4D observation and calibration feeder. It is not assumed prior
 literature and is not part of Causal4D's core causal claim. Causal4D may consume
 versioned Prob4D observation artifacts through a narrow interface, but camera
@@ -87,13 +87,13 @@ Development tools:
 python -m pip install -e ".[dev]"
 ```
 
-Bayesian-PhysTwin adapters:
+BayesianPhysTwin adapters:
 
 ```bash
 python -m pip install -e ".[phystwin]"
 ```
 
-The `phystwin` extra accepts Bayesian-PhysTwin `>=0.4,<0.5` and validates the
+The `phystwin` extra accepts BayesianPhysTwin `>=0.4,<0.5` and validates the
 provider manifest at runtime. Frozen experiments instead lock both repositories
 with `requirements/frozen/causal4d-0.3.0.txt`. Visual, Warp-runtime, and
 actuator-calibration dependencies remain separate so the controlled benchmark
@@ -159,7 +159,7 @@ causal4d protocol readiness scaffold \
 
 Complete and seal the source-panel, actuator, support/gravity, and
 nonconfirmatory dry-run gates. Then seal the exact clean Causal4D commit,
-Bayesian-PhysTwin pin, protocol files, analysis boundary, and reporting contract:
+BayesianPhysTwin pin, protocol files, analysis boundary, and reporting contract:
 
 ```bash
 causal4d-real-experiment-freeze seal \
@@ -194,7 +194,7 @@ causal4d protocol readiness status \
 
 The readiness gate binds the 12-run source panel, actuator synchronization,
 support/gravity registration, the nonconfirmatory end-to-end dry run, the
-method freeze, exact Causal4D/Bayesian-PhysTwin package artifacts, and an
+method freeze, exact Causal4D/BayesianPhysTwin package artifacts, and an
 explicit Prob4D used-or-unused declaration. It refuses readiness when any
 confirmatory manifest already exists. See
 [docs/causal4d_preacquisition_readiness.md](docs/causal4d_preacquisition_readiness.md)
@@ -257,3 +257,11 @@ runs/                  small checked-in diagnostic result bundles
 scripts/remote/        reproducible remote execution wrappers
 tests/                 unit, protocol, parity, and artifact-boundary tests
 ```
+
+## License
+
+Causal4D software and its associated project documentation are available under the
+[MIT License](LICENSE). Third-party datasets, model checkpoints, provider
+repositories, and externally sourced artifacts retain their own terms and are not
+relicensed by this repository. See [docs/licensing.md](docs/licensing.md) for the
+scope, historical-version policy, contribution terms, and citation boundary.
