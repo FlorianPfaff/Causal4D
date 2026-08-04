@@ -94,13 +94,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      PRIVATE_REPOSITORY_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
+      PROB4D_READ_TOKEN: ${{ secrets.PROB4D_READ_TOKEN }}
       BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}
     steps:
       - name: Enforce private-repository credentials
         run: |
-          if [[ -z "${PRIVATE_REPOSITORY_READ_TOKEN}" || -z "${BPT_READ_SSH_KEY}" ]]; then
-            echo "::error::BPT_READ_TOKEN and BPT_READ_SSH_KEY must both be configured; the required three-repository golden path cannot run."
+          if [[ -z "${PROB4D_READ_TOKEN}" || -z "${BPT_READ_SSH_KEY}" ]]; then
+            echo "::error::PROB4D_READ_TOKEN and BPT_READ_SSH_KEY must both be configured; the required three-repository golden path cannot run."
             {
               echo "### Three-repository installed-wheel compatibility"
               echo
@@ -110,7 +110,7 @@ jobs:
               echo "Configure least-privilege credentials with read access:"
               echo
               echo "- \`BPT_READ_SSH_KEY\` for \`IPS-Stuttgart/BayesianPhysTwin\`;"
-              echo "- \`BPT_READ_TOKEN\` for \`IPS-Stuttgart/Prob4D\`."
+              echo "- \`PROB4D_READ_TOKEN\` for \`IPS-Stuttgart/Prob4D\`."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
@@ -142,7 +142,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      PRIVATE_REPOSITORY_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
+      PROB4D_READ_TOKEN: ${{ secrets.PROB4D_READ_TOKEN }}
     steps:
       - name: Check out Causal4D
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -164,7 +164,7 @@ jobs:
         with:
           repository: IPS-Stuttgart/Prob4D
           ref: ${{ inputs.prob4d_ref || 'main' }}
-          token: ${{ secrets.BPT_READ_TOKEN }}
+          token: ${{ secrets.PROB4D_READ_TOKEN }}
           path: prob4d
           persist-credentials: false
 
