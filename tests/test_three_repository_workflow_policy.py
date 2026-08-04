@@ -72,6 +72,16 @@ def test_transferred_repository_locations_are_used_consistently() -> None:
     assert "FlorianPfaff/" not in golden_path
 
 
+def test_requested_self_hosted_provider_coverage_cannot_degrade_to_a_skip() -> None:
+    text = SELF_HOSTED_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "Require private BayesianPhysTwin deploy key" in text
+    assert "run_bpt=true requires BPT_READ_SSH_KEY" in text
+    assert "continue-on-error: true" not in text
+    assert "provider checks were skipped" not in text
+    assert text.count("if: ${{ inputs.run_bpt }}") >= 5
+
+
 def test_strict_claim_bearing_path_is_mandatory_and_fail_closed() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
