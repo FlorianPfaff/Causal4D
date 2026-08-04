@@ -115,9 +115,7 @@ def _observation_window_from_dict(
     )
 
 
-def _action_window_from_dict(
-    values: Mapping[str, Any], *, name: str
-) -> ActionWindow:
+def _action_window_from_dict(values: Mapping[str, Any], *, name: str) -> ActionWindow:
     _require_exact_fields(
         values,
         fields={
