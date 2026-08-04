@@ -1,0 +1,214 @@
+name: Topology-conditioned prefix correlation diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/topology-conditioned-correlation.yml"
+      - "docs/topology_conditioned_contact_likelihood.md"
+      - "scripts/ci/run_topology_conditioned_correlation_diagnostic.py"
+      - "src/causal4d/topology_conditioned_correlation_diagnostic.py"
+      - "src/causal4d/contact_correlation_diagnostic.py"
+      - "tests/test_topology_conditioned_correlation_diagnostic.py"
+      - "tests/test_topology_conditioned_correlation_workflow_policy.py"
+  workflow_dispatch:
+    inputs:
+      correlation_seeds:
+        description: Untouched correlation-estimation seed range
+        required: false
+        default: "400:410"
+        type: string
+      selection_seeds:
+        description: Untouched source-selection seed range
+        required: false
+        default: "410:420"
+        type: string
+      evaluation_seeds:
+        description: Untouched target-evaluation seed range
+        required: false
+        default: "500:520"
+        type: string
+      topology_pooling_weights:
+        description: Same-topology to pooled correlation grid
+        required: false
+        default: "0.00,0.25,0.50,0.75,1.00"
+        type: string
+      identity_shrinkages:
+        description: Identity-shrinkage grid
+        required: false
+        default: "0.10,0.25,0.50,0.75"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: topology-conditioned-correlation-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONHASHSEED: "0"
+  PYTHONUNBUFFERED: "1"
+  CORRELATION_SEEDS: ${{ inputs.correlation_seeds || '400:410' }}
+  SELECTION_SEEDS: ${{ inputs.selection_seeds || '410:420' }}
+  EVALUATION_SEEDS: ${{ inputs.evaluation_seeds || '500:520' }}
+  TOPOLOGY_POOLING_WEIGHTS: >-
+    ${{ inputs.topology_pooling_weights || '0.00,0.25,0.50,0.75,1.00' }}
+  IDENTITY_SHRINKAGES: >-
+    ${{ inputs.identity_shrinkages || '0.10,0.25,0.50,0.75' }}
+
+jobs:
+  contracts:
+    name: Topology-correlation contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out Causal4D
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Python 3.12 with pip cache
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install diagnostic environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python -m pip check
+
+      - name: Validate topology-correlation contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ruff check \
+            src/causal4d/topology_conditioned_correlation_diagnostic.py \
+            scripts/ci/run_topology_conditioned_correlation_diagnostic.py \
+            tests/test_topology_conditioned_correlation_diagnostic.py \
+            tests/test_topology_conditioned_correlation_workflow_policy.py
+          python -m ruff format --check \
+            src/causal4d/topology_conditioned_correlation_diagnostic.py \
+            scripts/ci/run_topology_conditioned_correlation_diagnostic.py \
+            tests/test_topology_conditioned_correlation_diagnostic.py \
+            tests/test_topology_conditioned_correlation_workflow_policy.py
+          python -m pytest -q \
+            tests/test_topology_conditioned_correlation_diagnostic.py \
+            tests/test_topology_conditioned_correlation_workflow_policy.py \
+            tests/test_contact_correlation_diagnostic.py \
+            tests/test_causal4d_contact_evaluation.py \
+            tests/test_probability_support_invariants.py
+
+  evaluate:
+    name: One-shot untouched topology evaluation
+    if: github.event_name == 'workflow_dispatch'
+    needs: contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Check out Causal4D
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Python 3.12 with pip cache
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install evaluation environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python -m pip check
+          mkdir -p outputs/topology-conditioned-correlation
+          python -m pip freeze --all \
+            > outputs/topology-conditioned-correlation/pip-freeze.txt
+          {
+            echo "runner_name=${RUNNER_NAME}"
+            echo "runner_os=${RUNNER_OS}"
+            echo "runner_arch=${RUNNER_ARCH}"
+            echo "repository=${GITHUB_REPOSITORY}"
+            echo "commit=${GITHUB_SHA}"
+            echo "workflow_run_id=${GITHUB_RUN_ID}"
+            echo "correlation_seeds=${CORRELATION_SEEDS}"
+            echo "selection_seeds=${SELECTION_SEEDS}"
+            echo "evaluation_seeds=${EVALUATION_SEEDS}"
+            echo "topology_pooling_weights=${TOPOLOGY_POOLING_WEIGHTS}"
+            echo "identity_shrinkages=${IDENTITY_SHRINKAGES}"
+            uname -a
+          } > outputs/topology-conditioned-correlation/environment.txt
+
+      - name: Run the sealed disjoint-panel diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ci/run_topology_conditioned_correlation_diagnostic.py \
+            --output-dir \
+            outputs/topology-conditioned-correlation/results \
+            --correlation-seeds "${CORRELATION_SEEDS}" \
+            --selection-seeds "${SELECTION_SEEDS}" \
+            --evaluation-seeds "${EVALUATION_SEEDS}" \
+            --topology-pooling-weights "${TOPOLOGY_POOLING_WEIGHTS}" \
+            --identity-shrinkages "${IDENTITY_SHRINKAGES}" \
+            | tee outputs/topology-conditioned-correlation/console.json
+
+      - name: Publish diagnostic summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Topology-conditioned prefix correlation diagnostic"
+            echo
+            echo "- Correlation panel: \`${CORRELATION_SEEDS}\`"
+            echo "- Selection panel: \`${SELECTION_SEEDS}\`"
+            echo "- Evaluation panel: \`${EVALUATION_SEEDS}\`"
+            if [[ -f \
+              outputs/topology-conditioned-correlation/results/topology-correlation-diagnostic.json \
+            ]]; then
+              python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path(
+              "outputs/topology-conditioned-correlation/results/"
+              "topology-correlation-diagnostic.json"
+          )
+          result = json.loads(path.read_text(encoding="utf-8"))
+          for row in result["decision"]:
+              print(
+                  f"- {row['policy']}: "
+                  f"promotion_candidate={row['promotion_candidate']}, "
+                  f"interpretation={row['interpretation']}"
+              )
+          print(
+              "- Topology-conditioned candidate passed: "
+              f"{result['topology_conditioned_promotion_candidate']}"
+          )
+          PY
+            else
+              echo "- Evaluation stopped before producing its summary."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload complete diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: topology-conditioned-correlation-${{ github.run_id }}
+          path: outputs/topology-conditioned-correlation/
+          if-no-files-found: error
+          retention-days: 30
