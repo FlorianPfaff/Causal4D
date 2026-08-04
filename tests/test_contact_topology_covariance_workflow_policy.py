@@ -15,14 +15,12 @@ def test_topology_covariance_workflow_is_read_only_and_reproduced() -> None:
     assert "git push" not in text
     assert "persist-credentials: false" in text
     assert "lane: hosted" in text
-    assert 'runs_on: \'"ubuntu-latest"\'' in text
+    assert "runs_on: '\"ubuntu-latest\"'" in text
     assert "lane: workstation2" in text
     assert 'runs_on: \'["self-hosted","Linux","X64","nvidia-smi"]\'' in text
     assert "cache: pip" in text
     assert "cache-dependency-path: pyproject.toml" in text
-    assert (
-        "github.event.pull_request.head.repo.full_name == github.repository" in text
-    )
+    assert "github.event.pull_request.head.repo.full_name == github.repository" in text
     assert "workflow_dispatch:" in text
     assert "  push:" not in text
 
@@ -48,10 +46,7 @@ def test_topology_covariance_workflow_locks_panels_grid_and_runtime() -> None:
     ):
         assert requirement in text
     assert "retention-days: 30" in text
-    assert (
-        "contact-topology-covariance-${{ matrix.lane }}-${{ github.run_id }}"
-        in text
-    )
+    assert "contact-topology-covariance-${{ matrix.lane }}-${{ github.run_id }}" in text
 
 
 def test_topology_covariance_workflow_verifies_frozen_source_before_target() -> None:
