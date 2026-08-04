@@ -24,6 +24,7 @@ from result_bundle_identity import (
 
 _COMMIT_SHA = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 
+
 def _require_exact_keys(
     record: dict[str, Any],
     expected_keys: set[str],
@@ -144,9 +145,7 @@ def _validate_runtime_identity(runtime: Any) -> None:
                     f"runtime backend {backend_name!r} text value must be a string"
                 )
         else:
-            raise ValueError(
-                f"runtime backend {backend_name!r} format is unsupported"
-            )
+            raise ValueError(f"runtime backend {backend_name!r} format is unsupported")
 
     environment = runtime["environment"]
     if not isinstance(environment, dict):
