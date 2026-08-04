@@ -7,7 +7,12 @@ on:
       - "docs/contact_posterior_diagnostics.md"
       - "scripts/ci/analyze_contact_posterior.py"
       - "src/causal4d/contact_posterior_diagnostics.py"
+      - "src/causal4d/contact_posterior_source_integrity.py"
+      - "src/causal4d/result_bundle_verification.py"
+      - "tests/test_contact_posterior_bundle_verification.py"
       - "tests/test_contact_posterior_diagnostics.py"
+      - "tests/test_contact_posterior_source_integrity.py"
+      - "tests/test_contact_posterior_workflow_policy.py"
   workflow_dispatch:
     inputs:
       seeds:
@@ -89,7 +94,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          .contact-diagnostic-venv/bin/causal4d benchmark latent-contact \
+          .contact-diagnostic-venv/bin/python \
+            -m causal4d.cli.root benchmark latent-contact \
             --output-dir outputs/contact-posterior/independent-seeds \
             --seeds "${DIAGNOSTIC_SEEDS}" \
             --frames 56 \
