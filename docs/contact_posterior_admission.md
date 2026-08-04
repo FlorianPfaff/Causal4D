@@ -15,6 +15,11 @@ The boundary performs two independent checks before recomputation:
    topology exclusions, observation fractions, paired trajectory methods, and
    agreement between summary and gate artifacts.
 
+Finite diagnostics declared on the unit interval are admitted within `1e-12` of
+its endpoints to accommodate machine-scale probability summation roundoff. The
+raw serialized value is not clipped or rewritten, the tolerance is recorded in
+the integrity report, and a larger excursion remains inadmissible.
+
 The two verifiers must report the same source-manifest SHA-256. The low-level
 analyzer must then retain that exact manifest identity. After analysis, both
 verifiers run again and their complete reports must equal the pre-analysis reports.
