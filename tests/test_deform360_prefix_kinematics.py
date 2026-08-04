@@ -38,7 +38,7 @@ def _install_fake_deform360(
 ) -> list[float]:
     transforms = np.repeat(np.eye(4)[None, None], 8, axis=0)
     transforms[:, 0, 0, 3] = np.arange(8) * 0.03
-    transforms[7, 0, 0, 3] = 99.0
+    transforms[7] = np.nan
     state = SimpleNamespace(
         openings=np.zeros((8, 1)),
         T_worlds=transforms,
@@ -110,7 +110,7 @@ def test_controller_patch_velocity_is_causal(
     )
     np.testing.assert_allclose(velocity, [[0.3, 0.0, 0.0]], atol=1e-12)
     assert called_x == pytest.approx([0.09, 0.18])
-    assert 99.0 not in called_x
+    assert all(np.isfinite(called_x))
     assert not velocity.flags.writeable
 
 
@@ -218,6 +218,7 @@ def test_build_policies_records_causal_boundary(
     np.testing.assert_array_equal(policies["zero_v1"], np.zeros((5, 3)))
     assert diagnostics["causal_start_frame"] == 3
     assert diagnostics["active_controller_indices"] == [0]
+    assert diagnostics["future_robot_state_read"] is False
     assert diagnostics["future_object_geometry_read"] is False
     assert diagnostics["future_tactile_read"] is False
 

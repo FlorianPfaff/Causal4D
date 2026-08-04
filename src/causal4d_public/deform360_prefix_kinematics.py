@@ -133,9 +133,14 @@ def recent_contact_mask(
     )
 
 
-def _robot_arrays(state: Any) -> tuple[np.ndarray, np.ndarray]:
-    openings = np.asarray(state.openings, dtype=np.float64)
-    transforms = np.asarray(state.T_worlds, dtype=np.float64)
+def _robot_prefix_arrays(
+    state: Any,
+    *,
+    frame_stop: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    _require(type(frame_stop) is int and frame_stop >= 1, "frame_stop must be positive")
+    openings = np.asarray(state.openings[:frame_stop], dtype=np.float64)
+    transforms = np.asarray(state.T_worlds[:frame_stop], dtype=np.float64)
     if openings.ndim == 1:
         openings = openings[:, None]
     if transforms.ndim == 3:
@@ -217,7 +222,10 @@ def controller_patch_velocities_from_prefix(
 
     directory = Path(episode_dir).resolve()
     state = load_robot_state(directory / "robot" / "robot.npz")
-    openings, transforms = _robot_arrays(state)
+    openings, transforms = _robot_prefix_arrays(
+        state,
+        frame_stop=prefix_endpoint_frame + 1,
+    )
     _require(
         prefix_endpoint_frame < len(openings),
         "prefix endpoint is outside the robot trajectory",
@@ -419,6 +427,7 @@ def build_prefix_velocity_policies(
         "policy_velocity_summary": {
             name: summary(values) for name, values in policies.items()
         },
+        "future_robot_state_read": False,
         "future_object_geometry_read": False,
         "future_tactile_read": False,
     }

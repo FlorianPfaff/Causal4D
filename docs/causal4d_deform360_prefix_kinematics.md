@@ -56,9 +56,10 @@ sealed in the source grid. It evaluates the registered contact patch at frames
 u_c = (p_c(t) - p_c(t-3)) / (3 * dt).
 ```
 
-Only robot states at or before the prefix endpoint enter `u_c`. A controller is
-considered recently active when its source tactile schedule is active in the
-three-frame causal tail. Controller and node speeds are radially capped at the
+Only robot states at or before the prefix endpoint are loaded or validated for
+`u_c`; the future robot-state suffix is ignored. A controller is considered
+recently active when its source tactile schedule is active in the three-frame
+causal tail. Controller and node speeds are radially capped at the
 locked 2 m/s bound.
 
 The three policies are:
@@ -129,10 +130,4 @@ python scripts/remote/run_deform360_prefix_kinematics.py \
 ```
 
 The `Deform360 source prefix kinematics` workflow provides the same locked
-execution and uploads the result, runtime sidecar, log, and checksums. Pull
-requests run only its contract job; the GPU source diagnostic requires explicit
-manual dispatch so ordinary review cannot accidentally create new evidence.
-Before the first rollout, the runner revalidates the protocol, diagnostic lock,
-complete source milestone, and terminal source decision identities. Every
-source-evidence artifact binds the exact Causal4D head and all pinned upstream
-revisions in its runtime sidecar.
+execution and uploads the result, runtime sidecar, log, and checksums.
