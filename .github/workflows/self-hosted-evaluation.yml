@@ -176,29 +176,24 @@ jobs:
             --output-dir self-hosted-evaluation/results \
             | tee self-hosted-evaluation/evaluation.log
 
-      - name: Detect private BayesianPhysTwin deploy key
+      - name: Require private BayesianPhysTwin deploy key
         if: ${{ inputs.run_bpt }}
-        id: access
         shell: bash
         env:
           BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}
         run: |
-          if [[ -n "${BPT_READ_SSH_KEY}" ]]; then
-            echo "enabled=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "enabled=false" >> "${GITHUB_OUTPUT}"
-            echo "::warning::BPT_READ_SSH_KEY is absent; provider checks were skipped."
+          if [[ -z "${BPT_READ_SSH_KEY}" ]]; then
+            echo "::error::run_bpt=true requires BPT_READ_SSH_KEY."
+            exit 1
           fi
 
       - name: Read exact BayesianPhysTwin provider pin
-        if: steps.access.outputs.enabled == 'true'
+        if: ${{ inputs.run_bpt }}
         id: pin
         run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "${GITHUB_OUTPUT}"
 
       - name: Check out pinned BayesianPhysTwin
-        if: steps.access.outputs.enabled == 'true'
-        id: bpt_checkout
-        continue-on-error: true
+        if: ${{ inputs.run_bpt }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: IPS-Stuttgart/BayesianPhysTwin
@@ -207,22 +202,14 @@ jobs:
           path: _bpt
           persist-credentials: false
 
-      - name: Report unavailable BayesianPhysTwin access
-        if: >-
-          steps.access.outputs.enabled == 'true' &&
-          steps.bpt_checkout.outcome != 'success'
-        shell: bash
-        run: |
-          echo "::warning::BPT_READ_SSH_KEY could not read IPS-Stuttgart/BayesianPhysTwin; provider checks were skipped."
-
       - name: Install pinned BayesianPhysTwin
-        if: steps.bpt_checkout.outcome == 'success'
+        if: ${{ inputs.run_bpt }}
         run: |
           python -m pip install -e ./_bpt
           python -m pip check
 
       - name: Run pinned provider integration tests
-        if: steps.bpt_checkout.outcome == 'success'
+        if: ${{ inputs.run_bpt }}
         shell: bash
         run: |
           set -o pipefail
