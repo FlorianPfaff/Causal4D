@@ -44,11 +44,7 @@ def _read_json_object(path: Path) -> dict[str, Any]:
 
 def _safe_artifact_name(value: str) -> str:
     path = PurePosixPath(value)
-    if (
-        path.is_absolute()
-        or len(path.parts) != 1
-        or path.name in {"", ".", ".."}
-    ):
+    if path.is_absolute() or len(path.parts) != 1 or path.name in {"", ".", ".."}:
         raise ValueError(f"unsafe artifact name: {value!r}")
     return path.name
 
@@ -82,8 +78,7 @@ def verify_embedded_result_bundle(
     expected_manifest_keys = {"schema_version", "benchmark", "artifacts"}
     if set(manifest) != expected_manifest_keys:
         raise ValueError(
-            "result manifest keys differ from the exact schema: "
-            f"{sorted(manifest)}"
+            f"result manifest keys differ from the exact schema: {sorted(manifest)}"
         )
     if manifest["schema_version"] != 1:
         raise ValueError("result manifest schema_version must equal 1")
@@ -111,10 +106,7 @@ def verify_embedded_result_bundle(
         if (
             not isinstance(expected_hash, str)
             or len(expected_hash) != 64
-            or any(
-                character not in "0123456789abcdef"
-                for character in expected_hash
-            )
+            or any(character not in "0123456789abcdef" for character in expected_hash)
         ):
             raise ValueError(f"artifact {name!r} has an invalid SHA-256 digest")
         if (

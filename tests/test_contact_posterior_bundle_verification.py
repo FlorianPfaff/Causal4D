@@ -77,7 +77,7 @@ def test_bundle_rejects_symlinked_artifacts(tmp_path: Path) -> None:
 
 def test_bundle_rejects_digest_drift(tmp_path: Path) -> None:
     bundle = _bundle(tmp_path / "bundle")
-    (bundle / "summary.json").write_text("{\"changed\": true}\n", encoding="utf-8")
+    (bundle / "summary.json").write_text('{"changed": true}\n', encoding="utf-8")
 
     with pytest.raises(ValueError, match="byte count|checksum"):
         verify_embedded_result_bundle(bundle)
@@ -101,9 +101,7 @@ def test_bundle_rejects_nonfinite_manifest_values(tmp_path: Path) -> None:
     manifest = bundle / "manifest.json"
     manifest.write_text(
         '{"schema_version":1,"benchmark":"causal4d-latent-contact-v1",'
-        '"artifacts":{"summary.json":{"bytes":NaN,"sha256":"'
-        + "0" * 64
-        + '"}}}\n',
+        '"artifacts":{"summary.json":{"bytes":NaN,"sha256":"' + "0" * 64 + '"}}}\n',
         encoding="utf-8",
     )
 
