@@ -25,7 +25,9 @@ def _parse_seeds(value: str) -> tuple[int, ...]:
             raise argparse.ArgumentTypeError("seed range must use START:STOP")
         start, stop = map(int, parts)
         if start < 0 or stop <= start:
-            raise argparse.ArgumentTypeError("seed range must satisfy 0 <= START < STOP")
+            raise argparse.ArgumentTypeError(
+                "seed range must satisfy 0 <= START < STOP"
+            )
         return tuple(range(start, stop))
     try:
         seeds = tuple(int(item.strip()) for item in text.split(",") if item.strip())
@@ -38,17 +40,13 @@ def _parse_seeds(value: str) -> tuple[int, ...]:
 
 def _parse_scales(value: str) -> tuple[float, ...]:
     try:
-        scales = tuple(
-            float(item.strip()) for item in value.split(",") if item.strip()
-        )
+        scales = tuple(float(item.strip()) for item in value.split(",") if item.strip())
     except ValueError as error:
         raise argparse.ArgumentTypeError("logit scales must be numeric") from error
     if not scales:
         raise argparse.ArgumentTypeError("at least one softening scale is required")
     if any(not math.isfinite(scale) or scale <= 0.0 for scale in scales):
-        raise argparse.ArgumentTypeError(
-            "logit scales must be finite and positive"
-        )
+        raise argparse.ArgumentTypeError("logit scales must be finite and positive")
     if len(set(scales)) != len(scales):
         raise argparse.ArgumentTypeError("logit scales must be unique")
     return scales

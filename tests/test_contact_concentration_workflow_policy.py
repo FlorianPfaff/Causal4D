@@ -25,6 +25,6 @@ def test_concentration_workflow_uses_fresh_registered_panel() -> None:
 
     assert "DIAGNOSTIC_SEEDS: ${{ inputs.seeds || '200:220' }}" in text
     assert "0.25,0.50,0.75" in text
-    assert "--seeds \"${DIAGNOSTIC_SEEDS}\"" in text
-    assert "--softening-logit-scales \"${SOFTENING_LOGIT_SCALES}\"" in text
+    assert '--seeds "${DIAGNOSTIC_SEEDS}"' in text
+    assert '--softening-logit-scales "${SOFTENING_LOGIT_SCALES}"' in text
     assert "retention-days: 30" in text

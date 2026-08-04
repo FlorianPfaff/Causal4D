@@ -224,9 +224,7 @@ def _candidate_scores(
                     confidence_level=contact_config.confidence_level,
                 )
             )
-        accuracy = float(
-            np.mean([float(row["node_correct"]) for row in recovery_rows])
-        )
+        accuracy = float(np.mean([float(row["node_correct"]) for row in recovery_rows]))
         confidence = float(
             np.mean([float(row["node_confidence"]) for row in recovery_rows])
         )
@@ -239,10 +237,7 @@ def _candidate_scores(
                 ),
                 "mean_node_truth_probability": float(
                     np.mean(
-                        [
-                            float(row["node_truth_probability"])
-                            for row in recovery_rows
-                        ]
+                        [float(row["node_truth_probability"]) for row in recovery_rows]
                     )
                 ),
                 "node_accuracy": accuracy,
@@ -250,10 +245,7 @@ def _candidate_scores(
                 "node_calibration_error": abs(confidence - accuracy),
                 "node_credible_coverage": float(
                     np.mean(
-                        [
-                            float(row["node_credible_covered"])
-                            for row in recovery_rows
-                        ]
+                        [float(row["node_credible_covered"]) for row in recovery_rows]
                     )
                 ),
             }
@@ -293,9 +285,7 @@ def _aggregate(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "mean_node_truth_probability": float(
             np.mean([float(row["node_truth_probability"]) for row in rows])
         ),
-        "mean_node_brier": float(
-            np.mean([float(row["node_brier"]) for row in rows])
-        ),
+        "mean_node_brier": float(np.mean([float(row["node_brier"]) for row in rows])),
         "node_credible_coverage": float(
             np.mean([float(row["node_credible_covered"]) for row in rows])
         ),
@@ -313,9 +303,7 @@ def _grouped_aggregates(
     output: list[dict[str, Any]] = []
     for key in keys:
         selected = [
-            row
-            for row in rows
-            if tuple(str(row[field]) for field in fields) == key
+            row for row in rows if tuple(str(row[field]) for field in fields) == key
         ]
         output.append(
             {
@@ -338,14 +326,12 @@ def _policy_comparison(
         registered = next(
             row
             for row in aggregate
-            if row["policy"] == registered_policy
-            and row["world_condition"] == world
+            if row["policy"] == registered_policy and row["world_condition"] == world
         )
         expanded = next(
             row
             for row in aggregate
-            if row["policy"] == expanded_policy
-            and row["world_condition"] == world
+            if row["policy"] == expanded_policy and row["world_condition"] == world
         )
         output.append(
             {
@@ -388,9 +374,7 @@ def run_contact_concentration_diagnostic(
 
     registered_scales = tuple(map(float, contact.posterior_temperatures))
     softening = tuple(map(float, softening_logit_scales))
-    expanded_scales = tuple(
-        dict.fromkeys((*softening, *registered_scales))
-    )
+    expanded_scales = tuple(dict.fromkeys((*softening, *registered_scales)))
     registered_policy = ConcentrationPolicy(
         name="registered_candidates",
         logit_scales=registered_scales,
@@ -493,9 +477,7 @@ def run_contact_concentration_diagnostic(
             prefix = contact.prefix_frame_count(benchmark.frame_count)
             for condition_index, episode in enumerate(target.held_out):
                 rng = np.random.default_rng(
-                    seed * 1_000_003
-                    + target_index * 10_007
-                    + condition_index * 97
+                    seed * 1_000_003 + target_index * 10_007 + condition_index * 97
                 )
                 observations = episode.truth + rng.normal(
                     scale=contact.observation_noise_std_m,
@@ -506,9 +488,7 @@ def run_contact_concentration_diagnostic(
                     prefix_frame_count=prefix,
                     likelihood_scale_m=calibration.likelihood_scale_m,
                     likelihood_power=calibration.likelihood_power,
-                    dynamic_likelihood_weight=(
-                        calibration.dynamic_likelihood_weight
-                    ),
+                    dynamic_likelihood_weight=(calibration.dynamic_likelihood_weight),
                 )
                 truth = true_contact_state(
                     target.protocol.graph_object,
@@ -535,8 +515,7 @@ def run_contact_concentration_diagnostic(
                         np.sqrt(
                             np.mean(
                                 np.square(
-                                    prediction.mean[prefix:]
-                                    - episode.truth[prefix:]
+                                    prediction.mean[prefix:] - episode.truth[prefix:]
                                 )
                             )
                         )
