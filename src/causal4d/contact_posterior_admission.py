@@ -33,7 +33,9 @@ def analyze_admitted_contact_posterior_bundle(
     embedded_manifest = embedded_integrity.get("manifest_sha256")
     source_manifest = source_integrity.get("manifest_sha256")
     if embedded_manifest != source_manifest:
-        raise ValueError("source-integrity verifiers disagree on manifest identity")
+        raise ValueError(
+            "source-integrity verifiers disagree on manifest identity"
+        )
 
     result = analyze_contact_posterior_bundle(
         bundle_directory,
