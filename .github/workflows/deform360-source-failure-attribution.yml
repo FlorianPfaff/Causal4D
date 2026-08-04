@@ -10,6 +10,7 @@ on:
       - "tests/test_deform360_source_failure_attribution.py"
       - "configs/causal4d_public/deform360_replication_v1.json"
       - "milestones/deform360-replication-source-backend-v1/**"
+      - "milestones/deform360-source-failure-attribution-v1/**"
   push:
     branches: [main]
     paths:
@@ -17,6 +18,7 @@ on:
       - "scripts/ci/analyze_deform360_source_failure.py"
       - "src/causal4d_public/deform360_source_failure_attribution.py"
       - "tests/test_deform360_source_failure_attribution.py"
+      - "milestones/deform360-source-failure-attribution-v1/**"
   workflow_dispatch:
 
 permissions:
