@@ -7,6 +7,7 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
+from causal4d.immutable_array import readonly_integer_array
 from causal4d.immutable_json import validated_json_mapping
 
 
@@ -14,6 +15,46 @@ def _readonly(values: np.ndarray, *, dtype: Any = float) -> np.ndarray:
     result = np.asarray(values, dtype=dtype).copy()
     result.setflags(write=False)
     return result
+
+
+def _require_nonempty_string(value: Any, *, name: str) -> str:
+    if type(value) is not str or not value:
+        raise ValueError(f"{name} must be a nonempty string")
+    return value
+
+
+def _validated_string_tuple(values: Any, *, name: str) -> tuple[str, ...]:
+    if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
+        raise ValueError(f"{name} must be a sequence of strings")
+    result = tuple(
+        _require_nonempty_string(value, name=f"{name}[{index}]")
+        for index, value in enumerate(values)
+    )
+    if not result:
+        raise ValueError(f"{name} must be nonempty")
+    if len(set(result)) != len(result):
+        raise ValueError(f"{name} must be unique within a group")
+    return result
+
+
+def _require_finite_number(value: Any, *, name: str) -> float:
+    if isinstance(value, (bool, np.bool_)) or not isinstance(
+        value,
+        (int, float, np.integer, np.floating),
+    ):
+        raise ValueError(f"{name} must be a finite number")
+    normalized = float(value)
+    if not np.isfinite(normalized):
+        raise ValueError(f"{name} must be a finite number")
+    return normalized
+
+
+def _require_integer(value: Any, *, name: str, minimum: int = 0) -> int:
+    if type(value) is not int or value < minimum:
+        raise ValueError(
+            f"{name} must be an integer greater than or equal to {minimum}"
+        )
+    return value
 
 
 @dataclass(frozen=True)
@@ -42,13 +83,39 @@ class ObservationGroup:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if not self.group_id or not self.source_id:
-            raise ValueError("group_id and source_id must be nonempty")
+        group_id = _require_nonempty_string(self.group_id, name="group_id")
+        source_id = _require_nonempty_string(self.source_id, name="source_id")
+        view_id = self.view_id
+        if view_id is not None:
+            view_id = _require_nonempty_string(view_id, name="view_id")
         values = _readonly(self.values_m)
-        frames = _readonly(self.frame_indices, dtype=np.int64)
-        nodes = _readonly(self.node_indices, dtype=np.int64)
-        coordinates = _readonly(self.coordinate_indices, dtype=np.int64)
+        frames = readonly_integer_array(self.frame_indices, name="frame_indices")
+        nodes = readonly_integer_array(self.node_indices, name="node_indices")
+        coordinates = readonly_integer_array(
+            self.coordinate_indices,
+            name="coordinate_indices",
+        )
         covariance = _readonly(self.covariance_m2)
+        contributors = _validated_string_tuple(
+            self.contributor_ids,
+            name="contributor_ids",
+        )
+        prior_nominal_probability = _require_finite_number(
+            self.prior_nominal_probability,
+            name="prior_nominal_probability",
+        )
+        outlier_scale_multiplier = _require_finite_number(
+            self.outlier_scale_multiplier,
+            name="outlier_scale_multiplier",
+        )
+        degrees_of_freedom = _require_finite_number(
+            self.degrees_of_freedom,
+            name="degrees_of_freedom",
+        )
+        composite_weight = _require_finite_number(
+            self.composite_weight,
+            name="composite_weight",
+        )
         count = len(values)
         if values.ndim != 1 or count == 0:
             raise ValueError("values_m must be a nonempty vector")
@@ -71,24 +138,35 @@ class ObservationGroup:
         eigenvalues = np.linalg.eigvalsh(covariance)
         if np.min(eigenvalues) <= 0.0:
             raise ValueError("covariance_m2 must be positive definite")
-        if not 0.0 < self.prior_nominal_probability < 1.0:
+        if not 0.0 < prior_nominal_probability < 1.0:
             raise ValueError("prior_nominal_probability must lie in (0, 1)")
-        if self.outlier_scale_multiplier <= 1.0:
+        if outlier_scale_multiplier <= 1.0:
             raise ValueError("outlier_scale_multiplier must exceed one")
-        if self.degrees_of_freedom <= 2.0:
+        if degrees_of_freedom <= 2.0:
             raise ValueError("degrees_of_freedom must exceed two")
-        if not 0.0 < self.composite_weight <= 1.0:
+        if not 0.0 < composite_weight <= 1.0:
             raise ValueError("composite_weight must lie in (0, 1]")
-        if not self.contributor_ids or any(not value for value in self.contributor_ids):
-            raise ValueError("contributor_ids must contain nonempty identities")
-        if len(set(self.contributor_ids)) != len(self.contributor_ids):
-            raise ValueError("contributor_ids must be unique within a group")
+        object.__setattr__(self, "group_id", group_id)
+        object.__setattr__(self, "source_id", source_id)
+        object.__setattr__(self, "view_id", view_id)
         object.__setattr__(self, "values_m", values)
         object.__setattr__(self, "frame_indices", frames)
         object.__setattr__(self, "node_indices", nodes)
         object.__setattr__(self, "coordinate_indices", coordinates)
         object.__setattr__(self, "covariance_m2", covariance)
-        object.__setattr__(self, "contributor_ids", tuple(self.contributor_ids))
+        object.__setattr__(self, "contributor_ids", contributors)
+        object.__setattr__(
+            self,
+            "prior_nominal_probability",
+            prior_nominal_probability,
+        )
+        object.__setattr__(
+            self,
+            "outlier_scale_multiplier",
+            outlier_scale_multiplier,
+        )
+        object.__setattr__(self, "degrees_of_freedom", degrees_of_freedom)
+        object.__setattr__(self, "composite_weight", composite_weight)
         object.__setattr__(
             self,
             "metadata",
@@ -105,7 +183,10 @@ class ObservationGroup:
     def validate_rollout_shape(self, shape: Sequence[int]) -> None:
         if len(shape) != 3:
             raise ValueError("rollout shape must be (frame, node, coordinate)")
-        frame_count, node_count, coordinate_count = map(int, shape)
+        frame_count, node_count, coordinate_count = (
+            _require_integer(value, name=f"rollout shape[{index}]", minimum=1)
+            for index, value in enumerate(shape)
+        )
         if np.any(self.frame_indices >= frame_count):
             raise ValueError(f"group {self.group_id!r} references an unavailable frame")
         if np.any(self.node_indices >= node_count):
@@ -143,14 +224,16 @@ class GroupedObservationEvidence:
 
     def __post_init__(self) -> None:
         groups = tuple(self.groups)
-        if not groups or not self.evidence_id:
-            raise ValueError(
-                "grouped evidence must have an identity and at least one group"
-            )
+        evidence_id = _require_nonempty_string(self.evidence_id, name="evidence_id")
+        if not groups:
+            raise ValueError("grouped evidence must contain at least one group")
+        if any(type(group) is not ObservationGroup for group in groups):
+            raise ValueError("groups must contain ObservationGroup instances")
         identifiers = [group.group_id for group in groups]
         if len(set(identifiers)) != len(identifiers):
             raise ValueError("observation group IDs must be unique")
         object.__setattr__(self, "groups", groups)
+        object.__setattr__(self, "evidence_id", evidence_id)
         object.__setattr__(
             self,
             "metadata",
@@ -180,8 +263,20 @@ class GroupedObservationEvidence:
     def validate_prefix(
         self, *, prefix_frame_count: int, rollout_shape: Sequence[int]
     ) -> None:
-        if prefix_frame_count < 2:
-            raise ValueError("prefix_frame_count must reveal at least one O-plus frame")
+        prefix_frame_count = _require_integer(
+            prefix_frame_count,
+            name="prefix_frame_count",
+            minimum=2,
+        )
+        if len(rollout_shape) != 3:
+            raise ValueError("rollout shape must be (frame, node, coordinate)")
+        frame_count = _require_integer(
+            rollout_shape[0],
+            name="rollout shape[0]",
+            minimum=1,
+        )
+        if prefix_frame_count > frame_count:
+            raise ValueError("prefix_frame_count exceeds the rollout frame count")
         for group in self.groups:
             group.validate_rollout_shape(rollout_shape)
             if np.any(group.frame_indices <= 0):
@@ -214,10 +309,17 @@ class GroupedObservationEvidence:
         observations = np.asarray(observations_m, dtype=float)
         if observations.ndim != 3 or observations.shape[2] not in {2, 3}:
             raise ValueError("observations_m must have shape (frame, node, 2|3)")
-        if not 2 <= prefix_frame_count <= len(observations):
+        prefix_frame_count = _require_integer(
+            prefix_frame_count,
+            name="prefix_frame_count",
+            minimum=2,
+        )
+        if prefix_frame_count > len(observations):
             raise ValueError("prefix_frame_count must reveal O-plus frames")
-        if scale_m <= 0.0 or not np.isfinite(scale_m):
+        scale_m = _require_finite_number(scale_m, name="scale_m")
+        if scale_m <= 0.0:
             raise ValueError("scale_m must be positive and finite")
+        source_id = _require_nonempty_string(source_id, name="source_id")
         valid = np.all(np.isfinite(observations), axis=2)
         if mask is not None:
             supplied = np.asarray(mask, dtype=bool)
