@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable, Mapping
-from typing import Any, cast
+from collections.abc import Mapping
+from typing import Any
 
 import numpy as np
 
+from causal4d.immutable_json import validated_json_mapping
 from causal4d.provider_contract import (
     BAYESIAN_PHYSTWIN_COMPATIBILITY_RANGE,
     PhysicalBeliefProviderManifest,
@@ -41,37 +42,26 @@ BAYESIAN_PHYSTWIN_REPLAY_ARTIFACT_SCHEMA_VERSIONS = {
 def stable_replay_identifier(namespace: str, payload: Mapping[str, Any]) -> str:
     """Return a deterministic nonempty identifier for one replay-owned object."""
 
-    if not isinstance(namespace, str):
+    if type(namespace) is not str:
         raise TypeError("replay identifier namespace must be a string")
     prefix = namespace.strip()
     if not prefix:
         raise ValueError("replay identifier namespace must be nonempty")
-    try:
-        encoded = json.dumps(
-            dict(payload),
-            sort_keys=True,
-            separators=(",", ":"),
-            allow_nan=False,
-        ).encode("utf-8")
-    except (TypeError, ValueError) as error:
-        raise ValueError(
-            "replay identifier payload must contain finite JSON data"
-        ) from error
-    return f"{prefix}:{hashlib.sha256(encoded).hexdigest()}"
-
-
-def _manifest(values: Mapping[str, object]) -> PhysicalBeliefProviderManifest:
-    return PhysicalBeliefProviderManifest(
-        provider_name=str(values["provider_name"]),
-        provider_version=str(values["provider_version"]),
-        provider_revision=str(values["provider_revision"]),
-        schema_version=int(cast(int | str, values["schema_version"])),
-        capabilities=tuple(map(str, cast(Iterable[object], values["capabilities"]))),
-        artifact_schema_versions=dict(
-            cast(Mapping[str, int], values["artifact_schema_versions"])
+    if not isinstance(payload, Mapping):
+        raise TypeError("replay identifier payload must be a mapping")
+    normalized = validated_json_mapping(
+        payload,
+        error_message=(
+            "replay identifier payload must contain finite JSON data with string keys"
         ),
-        metadata=dict(cast(Mapping[str, Any], values.get("metadata", {}))),
     )
+    encoded = json.dumps(
+        normalized,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return f"{prefix}:{hashlib.sha256(encoded).hexdigest()}"
 
 
 def load_bayesian_phystwin_replay_provider_manifest(
@@ -80,9 +70,22 @@ def load_bayesian_phystwin_replay_provider_manifest(
 ) -> PhysicalBeliefProviderManifest:
     """Load BPT's immutable replay descriptor from the versioned v2 module."""
 
+    if provider_revision is not None and (
+        type(provider_revision) is not str or not provider_revision
+    ):
+        raise ValueError("provider_revision must be a nonempty string")
     from bayesian_phystwin.causal4d_provider_v2 import causal4d_provider_manifest
 
-    return _manifest(causal4d_provider_manifest(provider_revision=provider_revision))
+    values = causal4d_provider_manifest(provider_revision=provider_revision)
+    manifest = PhysicalBeliefProviderManifest.from_provider_descriptor(values)
+    if (
+        provider_revision is not None
+        and manifest.provider_revision != provider_revision
+    ):
+        raise ValueError(
+            "replay provider descriptor revision does not match requested revision"
+        )
+    return manifest
 
 
 def validate_bayesian_phystwin_replay_provider(
@@ -97,18 +100,20 @@ def validate_bayesian_phystwin_replay_provider(
     )
     if candidate.provider_name != "bayesian-phystwin":
         raise ValueError("expected the bayesian-phystwin replay provider")
-    if candidate.metadata.get("provider_api") != (
+    provider_api = candidate.metadata.get("provider_api")
+    if type(provider_api) is not str or provider_api != (
         "bayesian_phystwin.causal4d_provider_v2"
     ):
         raise ValueError("replay provider must identify causal4d_provider_v2")
-    if candidate.metadata.get("provider_api_version") != 2:
+    provider_api_version = candidate.metadata.get("provider_api_version")
+    if type(provider_api_version) is not int or provider_api_version != 2:
         raise ValueError("replay provider metadata must identify API version 2")
     return validate_provider_compatibility(
         candidate,
         required_capabilities=BAYESIAN_PHYSTWIN_REPLAY_PROVIDER_CAPABILITIES,
         supported_schema_versions=(BAYESIAN_PHYSTWIN_REPLAY_PROVIDER_SCHEMA_VERSION,),
         supported_provider_versions=BAYESIAN_PHYSTWIN_COMPATIBILITY_RANGE,
-        required_artifact_versions=(BAYESIAN_PHYSTWIN_REPLAY_ARTIFACT_SCHEMA_VERSIONS),
+        required_artifact_versions=BAYESIAN_PHYSTWIN_REPLAY_ARTIFACT_SCHEMA_VERSIONS,
     )
 
 
