@@ -159,7 +159,11 @@ core job:
 - the CUDA/Warp job is manual and targets the self-hosted runner carrying the
   labels `self-hosted`, `Linux`, `X64`, and `nvidia-smi`.
 
-The manual GPU job additionally requires `BPT_READ_SSH_KEY`.
+The manual GPU job additionally requires `BPT_READ_SSH_KEY`. The separate
+`Self-hosted research evaluation` workflow defaults `run_bpt=true`; when that
+input is selected, a missing key, failed checkout, or failed provider test fails
+the job. Set `run_bpt=false` explicitly to run only the provider-independent
+GPU diagnostics.
 
 ## Reproducing the wheel boundary locally
 
