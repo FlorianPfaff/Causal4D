@@ -13,6 +13,9 @@ from causal4d.contact_posterior_diagnostics import (
     analyze_contact_posterior_bundle,
     write_contact_posterior_diagnostics,
 )
+from causal4d.contact_posterior_source_integrity import (
+    verify_contact_posterior_source_bundle,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -34,14 +37,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         diffusion_strength=args.diffusion_strength,
         force_field_equivalence_threshold=(args.force_field_equivalence_threshold),
     )
+    source_integrity = verify_contact_posterior_source_bundle(args.bundle_dir)
     result = analyze_contact_posterior_bundle(
         args.bundle_dir,
         config=config,
     )
+    source_bundle = result.get("source_bundle")
+    if not isinstance(source_bundle, dict):
+        raise ValueError("diagnostic result is missing source-bundle provenance")
+    source_bundle["integrity_verification"] = source_integrity
     paths = write_contact_posterior_diagnostics(result, args.output_dir)
     print(
         json.dumps(
             {
+                "source_bundle_integrity": source_integrity,
                 "recomputation_parity": result["recomputation_parity"],
                 "overall": result["overall"],
                 "by_topology": result["by_topology"],
