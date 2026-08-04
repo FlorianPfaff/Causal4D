@@ -15,6 +15,7 @@ from result_bundle_test_support import (
     _write_json,
 )
 
+
 def test_reproduction_manifest_records_runtime_and_binds_exact_bytes(
     tmp_path: Path,
 ) -> None:
@@ -155,8 +156,4 @@ def test_undeclared_subdirectory_is_rejected(tmp_path: Path) -> None:
 
     assert process.returncode == 2
     assert report["semantic_match"] is False
-    assert any(
-        "undeclared non-file entry" in item for item in report["mismatches"]
-    )
-
-
+    assert any("undeclared non-file entry" in item for item in report["mismatches"])
