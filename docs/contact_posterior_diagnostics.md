@@ -60,6 +60,10 @@ The command rejects:
 The resulting integrity report, including the exact source-manifest SHA-256, is
 embedded in the diagnostic artifact under `source_bundle.integrity_verification`.
 Rehashing a contradictory CSV or JSON payload does not bypass the semantic checks.
+The two source verifiers run both before and after numerical recomputation, and
+their complete reports must remain identical. This rejects a bundle that changes
+during analysis. Unit-interval diagnostics admit only declared `1e-12` numerical
+boundary drift and still reject material range violations.
 
 ## Fail-closed recomputation
 
@@ -112,6 +116,52 @@ The JSON, CSV, and Markdown artifacts include:
 - a diagnostic categorization into exact recovery, symmetry-metric limitation,
   trajectory-equivalent neighbor under the declared proxy, or genuinely wrong /
   unresolved posterior.
+
+## Independent-seed result
+
+The complete `100:120` panel ran on `workstation2` in workflow run
+`30892181513`. The archived artifact is `8885901047`; the uploaded archive digest
+is
+`sha256:9c860ff37d4a068777b0ca9b397b49f7689bd0759d7918ae1c6cc2382c13daba`.
+The admitted source bundle retained manifest SHA-256
+`7b832886ef45e5eb469fa6933b83613337343cdd55f37d13ef3d17c14c888769`.
+Admission, exact byte identity, domain row contracts, pre/post-analysis source
+stability, and recomputation parity all passed. Recomputation checked `720` exact
+fields and `600` floating fields across `120` online rows with zero numerical
+difference.
+
+Across the `60` shifted-contact cases:
+
+- exact-node recovery was `75.0%` (`45/60`), while one-hop-patch recovery was
+  `100%`;
+- graph-diffusion proxy recovery was `81.67%` at cosine `0.80` and `75.0%` at
+  `0.90` and `0.95`;
+- credible coverage was `81.67%`, mean confidence was `91.29%`, and confidence
+  calibration error was `16.29` percentage points;
+- all `45` exact-MAP cases improved trajectory RMSE, with mean relative gain
+  `81.85%`;
+- all `15` incorrect-MAP cases also improved trajectory RMSE, with mean relative
+  gain `30.12%`; and
+- the diagnostic categories contained `45` exact recoveries, `3` conservative
+  symmetry-metric limitations, and `12` genuinely wrong or unresolved posteriors
+  under the declared `0.90` force-proxy threshold.
+
+The topology dependence is substantial:
+
+| Topology | Exact node | One hop | Credible coverage | Incorrect-MAP trajectory gain | Diagnostic misses |
+| --- | ---: | ---: | ---: | ---: | --- |
+| cloth | `60%` | `100%` | `80%` | `36.55%` relative | `3` symmetry limitations, `5` unresolved |
+| rope | `100%` | `100%` | `100%` | no incorrect cases | none |
+| soft block | `65%` | `100%` | `65%` | `22.77%` relative | `7` unresolved |
+
+The bounded interpretation is therefore more precise than either extreme. Exact
+node identity understates useful neighboring-contact recovery, because every miss
+is one hop away and every miss still yields a beneficial trajectory posterior.
+However, neighboring and trajectory-beneficial does not by itself prove physical
+equivalence: only three misses satisfy the conservative sensor-conditioned
+symmetry category, while twelve remain unresolved under the registered diagnostic
+proxy. Rope is fully identifiable in this panel; cloth and soft block retain a real
+topology-dependent discrete-posterior limitation.
 
 All categories are diagnostic. They do not revise the frozen five-seed result,
 registered exact-node gate, thresholds, target IDs, or the 36-execution real
