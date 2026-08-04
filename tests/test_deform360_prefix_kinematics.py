@@ -231,6 +231,8 @@ def test_build_policies_records_causal_boundary(
         ({"maximum_node_speed_m_s": -1.0}, "maximum_node_speed_m_s"),
     ],
 )
-def test_config_rejects_invalid_controls(kwargs: dict[str, object], message: str) -> None:
+def test_config_rejects_invalid_controls(
+    kwargs: dict[str, object], message: str
+) -> None:
     with pytest.raises(ValueError, match=message):
         PrefixKinematicsConfig(**kwargs)
