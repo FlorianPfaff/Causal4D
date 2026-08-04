@@ -12,6 +12,21 @@ requires-python = ">=3.10"
 authors = [
   { name = "Florian Pfaff" },
 ]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Typing :: Typed",
+]
 dependencies = [
   "numpy>=1.24",
   "packaging>=23",
@@ -19,10 +34,10 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/FlorianPfaff/Causal4D"
-Documentation = "https://github.com/FlorianPfaff/Causal4D/tree/main/docs"
-Issues = "https://github.com/FlorianPfaff/Causal4D/issues"
-Citation = "https://github.com/FlorianPfaff/Causal4D/blob/main/CITATION.cff"
+Repository = "https://github.com/IPS-Stuttgart/Causal4D"
+Documentation = "https://github.com/IPS-Stuttgart/Causal4D/tree/main/docs"
+Issues = "https://github.com/IPS-Stuttgart/Causal4D/issues"
+Citation = "https://github.com/IPS-Stuttgart/Causal4D/blob/main/CITATION.cff"
 
 [project.optional-dependencies]
 dev = [
@@ -65,7 +80,7 @@ causal4d-adaptive-molmo-task-posterior = "causal4d.cli.adaptive_molmo_task_poste
 causal4d-molmo-phystwin-forecast = "causal4d.cli.molmo_phystwin_forecast:main"
 causal4d-molmo-phystwin-forecast-v2 = "causal4d.cli.molmo_phystwin_forecast_v2:main"
 causal4d-evaluate-phystwin-molmo = "causal4d.cli.evaluate_phystwin_molmo:main"
-causal4d-evaluate-molmo-acceptance = "causal4d.cli.evaluate_molmo_acceptance:main"
+causal4d-evaluate-molmo-acceptance = "causal4d.cli.molmo_acceptance:main"
 causal4d-audit-real-oracle-gap = "causal4d.cli.audit_real_oracle_gap:main"
 causal4d-aggregate-real-failure-attribution = "causal4d.cli.real_failure_attribution:main"
 causal4d-real-protocol = "causal4d.cli.real_protocol:main"
