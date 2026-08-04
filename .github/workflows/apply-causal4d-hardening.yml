@@ -38,17 +38,15 @@ jobs:
           dynamic_path = Path("src/causal4d/dynamic_contact.py")
           dynamic = dynamic_path.read_text(encoding="utf-8")
           old = "    retained_mass = 1.0\n    for frame in range(1, len(activation)):\n"
-          new = dedent(
-              """\
-                  retained_mass = float(
-                      np.sum(initial[initial > settings.minimum_transition_probability])
-                  )
-                  if not beam:
-                      raise RuntimeError(
-                          "contact-path beam removed all initial probability mass"
-                      )
-                  for frame in range(1, len(activation)):
-              """
+          new = (
+              "    retained_mass = float(\n"
+              "        np.sum(initial[initial > settings.minimum_transition_probability])\n"
+              "    )\n"
+              "    if not beam:\n"
+              "        raise RuntimeError(\n"
+              '            "contact-path beam removed all initial probability mass"\n'
+              "        )\n"
+              "    for frame in range(1, len(activation)):\n"
           )
           if dynamic.count(old) != 1:
               raise RuntimeError("dynamic-contact patch anchor is not unique")
@@ -198,11 +196,11 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install -e ".[dev]"
-          python -m ruff check \
+          python -m ruff format \
             src/causal4d/dynamic_contact.py \
             src/causal4d/contact_inference.py \
             tests/test_contact_inference_edge_cases.py
-          python -m ruff format --check \
+          python -m ruff check \
             src/causal4d/dynamic_contact.py \
             src/causal4d/contact_inference.py \
             tests/test_contact_inference_edge_cases.py
