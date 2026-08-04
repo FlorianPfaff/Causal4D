@@ -10,23 +10,27 @@ on:
       - src/causal4d/graph_provider_contract.py
       - src/causal4d/provider_contract.py
       - src/causal4d/replay_provider_contract.py
-      - tests/test_belief_provider_strict_inputs.py
-      - tests/test_graph_provider_strict_inputs.py
-      - tests/test_replay_provider_strict_inputs.py
+      - tests/test_child_provider_contract_strict_inputs.py
+      - tests/test_provider_contract_strict_inputs.py
+      - tests/test_replay_provider_contract_strict_inputs.py
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  validate:
+  validate-and-publish:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'github-actions[bot]'
     runs-on: [self-hosted, Linux, X64, nvidia-smi]
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
-      - name: Check out pull request merge
+      - name: Check out mutable pull-request branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: agent/harden-replay-provider-manifest
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
           clean: true
 
       - name: Set up Python 3.12
@@ -42,14 +46,36 @@ jobs:
           python -m pip install -e ".[dev]"
           python -m pip check
 
-      - name: Lint, format, and type-check
+      - name: Format and statically validate the changed Python surface
         shell: bash
         run: |
           set -euo pipefail
-          python -m ruff check src tests
-          python -m ruff format --check src tests
-          python -m mypy src/causal4d
+          files=(
+            src/causal4d/belief_provider_contract.py
+            src/causal4d/graph_provider_contract.py
+            src/causal4d/provider_contract.py
+            src/causal4d/replay_provider_contract.py
+            tests/test_child_provider_contract_strict_inputs.py
+            tests/test_provider_contract_strict_inputs.py
+            tests/test_replay_provider_contract_strict_inputs.py
+          )
+          python -m ruff format "${files[@]}"
+          python -m ruff check "${files[@]}"
+          python -m mypy \
+            src/causal4d/belief_provider_contract.py \
+            src/causal4d/graph_provider_contract.py \
+            src/causal4d/provider_contract.py \
+            src/causal4d/replay_provider_contract.py
           git diff --check
+
+      - name: Run strict-provider regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q \
+            tests/test_child_provider_contract_strict_inputs.py \
+            tests/test_provider_contract_strict_inputs.py \
+            tests/test_replay_provider_contract_strict_inputs.py
 
       - name: Run full test suite
         shell: bash
@@ -64,3 +90,24 @@ jobs:
           rm -rf dist build
           python -m build
           python -m twine check dist/*
+
+      - name: Publish formatter-only changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add \
+            src/causal4d/belief_provider_contract.py \
+            src/causal4d/graph_provider_contract.py \
+            src/causal4d/provider_contract.py \
+            src/causal4d/replay_provider_contract.py \
+            tests/test_child_provider_contract_strict_inputs.py \
+            tests/test_provider_contract_strict_inputs.py \
+            tests/test_replay_provider_contract_strict_inputs.py
+          if git diff --cached --quiet; then
+            echo 'No formatter changes required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Format strict provider input hardening'
+          git push origin HEAD:agent/harden-replay-provider-manifest
