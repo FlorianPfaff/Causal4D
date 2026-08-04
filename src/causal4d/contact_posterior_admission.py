@@ -21,6 +21,16 @@ from causal4d.contact_posterior_source_integrity import (
 from causal4d.result_bundle_verification import verify_embedded_result_bundle
 
 
+def _verify_source_bundle(
+    bundle_directory: str | Path,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    embedded = verify_embedded_result_bundle(bundle_directory)
+    domain = verify_contact_posterior_source_bundle(bundle_directory)
+    if embedded.get("manifest_sha256") != domain.get("manifest_sha256"):
+        raise ValueError("source-integrity verifiers disagree on manifest identity")
+    return embedded, domain
+
+
 def analyze_admitted_contact_posterior_bundle(
     bundle_directory: str | Path,
     *,
@@ -28,12 +38,8 @@ def analyze_admitted_contact_posterior_bundle(
 ) -> dict[str, Any]:
     """Verify a source bundle, run the analyzer, and publish portable provenance."""
 
-    embedded_integrity = verify_embedded_result_bundle(bundle_directory)
-    source_integrity = verify_contact_posterior_source_bundle(bundle_directory)
+    embedded_integrity, source_integrity = _verify_source_bundle(bundle_directory)
     embedded_manifest = embedded_integrity.get("manifest_sha256")
-    source_manifest = source_integrity.get("manifest_sha256")
-    if embedded_manifest != source_manifest:
-        raise ValueError("source-integrity verifiers disagree on manifest identity")
 
     result = analyze_contact_posterior_bundle(
         bundle_directory,
@@ -41,6 +47,15 @@ def analyze_admitted_contact_posterior_bundle(
     )
     if not isinstance(result, dict):
         raise TypeError("contact-posterior analyzer must return a dictionary")
+
+    embedded_after, source_after = _verify_source_bundle(bundle_directory)
+    if (
+        embedded_after != embedded_integrity
+        or source_after != source_integrity
+    ):
+        raise ValueError(
+            "source bundle changed during contact-posterior analysis"
+        )
 
     source_bundle = result.get("source_bundle")
     if not isinstance(source_bundle, dict):
@@ -76,6 +91,7 @@ def analyze_admitted_contact_posterior_bundle(
         "byte_identity_verified": True,
         "domain_row_contracts_verified": True,
         "low_level_analyzer_verified_before_use": True,
+        "source_stable_through_analysis": True,
         "bundle_name": Path(bundle_directory).resolve().name,
     }
     return admitted
