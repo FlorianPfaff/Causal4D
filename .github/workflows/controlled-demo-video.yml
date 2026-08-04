@@ -24,7 +24,7 @@ concurrency:
 jobs:
   render:
     name: Render controlled MP4, GIF, and poster
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
     timeout-minutes: 15
     steps:
       - name: Check out Causal4D
