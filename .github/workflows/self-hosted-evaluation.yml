@@ -13,7 +13,7 @@ on:
           - standard
           - full
       run_bpt:
-        description: Run the pinned Bayesian-PhysTwin provider checks
+        description: Run the pinned BayesianPhysTwin provider checks
         required: true
         default: true
         type: boolean
@@ -176,46 +176,46 @@ jobs:
             --output-dir self-hosted-evaluation/results \
             | tee self-hosted-evaluation/evaluation.log
 
-      - name: Detect private Bayesian-PhysTwin credential
+      - name: Detect private BayesianPhysTwin deploy key
         if: ${{ inputs.run_bpt }}
         id: access
         shell: bash
         env:
-          BPT_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
+          BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}
         run: |
-          if [[ -n "${BPT_READ_TOKEN}" ]]; then
+          if [[ -n "${BPT_READ_SSH_KEY}" ]]; then
             echo "enabled=true" >> "${GITHUB_OUTPUT}"
           else
             echo "enabled=false" >> "${GITHUB_OUTPUT}"
-            echo "::warning::BPT_READ_TOKEN is absent; provider checks were skipped."
+            echo "::warning::BPT_READ_SSH_KEY is absent; provider checks were skipped."
           fi
 
-      - name: Read exact Bayesian-PhysTwin provider pin
+      - name: Read exact BayesianPhysTwin provider pin
         if: steps.access.outputs.enabled == 'true'
         id: pin
         run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "${GITHUB_OUTPUT}"
 
-      - name: Check out pinned Bayesian-PhysTwin
+      - name: Check out pinned BayesianPhysTwin
         if: steps.access.outputs.enabled == 'true'
         id: bpt_checkout
         continue-on-error: true
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: IPS-Stuttgart/Bayesian-PhysTwin
+          repository: IPS-Stuttgart/BayesianPhysTwin
           ref: ${{ steps.pin.outputs.sha }}
-          token: ${{ secrets.BPT_READ_TOKEN }}
+          ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}
           path: _bpt
           persist-credentials: false
 
-      - name: Report unavailable Bayesian-PhysTwin access
+      - name: Report unavailable BayesianPhysTwin access
         if: >-
           steps.access.outputs.enabled == 'true' &&
           steps.bpt_checkout.outcome != 'success'
         shell: bash
         run: |
-          echo "::warning::BPT_READ_TOKEN could not read IPS-Stuttgart/Bayesian-PhysTwin; provider checks were skipped."
+          echo "::warning::BPT_READ_SSH_KEY could not read IPS-Stuttgart/BayesianPhysTwin; provider checks were skipped."
 
-      - name: Install pinned Bayesian-PhysTwin
+      - name: Install pinned BayesianPhysTwin
         if: steps.bpt_checkout.outcome == 'success'
         run: |
           python -m pip install -e ./_bpt
