@@ -42,10 +42,12 @@ preacquisition/
 Each gate record binds the locked protocol and v4 amendment, its underlying
 files, completion and approval timestamps, the no-target-outcomes boundary, and
 a canonical SHA-256 digest. The scaffold also writes one source-panel manifest
-template per registered execution; operators promote completed copies to
-`manifest.json` at the corresponding paths. `seal-gate` verifies all bound files
-before replacing the completed gate template atomically. A sealed gate cannot be
-resealed. Evidence descriptors use the same relative-path contract throughout:
+template per registered execution. Operators complete a separate staging copy;
+`source-panel-publish` validates all bound files and atomically creates the final
+`manifest.json` without overwriting an existing record. `seal-gate` verifies all
+bound files before replacing the completed gate template atomically. A sealed
+gate cannot be resealed. Evidence descriptors use the same relative-path
+contract throughout:
 
 ```json
 {"path": "relative/file", "sha256": "<64 lowercase hex>", "bytes": 123}
@@ -62,6 +64,32 @@ registered order and 12 independent reset/grasp sessions. Every bound
 `SourcePanelExecutionManifest` must state that it is complete, source-only,
 outside all confirmatory folds, included without quality-gate failures, and did
 not use target outcomes. Its artifact descriptors are hash-verified.
+
+Use the source-panel status before every physical source session. It validates
+that completed manifests form the exact registered prefix and reports the next
+execution together with its complete registered command profile:
+
+```bash
+causal4d protocol readiness source-panel-status \
+  /opt/causal4d-frozen \
+  /data/causal4d-sloth-multi-action-v1 \
+  --verify-file-hashes
+```
+
+Publish a completed staging manifest only through the exactly-once path:
+
+```bash
+causal4d protocol readiness source-panel-publish \
+  /opt/causal4d-frozen \
+  /data/causal4d-sloth-multi-action-v1 \
+  /data/causal4d-sloth-multi-action-v1/staging/<execution-id>.json
+```
+
+The publisher admits only the reported next execution, recursively rejects
+target-outcome fields, verifies every artifact checksum and byte count, and
+validates the temporary manifest before the final path can exist. See
+[physical source-panel acquisition](causal4d_source_panel_acquisition.md) for the
+complete operator procedure and failure boundary.
 
 ### Actuator synchronization
 
@@ -124,11 +152,18 @@ causal4d protocol readiness scaffold \
   /data/causal4d-sloth-multi-action-v1
 ```
 
-Complete each JSON template and its referenced evidence, then seal it. Operational
-source-panel gates must be completed and approved before the method freeze. For
-example:
+Complete and publish all 12 source execution manifests through the ordered
+source-panel control. Then complete each operational gate JSON and its referenced
+evidence and seal it. Operational gates must be completed and approved before
+the method freeze. For example:
 
 ```bash
+causal4d protocol readiness source-panel-status \
+  /opt/causal4d-frozen \
+  /data/causal4d-sloth-multi-action-v1 \
+  --verify-file-hashes \
+  --require-complete
+
 causal4d protocol readiness seal-gate \
   /opt/causal4d-frozen \
   /data/causal4d-sloth-multi-action-v1 \
