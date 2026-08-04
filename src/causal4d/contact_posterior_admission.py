@@ -49,13 +49,8 @@ def analyze_admitted_contact_posterior_bundle(
         raise TypeError("contact-posterior analyzer must return a dictionary")
 
     embedded_after, source_after = _verify_source_bundle(bundle_directory)
-    if (
-        embedded_after != embedded_integrity
-        or source_after != source_integrity
-    ):
-        raise ValueError(
-            "source bundle changed during contact-posterior analysis"
-        )
+    if embedded_after != embedded_integrity or source_after != source_integrity:
+        raise ValueError("source bundle changed during contact-posterior analysis")
 
     source_bundle = result.get("source_bundle")
     if not isinstance(source_bundle, dict):
