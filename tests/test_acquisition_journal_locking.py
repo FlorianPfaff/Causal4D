@@ -68,7 +68,7 @@ def test_seal_fails_without_publishing_when_locking_is_unavailable(
 ) -> None:
     journal = tmp_path / "acquisition.jsonl"
     _append(journal, "session_started", monotonic_ns=10)
-    _append(journal, "session_completed", monotonic_ns=20)
+    _append(journal, "session_aborted", monotonic_ns=20)
     monkeypatch.setattr(acquisition_journal_lock, "_fcntl", None)
 
     with pytest.raises(RuntimeError, match="require POSIX advisory file locking"):
