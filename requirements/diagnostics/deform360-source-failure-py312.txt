@@ -1,0 +1,15 @@
+# Numerical and test environment for the Deform360 source-failure attribution.
+#
+# Captured from the successful Python 3.12 reproduction of result
+# 8da1a6112a7afb959a6bf81c3f870a8135d8414b599db98d67656ba40e98c9eb.
+# The Causal4D checkout itself is installed separately with --no-deps so this
+# file remains a reusable dependency lock rather than a repository URL lock.
+
+numpy==2.5.1
+packaging==26.2
+scipy==1.18.0
+pytest==9.1.1
+iniconfig==2.3.0
+pluggy==1.6.0
+Pygments==2.20.0
+ruff==0.16.1
