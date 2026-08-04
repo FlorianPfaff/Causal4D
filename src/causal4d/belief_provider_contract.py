@@ -33,20 +33,24 @@ def load_bayesian_phystwin_belief_provider_manifest(
 ) -> PhysicalBeliefProviderManifest:
     """Load BPT's NumPy-only fixed-anchor provider descriptor."""
 
+    if provider_revision is not None and (
+        type(provider_revision) is not str or not provider_revision
+    ):
+        raise ValueError("provider_revision must be a nonempty string")
     from bayesian_phystwin.causal4d_belief_provider_v1 import (
         causal4d_belief_provider_manifest,
     )
 
     values = causal4d_belief_provider_manifest(provider_revision=provider_revision)
-    return PhysicalBeliefProviderManifest(
-        provider_name=str(values["provider_name"]),
-        provider_version=str(values["provider_version"]),
-        provider_revision=str(values["provider_revision"]),
-        schema_version=int(values["schema_version"]),
-        capabilities=tuple(map(str, values["capabilities"])),
-        artifact_schema_versions=dict(values["artifact_schema_versions"]),
-        metadata=dict(values.get("metadata", {})),
-    )
+    manifest = PhysicalBeliefProviderManifest.from_provider_descriptor(values)
+    if (
+        provider_revision is not None
+        and manifest.provider_revision != provider_revision
+    ):
+        raise ValueError(
+            "belief provider descriptor revision does not match requested revision"
+        )
+    return manifest
 
 
 def _validate_belief_provider_metadata(
@@ -57,11 +61,11 @@ def _validate_belief_provider_metadata(
         "provider_api_version": BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_API_VERSION,
         "inference_role": BAYESIAN_PHYSTWIN_BELIEF_INFERENCE_ROLE,
     }
-    mismatches = {
-        name: (value, manifest.metadata.get(name))
-        for name, value in expected.items()
-        if manifest.metadata.get(name) != value
-    }
+    mismatches = {}
+    for name, value in expected.items():
+        actual = manifest.metadata.get(name)
+        if type(actual) is not type(value) or actual != value:
+            mismatches[name] = (value, actual)
     if mismatches:
         raise ValueError(
             "unexpected Bayesian-PhysTwin belief provider metadata: "
