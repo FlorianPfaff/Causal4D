@@ -244,7 +244,7 @@ def build_source_panel_status(
     missing_template_ids = [
         result["execution_id"]
         for result in results
-        if not result["template_present"] and not result["manifest_present"]
+        if not result["template_present"]
     ]
     expected_prefix = expected_ids[: len(valid_ids)]
     out_of_order = valid_ids != expected_prefix
@@ -296,6 +296,7 @@ def build_source_panel_status(
     valid = not (
         invalid_ids
         or invalid_template_ids
+        or missing_template_ids
         or unexpected_directories
         or out_of_order
     )
