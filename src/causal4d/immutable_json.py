@@ -17,6 +17,19 @@ def plain_json(value: Any) -> Any:
     return value
 
 
+def _require_string_mapping_keys(value: Any) -> None:
+    """Reject JSON objects whose Python keys would be coerced by ``json``."""
+
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise TypeError("JSON object keys must be strings")
+            _require_string_mapping_keys(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            _require_string_mapping_keys(item)
+
+
 class _FrozenDict(dict):
     """A JSON object that preserves ``dict`` compatibility but rejects mutation."""
 
@@ -106,14 +119,15 @@ def validated_json_mapping(
 ) -> Mapping[str, Any]:
     """Normalize a mapping as finite JSON and recursively freeze its containers.
 
-    The normalization preserves the historical Causal4D semantics: tuples become
-    JSON arrays, mapping keys are normalized by the JSON encoder, and non-finite
-    or unsupported values fail closed.  The returned containers still satisfy
-    ordinary ``isinstance(value, dict/list)`` checks, while ``copy.copy`` and
-    ``copy.deepcopy`` yield independent mutable JSON data.
+    Tuples become JSON arrays. Object keys must already be strings so the JSON
+    encoder cannot silently coerce a key or collapse distinct Python identities.
+    Non-finite and unsupported values fail closed. The returned containers still
+    satisfy ordinary ``isinstance(value, dict/list)`` checks, while ``copy.copy``
+    and ``copy.deepcopy`` yield independent mutable JSON data.
     """
 
     try:
+        _require_string_mapping_keys(values)
         normalized = json.loads(
             json.dumps(plain_json(values), sort_keys=True, allow_nan=False)
         )
