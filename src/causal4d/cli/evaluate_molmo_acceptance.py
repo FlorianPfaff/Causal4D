@@ -29,7 +29,7 @@ def _load_runtime_dependencies() -> None:
         molmo_acceptance_result_id,
     )
     from causal4d.molmo_adapter import load_molmo_forecasts
-    from causal4d.phystwin_backend import load_rollout_bank
+    from causal4d.rollout_bank_io import load_rollout_bank
 
 
 def build_parser() -> argparse.ArgumentParser:

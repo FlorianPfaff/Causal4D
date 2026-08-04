@@ -40,9 +40,9 @@ def _load_runtime_dependencies() -> None:
         PhysTwinHypothesisConfig,
         hidden_action_proposals,
         known_action_proposal,
-        save_rollout_bank,
     )
     from causal4d.phystwin_resumable import build_resumable_rollout_bank
+    from causal4d.rollout_bank_io import save_rollout_bank
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -203,3 +203,92 @@ def test_sparse_evidence_rejects_out_of_range_anchor_cleanly() -> None:
     )
     with pytest.raises(ValueError, match="anchor frame"):
         bank.update_from_sparse_evidence(evidence)
+
+
+def test_rollout_bank_owns_deeply_immutable_metadata_and_stable_id() -> None:
+    metadata = (
+        {
+            "hypothesis_id": "left",
+            "action": {"proposal_id": "left"},
+            "nested": {"items": [1, {"accepted": True}]},
+        },
+        {
+            "hypothesis_id": "right",
+            "action": {"proposal_id": "right"},
+        },
+    )
+    bank = JointRolloutBank(
+        hypothesis_ids=("left", "right"),
+        hypothesis_metadata=metadata,
+        hypothesis_prior_weights=np.asarray([0.5, 0.5]),
+        parameter_particles=np.asarray([[0.0, 0.0]]),
+        parameter_weights=np.asarray([1.0]),
+        trajectories=np.zeros((2, 1, 7, 2, 3), dtype=np.float32),
+    )
+    artifact_id = bank.artifact_id
+
+    metadata[0]["nested"]["items"][1]["accepted"] = False
+    assert bank.hypothesis_metadata[0]["nested"]["items"][1]["accepted"] is True
+    assert bank.artifact_id == artifact_id
+
+    with pytest.raises(TypeError, match="immutable"):
+        bank.hypothesis_metadata[0]["nested"]["items"].append("mutated")
+    with pytest.raises(TypeError, match="immutable"):
+        bank.hypothesis_metadata[0]["nested"]["items"][1]["accepted"] = False
+
+
+def test_rollout_bank_rejects_invalid_or_nonjson_metadata() -> None:
+    common = {
+        "hypothesis_ids": ("only",),
+        "hypothesis_prior_weights": np.asarray([1.0]),
+        "parameter_particles": np.asarray([[0.0]]),
+        "parameter_weights": np.asarray([1.0]),
+        "trajectories": np.zeros((1, 1, 3, 1, 3), dtype=np.float32),
+    }
+    with pytest.raises(ValueError, match="nonempty string"):
+        JointRolloutBank(
+            hypothesis_metadata=({"hypothesis_id": 1},),
+            **common,
+        )
+    with pytest.raises(ValueError, match="finite JSON"):
+        JointRolloutBank(
+            hypothesis_metadata=({"score": float("nan")},),
+            **common,
+        )
+    with pytest.raises(ValueError, match="finite JSON"):
+        JointRolloutBank(
+            hypothesis_metadata=({1: "coercible-key"},),
+            **common,
+        )
+
+
+def test_rollout_bank_artifact_id_covers_metadata_and_arrays() -> None:
+    bank = _bank()
+    changed_metadata = JointRolloutBank(
+        hypothesis_ids=bank.hypothesis_ids,
+        hypothesis_metadata=(
+            {"action": {"proposal_id": "left"}, "revision": 2},
+            bank.hypothesis_metadata[1],
+        ),
+        hypothesis_prior_weights=bank.hypothesis_prior_weights,
+        parameter_particles=bank.parameter_particles,
+        parameter_weights=bank.parameter_weights,
+        trajectories=bank.trajectories,
+        variance_floor_m2=bank.variance_floor_m2,
+        confidence_level=bank.confidence_level,
+    )
+    trajectories = bank.trajectories.copy()
+    trajectories[0, 0, 0, 0, 0] = 1.0
+    changed_trajectory = JointRolloutBank(
+        hypothesis_ids=bank.hypothesis_ids,
+        hypothesis_metadata=bank.hypothesis_metadata,
+        hypothesis_prior_weights=bank.hypothesis_prior_weights,
+        parameter_particles=bank.parameter_particles,
+        parameter_weights=bank.parameter_weights,
+        trajectories=trajectories,
+        variance_floor_m2=bank.variance_floor_m2,
+        confidence_level=bank.confidence_level,
+    )
+
+    assert bank.artifact_id != changed_metadata.artifact_id
+    assert bank.artifact_id != changed_trajectory.artifact_id

@@ -60,3 +60,15 @@ def test_built_wheels_receive_persistent_content_identities() -> None:
     assert "sha256sum ./*.whl | sort" in text
     assert "three-repository-wheel-sha256.txt" in text
     assert "Wheel SHA-256 identities" in text
+
+
+def test_rollout_bank_contract_changes_trigger_installed_wheel_path() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    for path in (
+        "src/causal4d/rollout_bank.py",
+        "src/causal4d/rollout_bank_io.py",
+        "tests/test_causal4d_rollout_bank.py",
+        "tests/test_rollout_bank_io.py",
+    ):
+        assert text.count(f'"{path}"') == 2
