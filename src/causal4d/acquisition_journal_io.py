@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 import json
 import os
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +17,10 @@ from causal4d.acquisition_flight_common import (
     _require,
     _sha256_file,
     journal_seal_path,
+)
+from causal4d.acquisition_journal_lock import (
+    exclusive_acquisition_journal_lock,
+    require_acquisition_journal_locking,
 )
 from causal4d.acquisition_journal_model import (
     _FINAL_EVENT_TYPES,
@@ -66,6 +70,7 @@ def append_journal_event(
 ) -> dict[str, Any]:
     """Append one fsync'ed, hash-chained event without replacing prior bytes."""
 
+    require_acquisition_journal_locking()
     path = Path(journal_path)
     seal = journal_seal_path(path)
     _assert_ordinary_file_or_missing(path, name="acquisition journal")
@@ -82,69 +87,70 @@ def append_journal_event(
     descriptor = os.open(path, flags, 0o640)
     try:
         with os.fdopen(descriptor, "r+b") as handle:
-            try:
-                import fcntl
-            except ImportError:  # pragma: no cover - Windows fallback
-                fcntl = None
-            if fcntl is not None:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-            _require(not seal.exists(), "acquisition journal is sealed")
-            last_line = _last_nonempty_line(handle)
-            if last_line is None:
-                sequence = 0
-                previous = None
-                state = _empty_journal_state()
-            else:
-                validation = validate_acquisition_journal(path)
-                try:
-                    last = _validate_event_shape(json.loads(last_line))
-                except json.JSONDecodeError as error:
-                    raise ValueError("journal ends with invalid JSON") from error
-                _require(
-                    last["event_sha256"] == validation["final_event_sha256"],
-                    "journal tail differs from the validated hash chain",
-                )
-                _require(last["protocol_id"] == protocol_id, "journal protocol changed")
-                _require(last["session_id"] == session_id, "journal session changed")
-                sequence = int(last["sequence"]) + 1
-                previous = str(last["event_sha256"])
-                state = {
-                    "active_execution_id": validation["active_execution_id"],
-                    "recovery_active": validation["recovery_active"],
-                    "seen_execution_ids": list(validation["seen_execution_ids"]),
-                    "completed_execution_ids": list(
-                        validation["completed_execution_ids"]
-                    ),
-                    "aborted_execution_ids": list(validation["aborted_execution_ids"]),
-                }
-                _require(
-                    last["event_type"] not in _FINAL_EVENT_TYPES,
-                    "cannot append after a terminal session event",
-                )
-                if monotonic_ns is not None:
+            with exclusive_acquisition_journal_lock(handle):
+                _require(not seal.exists(), "acquisition journal is sealed")
+                last_line = _last_nonempty_line(handle)
+                if last_line is None:
+                    sequence = 0
+                    previous = None
+                    state = _empty_journal_state()
+                else:
+                    validation = validate_acquisition_journal(path)
+                    try:
+                        last = _validate_event_shape(json.loads(last_line))
+                    except json.JSONDecodeError as error:
+                        raise ValueError("journal ends with invalid JSON") from error
                     _require(
-                        monotonic_ns >= int(last["monotonic_ns"]),
-                        "journal monotonic clock moved backward",
+                        last["event_sha256"] == validation["final_event_sha256"],
+                        "journal tail differs from the validated hash chain",
                     )
-            event = build_journal_event(
-                protocol_id=protocol_id,
-                session_id=session_id,
-                execution_id=execution_id,
-                event_type=event_type,
-                source=source,
-                sequence=sequence,
-                previous_event_sha256=previous,
-                payload=payload,
-                recorded_at_utc=recorded_at_utc,
-                monotonic_ns=monotonic_ns,
-            )
-            _advance_journal_state(state, event, event_index=sequence)
-            handle.seek(0, os.SEEK_END)
-            handle.write(_canonical_json_bytes(event) + b"\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-            if fcntl is not None:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                    _require(
+                        last["protocol_id"] == protocol_id,
+                        "journal protocol changed",
+                    )
+                    _require(
+                        last["session_id"] == session_id,
+                        "journal session changed",
+                    )
+                    sequence = int(last["sequence"]) + 1
+                    previous = str(last["event_sha256"])
+                    state = {
+                        "active_execution_id": validation["active_execution_id"],
+                        "recovery_active": validation["recovery_active"],
+                        "seen_execution_ids": list(validation["seen_execution_ids"]),
+                        "completed_execution_ids": list(
+                            validation["completed_execution_ids"]
+                        ),
+                        "aborted_execution_ids": list(
+                            validation["aborted_execution_ids"]
+                        ),
+                    }
+                    _require(
+                        last["event_type"] not in _FINAL_EVENT_TYPES,
+                        "cannot append after a terminal session event",
+                    )
+                    if monotonic_ns is not None:
+                        _require(
+                            monotonic_ns >= int(last["monotonic_ns"]),
+                            "journal monotonic clock moved backward",
+                        )
+                event = build_journal_event(
+                    protocol_id=protocol_id,
+                    session_id=session_id,
+                    execution_id=execution_id,
+                    event_type=event_type,
+                    source=source,
+                    sequence=sequence,
+                    previous_event_sha256=previous,
+                    payload=payload,
+                    recorded_at_utc=recorded_at_utc,
+                    monotonic_ns=monotonic_ns,
+                )
+                _advance_journal_state(state, event, event_index=sequence)
+                handle.seek(0, os.SEEK_END)
+                handle.write(_canonical_json_bytes(event) + b"\n")
+                handle.flush()
+                os.fsync(handle.fileno())
     except Exception:
         try:
             os.close(descriptor)

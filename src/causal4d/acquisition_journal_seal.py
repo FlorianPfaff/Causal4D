@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 import json
 import os
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from causal4d.atomic_io import atomic_write_json
 from causal4d.acquisition_flight_common import (
     JOURNAL_SCHEMA_VERSION,
     JOURNAL_SEAL_KIND,
@@ -21,7 +20,12 @@ from causal4d.acquisition_flight_common import (
     journal_seal_path,
 )
 from causal4d.acquisition_journal_io import validate_acquisition_journal
+from causal4d.acquisition_journal_lock import (
+    exclusive_acquisition_journal_lock,
+    require_acquisition_journal_locking,
+)
 from causal4d.acquisition_journal_model import _FINAL_EVENT_TYPES
+from causal4d.atomic_io import atomic_write_json
 
 
 def seal_acquisition_journal(
@@ -36,6 +40,7 @@ def seal_acquisition_journal(
         isinstance(sealed_by, str) and bool(sealed_by.strip()),
         "sealed_by must be nonempty",
     )
+    require_acquisition_journal_locking()
     journal = Path(journal_path)
     seal_path = journal_seal_path(journal)
     _assert_ordinary_file_or_missing(journal, name="acquisition journal")
@@ -49,41 +54,34 @@ def seal_acquisition_journal(
         flags |= os.O_NOFOLLOW
     descriptor = os.open(journal, flags)
     with os.fdopen(descriptor, "rb") as handle:
-        try:
-            import fcntl
-        except ImportError:  # pragma: no cover - Windows fallback
-            fcntl = None
-        if fcntl is not None:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-        _require(not seal_path.exists(), "acquisition journal seal already exists")
-        validation = validate_acquisition_journal(journal)
-        last_event_type = str(validation["last_event_type"])
-        _require(
-            last_event_type in _FINAL_EVENT_TYPES,
-            "journal must end with session_completed or session_aborted before sealing",
-        )
-        timestamp = sealed_at_utc or _utc_now()
-        _parse_utc(timestamp, name="sealed_at_utc")
-        seal: dict[str, Any] = {
-            "schema_version": JOURNAL_SCHEMA_VERSION,
-            "artifact_kind": JOURNAL_SEAL_KIND,
-            "status": "sealed",
-            "protocol_id": validation["protocol_id"],
-            "session_id": validation["session_id"],
-            "execution_ids": validation["execution_ids"],
-            "event_count": validation["event_count"],
-            "journal_sha256": validation["journal_sha256"],
-            "journal_bytes": validation["journal_bytes"],
-            "final_event_sha256": validation["final_event_sha256"],
-            "session_outcome": _FINAL_EVENT_TYPES[last_event_type],
-            "sealed_by": sealed_by.strip(),
-            "sealed_at_utc": timestamp,
-            "target_outcomes_used": False,
-        }
-        seal["seal_sha256"] = _canonical_sha256(seal, omitted="seal_sha256")
-        atomic_write_json(seal_path, seal, overwrite=False)
-        if fcntl is not None:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        with exclusive_acquisition_journal_lock(handle):
+            _require(not seal_path.exists(), "acquisition journal seal already exists")
+            validation = validate_acquisition_journal(journal)
+            last_event_type = str(validation["last_event_type"])
+            _require(
+                last_event_type in _FINAL_EVENT_TYPES,
+                "journal must end with session_completed or session_aborted before sealing",
+            )
+            timestamp = sealed_at_utc or _utc_now()
+            _parse_utc(timestamp, name="sealed_at_utc")
+            seal: dict[str, Any] = {
+                "schema_version": JOURNAL_SCHEMA_VERSION,
+                "artifact_kind": JOURNAL_SEAL_KIND,
+                "status": "sealed",
+                "protocol_id": validation["protocol_id"],
+                "session_id": validation["session_id"],
+                "execution_ids": validation["execution_ids"],
+                "event_count": validation["event_count"],
+                "journal_sha256": validation["journal_sha256"],
+                "journal_bytes": validation["journal_bytes"],
+                "final_event_sha256": validation["final_event_sha256"],
+                "session_outcome": _FINAL_EVENT_TYPES[last_event_type],
+                "sealed_by": sealed_by.strip(),
+                "sealed_at_utc": timestamp,
+                "target_outcomes_used": False,
+            }
+            seal["seal_sha256"] = _canonical_sha256(seal, omitted="seal_sha256")
+            atomic_write_json(seal_path, seal, overwrite=False)
     return seal
 
 
