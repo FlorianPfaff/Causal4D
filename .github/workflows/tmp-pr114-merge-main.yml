@@ -1,0 +1,48 @@
+name: Temporary PR 114 merge current main
+
+on:
+  push:
+    branches:
+      - agent/single-cli-surface
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tmp-pr114-merge-current-main
+  cancel-in-progress: true
+
+jobs:
+  merge-current-main:
+    if: >-
+      github.repository == 'IPS-Stuttgart/Causal4D' &&
+      github.ref_name == 'agent/single-cli-surface' &&
+      github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/single-cli-surface
+          fetch-depth: 0
+          persist-credentials: false
+          clean: true
+
+      - name: Merge current main and remove this workflow
+        env:
+          PUSH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-commit --no-ff origin/main
+          git rm .github/workflows/tmp-pr114-merge-main.yml
+          git commit -m "Merge current main into unified CLI surface"
+          basic_auth="$(printf 'x-access-token:%s' "${PUSH_TOKEN}" | base64 -w0)"
+          git -c \
+            http.https://github.com/.extraheader="AUTHORIZATION: basic ${basic_auth}" \
+            push origin HEAD:agent/single-cli-surface
