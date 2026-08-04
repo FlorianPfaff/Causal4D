@@ -68,7 +68,7 @@ on:
   workflow_dispatch:
     inputs:
       bpt_ref:
-        description: Bayesian-PhysTwin revision to test
+        description: BayesianPhysTwin revision to test
         required: false
         default: main
       prob4d_ref:
@@ -108,8 +108,8 @@ jobs:
               echo "This check is not allowed to pass by skipping its private repositories."
               echo "Configure a least-privilege token with read access to:"
               echo
-              echo "- \`FlorianPfaff/Bayesian-PhysTwin\`;"
-              echo "- \`FlorianPfaff/Prob4D\`."
+              echo "- \`IPS-Stuttgart/BayesianPhysTwin\`;"
+              echo "- \`IPS-Stuttgart/Prob4D\`."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
@@ -149,10 +149,10 @@ jobs:
           path: causal4d
           persist-credentials: false
 
-      - name: Check out Bayesian-PhysTwin
+      - name: Check out BayesianPhysTwin
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: FlorianPfaff/Bayesian-PhysTwin
+          repository: IPS-Stuttgart/BayesianPhysTwin
           ref: ${{ inputs.bpt_ref || 'main' }}
           token: ${{ secrets.BPT_READ_TOKEN }}
           path: bayesian-phystwin
@@ -161,7 +161,7 @@ jobs:
       - name: Check out Prob4D
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: FlorianPfaff/Prob4D
+          repository: IPS-Stuttgart/Prob4D
           ref: ${{ inputs.prob4d_ref || 'main' }}
           token: ${{ secrets.BPT_READ_TOKEN }}
           path: prob4d
