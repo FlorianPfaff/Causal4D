@@ -40,7 +40,9 @@ COMMAND_MANAGEMENT_ROUTES = frozenset({"describe", "list", "migrate", "validate"
 LEGACY_EXECUTABLE_PATTERN = re.compile(r"^causal4d-[A-Za-z0-9][A-Za-z0-9_-]*$")
 SHELL_ASSIGNMENT_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
 SHELL_CONTROL_PATTERN = re.compile(r"^[;&|()]+$")
-SHELL_PREFIX_KEYWORDS = frozenset({"!", "{", "do", "elif", "else", "if", "then", "until", "while"})
+SHELL_PREFIX_KEYWORDS = frozenset(
+    {"!", "{", "do", "elif", "else", "if", "then", "until", "while"}
+)
 
 _ENV_OPTIONS_WITH_VALUES = frozenset(
     {"-C", "--chdir", "-S", "--split-string", "-u", "--unset"}
