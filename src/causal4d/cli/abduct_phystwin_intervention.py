@@ -39,7 +39,7 @@ def _load_runtime_dependencies() -> None:
         evaluate_factual_abduction,
     )
     from causal4d.observation_evidence import GroupedObservationEvidence
-    from causal4d.phystwin_backend import load_rollout_bank
+    from causal4d.rollout_bank_io import load_rollout_bank
 
 
 def build_parser() -> argparse.ArgumentParser:
