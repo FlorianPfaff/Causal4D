@@ -2,15 +2,15 @@
 
 Causal4D separates its lightweight contracts from private-provider and
 hardware integrations. This keeps a base installation testable while still
-detecting drift at the Prob4D and Bayesian-PhysTwin boundaries.
+detecting drift at the Prob4D and BayesianPhysTwin boundaries.
 
 ## Required pull-request checks
 
 `CI and release` runs the following independent jobs:
 
-- **Core-only** installs `.[dev]` without Bayesian-PhysTwin, OpenCV, PyTorch, or
+- **Core-only** installs `.[dev]` without BayesianPhysTwin, OpenCV, PyTorch, or
   Warp and executes the default test suite on Python 3.10, 3.12, and 3.14.
-- **Pinned Bayesian-PhysTwin integration** checks out the exact provider-API
+- **Pinned BayesianPhysTwin integration** checks out the exact provider-API
   revision recorded in `requirements/ci/bayesian-phystwin-provider-v1.sha` and
   runs the BPT-facing Causal4D tests. The normal `phystwin` extra remains the
   supported `>=0.4,<0.5` development range.
@@ -31,19 +31,21 @@ Ruff-formatted without forcing unrelated historical files into the same change.
 
 ## Private repository access
 
-Configure the least-privilege repository secret `BPT_READ_TOKEN` with read
-access to both private repositories:
+Use repository-scoped, read-only SSH deploy keys for the two private providers.
+Add each public key as a read-only deploy key to its provider repository and
+store the corresponding private key as a Causal4D repository secret:
 
-- `FlorianPfaff/Bayesian-PhysTwin`;
-- `FlorianPfaff/Prob4D`.
+- `BPT_READ_SSH_KEY` for `IPS-Stuttgart/BayesianPhysTwin`;
+- `PROB4D_READ_SSH_KEY` for `IPS-Stuttgart/Prob4D`.
 
-The historical secret name is retained so existing repository configuration
-does not need to change. Trusted same-repository pull requests, pushes,
-scheduled runs, and manual dispatches now **fail** when the secret is absent.
-The three-repository workflow is not allowed to report success after skipping
-its checkouts, wheel builds, and compatibility tests.
+The keys are intentionally separate because GitHub deploy keys are scoped to one
+repository. This avoids a broad personal access token and makes provider access
+revocable independently. Trusted same-repository pull requests, pushes,
+scheduled runs, and manual dispatches fail when either key required by the
+three-repository workflow is absent. The workflow is not allowed to report
+success after skipping its checkouts, wheel builds, and compatibility tests.
 
-Tag releases also fail in the main CI workflow when the credential is absent,
+Tag releases also fail in the main CI workflow when `BPT_READ_SSH_KEY` is absent,
 so a skipped pinned-provider job cannot authorize release publication.
 
 GitHub does not expose repository secrets to pull requests from external forks.
@@ -55,15 +57,16 @@ passing installed-wheel golden path before merge.
 ## Three-repository installed-wheel golden path
 
 `.github/workflows/bayesian-phystwin-provider-compatibility.yml` is the terminal
-Prob4D -> Bayesian-PhysTwin -> Causal4D compatibility check. It runs on relevant
+Prob4D -> BayesianPhysTwin -> Causal4D compatibility check. It runs on relevant
 same-repository pull requests and pushes, can be dispatched with explicit BPT
 and Prob4D revisions, and runs weekly against both private repositories' `main`
 branches.
 
 The workflow begins with a separate credential gate. For trusted events, a
-missing `BPT_READ_TOKEN` is a hard configuration failure and prevents a false
-green result. Only an external-fork pull request can use the explicitly labelled
-unavailable path, because GitHub withholds repository secrets by design.
+missing `BPT_READ_SSH_KEY` or `PROB4D_READ_SSH_KEY` is a hard configuration
+failure and prevents a false green result. Only an external-fork pull request can
+use the explicitly labelled unavailable path, because GitHub withholds
+repository secrets by design.
 
 The installed-wheel job records the exact clean revision of every checkout,
 builds one wheel for each repository, records each wheel's SHA-256 identity, and
@@ -79,7 +82,7 @@ The compatibility path:
 
 1. reconstructs the deterministic Prob4D joint-gauge observation fixture and
    checks its fixed content address;
-2. lets Bayesian-PhysTwin independently validate causal lineage, adapt the
+2. lets BayesianPhysTwin independently validate causal lineage, adapt the
    observation to a gauge-aware batch, and execute a deterministic update;
 3. asserts that conditional local covariance is passed unchanged while the
    shared low-rank gauge root remains an explicit nuisance, preventing
@@ -111,7 +114,7 @@ formed:
 1. Prob4D's strict loader requires an explicit causal stream contract v2, the
    sequential joint gauge tree, canonical shared factors, both calibration IDs,
    and independently verified runtime provenance;
-2. Bayesian-PhysTwin's claim-bearing adapter validates the producer statement,
+2. BayesianPhysTwin's claim-bearing adapter validates the producer statement,
    full cross-window covariance, calibration completeness, and fallback policy
    before constructing the innovation, then executes the deterministic guarded
    update twice and requires exact parity;
@@ -151,22 +154,22 @@ expected rejection.
 core job:
 
 - hosted CPU vision/OpenCV tests run weekly;
-- BPT OpenCV collection and Warp CPU tests run separately when the private token
-  is configured;
-- the CUDA/Warp job is manual and targets a self-hosted runner carrying the
-  labels `self-hosted`, `linux`, `x64`, and `gpu`.
+- BPT OpenCV collection and Warp CPU tests run separately when
+  `BPT_READ_SSH_KEY` is configured;
+- the CUDA/Warp job is manual and targets the self-hosted runner carrying the
+  labels `self-hosted`, `Linux`, `X64`, and `nvidia-smi`.
 
-The manual GPU job additionally requires the same `BPT_READ_TOKEN` secret.
+The manual GPU job additionally requires `BPT_READ_SSH_KEY`.
 
 ## Reproducing the wheel boundary locally
 
 The workflow is the canonical executable specification because it can read the
 two private repositories. A local equivalent requires checkouts of all three
-repositories and a token is not needed once they are available:
+repositories and no credential once they are locally available:
 
 ```bash
 python -m build --wheel --outdir /tmp/three-repo-wheels Prob4D
-python -m build --wheel --outdir /tmp/three-repo-wheels Bayesian-PhysTwin
+python -m build --wheel --outdir /tmp/three-repo-wheels BayesianPhysTwin
 python -m build --wheel --outdir /tmp/three-repo-wheels Causal4D
 python -m venv /tmp/three-repo-venv
 /tmp/three-repo-venv/bin/python -m pip install /tmp/three-repo-wheels/*.whl
