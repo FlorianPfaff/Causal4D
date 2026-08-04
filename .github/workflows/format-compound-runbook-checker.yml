@@ -1,0 +1,58 @@
+name: Format compound runbook checker
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/format-compound-runbook-checker.yml"
+      - "scripts/ci/check_acquisition_runbook_commands.py"
+      - "tests/test_acquisition_runbook_commands.py"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/harden-acquisition-runbook-compound
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Format and validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "ruff>=0.15.22,<0.17"
+          python -m ruff format \
+            scripts/ci/check_acquisition_runbook_commands.py \
+            tests/test_acquisition_runbook_commands.py
+          python -m ruff check \
+            scripts/ci/check_acquisition_runbook_commands.py \
+            tests/test_acquisition_runbook_commands.py
+          python -m pytest -q tests/test_acquisition_runbook_commands.py
+
+      - name: Commit formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add \
+            scripts/ci/check_acquisition_runbook_commands.py \
+            tests/test_acquisition_runbook_commands.py
+          if git diff --cached --quiet; then
+            echo "Formatting is already clean."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Format compound runbook checker"
+          git push origin HEAD:agent/harden-acquisition-runbook-compound
