@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 import json
+import math
 from pathlib import Path
 
 from causal4d.benchmark import CounterfactualBenchmarkConfig
@@ -44,13 +45,23 @@ def _parse_scales(value: str) -> tuple[float, ...]:
         raise argparse.ArgumentTypeError("logit scales must be numeric") from error
     if not scales:
         raise argparse.ArgumentTypeError("at least one softening scale is required")
+    if any(not math.isfinite(scale) or scale <= 0.0 for scale in scales):
+        raise argparse.ArgumentTypeError(
+            "logit scales must be finite and positive"
+        )
+    if len(set(scales)) != len(scales):
+        raise argparse.ArgumentTypeError("logit scales must be unique")
     return scales
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--seeds", type=_parse_seeds, default="200:220")
+    parser.add_argument(
+        "--seeds",
+        type=_parse_seeds,
+        default=_parse_seeds("200:220"),
+    )
     parser.add_argument("--frames", type=int, default=56)
     parser.add_argument("--training-repeats", type=int, default=2)
     parser.add_argument("--parameter-grid-count", type=int, default=5)
@@ -60,7 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--softening-logit-scales",
         type=_parse_scales,
-        default="0.25,0.50,0.75",
+        default=_parse_scales("0.25,0.50,0.75"),
     )
     return parser
 
