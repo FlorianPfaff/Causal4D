@@ -8,6 +8,9 @@ on:
       - "scripts/ci/analyze_contact_posterior.py"
       - "src/causal4d/contact_posterior_diagnostics.py"
       - "tests/test_contact_posterior_diagnostics.py"
+  push:
+    branches:
+      - agent/reproducibility-contact-diagnostics
   workflow_dispatch:
     inputs:
       seeds:
@@ -45,6 +48,7 @@ jobs:
   diagnose:
     name: Independent-seed topology diagnostics
     if: >-
+      github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, nvidia-smi]
