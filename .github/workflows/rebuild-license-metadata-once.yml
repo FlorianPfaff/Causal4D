@@ -1,0 +1,241 @@
+name: Rebuild license metadata once
+
+on:
+  push:
+    branches:
+      - agent/license-metadata-rebuild-scratch
+    paths:
+      - .github/workflows/rebuild-license-metadata-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out scratch branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/license-metadata-rebuild-scratch
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Rebuild the current-main licensing delta and remove this workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          citation_path = Path("CITATION.cff")
+          citation = citation_path.read_text(encoding="utf-8")
+          if "\nlicense: MIT\n" not in citation:
+              marker = "\nauthors:\n"
+              if marker not in citation:
+                  raise SystemExit("CITATION.cff authors anchor is missing")
+              citation = citation.replace(marker, "\nlicense: MIT\nauthors:\n", 1)
+          citation = citation.replace(
+              "https://github.com/FlorianPfaff/Causal4D",
+              "https://github.com/IPS-Stuttgart/Causal4D",
+          )
+          citation_path.write_text(citation, encoding="utf-8")
+
+          contributing_path = Path("CONTRIBUTING.md")
+          contributing = contributing_path.read_text(encoding="utf-8")
+          heading = "## Licensing\n\n"
+          if heading not in contributing:
+              raise SystemExit("CONTRIBUTING.md licensing heading is missing")
+          prefix, _ = contributing.split(heading, 1)
+          contributing = prefix + heading + (
+              "Causal4D source code and associated project documentation are distributed under\n"
+              "the [MIT License](LICENSE). Unless agreed otherwise in writing before submission,\n"
+              "contributions accepted into this repository are provided under the same license.\n"
+              "By submitting a contribution, you represent that you have the right to provide it\n"
+              "under those terms.\n\n"
+              "Identify third-party code, data, checkpoints, or other assets explicitly. Their\n"
+              "licenses and attribution requirements must permit the proposed use; the Causal4D\n"
+              "MIT License does not relicense external material. See\n"
+              "[docs/licensing.md](docs/licensing.md) for the complete repository licensing scope.\n"
+          )
+          contributing_path.write_text(contributing, encoding="utf-8")
+
+          readme_path = Path("README.md")
+          readme = readme_path.read_text(encoding="utf-8")
+          replacements = {
+              "[Bayesian-PhysTwin](https://github.com/IPS-Stuttgart/BayesianPhysTwin)": "[BayesianPhysTwin](https://github.com/IPS-Stuttgart/BayesianPhysTwin)",
+              "### Bayesian-PhysTwin integration": "### BayesianPhysTwin integration",
+              "source does not import Bayesian-PhysTwin internals.": "source does not import BayesianPhysTwin internals.",
+              "Bayesian-PhysTwin adapters:": "BayesianPhysTwin adapters:",
+              "The `phystwin` extra accepts Bayesian-PhysTwin": "The `phystwin` extra accepts BayesianPhysTwin",
+              "Bayesian-PhysTwin pin, protocol files": "BayesianPhysTwin pin, protocol files",
+              "Causal4D/Bayesian-PhysTwin package artifacts": "Causal4D/BayesianPhysTwin package artifacts",
+          }
+          for old, new in replacements.items():
+              readme = readme.replace(old, new)
+          if "\n## License\n" not in readme:
+              readme = readme.rstrip() + (
+                  "\n\n## License\n\n"
+                  "Causal4D software and its associated project documentation are available under the\n"
+                  "[MIT License](LICENSE). Third-party datasets, model checkpoints, provider\n"
+                  "repositories, and externally sourced artifacts retain their own terms and are not\n"
+                  "relicensed by this repository. See [docs/licensing.md](docs/licensing.md) for the\n"
+                  "scope, historical-version policy, contribution terms, and citation boundary.\n"
+              )
+          readme_path.write_text(readme, encoding="utf-8")
+
+          pyproject_path = Path("pyproject.toml")
+          pyproject = pyproject_path.read_text(encoding="utf-8")
+          if '"License :: OSI Approved :: MIT License"' not in pyproject:
+              anchor = 'authors = [\n  { name = "Florian Pfaff" },\n]\n'
+              if anchor not in pyproject:
+                  raise SystemExit("pyproject authors anchor is missing")
+              classifiers = '''authors = [
+  { name = "Florian Pfaff" },
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Typing :: Typed",
+]
+'''
+              pyproject = pyproject.replace(anchor, classifiers, 1)
+          pyproject = pyproject.replace(
+              "https://github.com/FlorianPfaff/Causal4D",
+              "https://github.com/IPS-Stuttgart/Causal4D",
+          )
+          pyproject_path.write_text(pyproject, encoding="utf-8")
+
+          Path("docs/licensing.md").write_text(
+              """# Licensing
+
+Causal4D software and its associated project documentation are distributed under
+the [MIT License](../LICENSE).
+
+The repository maintainer selected the MIT License for the current Causal4D
+repository and successor releases on 4 August 2026. This records the licensing
+choice; it does not transfer copyright or change the ownership of individual
+contributions.
+
+## Scope
+
+Unless a file states different terms, the Causal4D source code and project
+documentation authored for this repository are covered by the root `LICENSE`.
+The license permits use, copying, modification, distribution, sublicensing, and
+sale subject to preservation of the copyright and permission notices.
+
+The MIT License does **not** relicense third-party material. In particular,
+external datasets, model checkpoints, copied or generated artifacts derived from
+external sources, and separately obtained provider repositories remain subject to
+their own licenses, access conditions, and citation requirements. Consult the
+metadata and upstream source associated with each such artifact before reuse.
+
+Frozen tags, milestone directories, result bundles, and requirement locks remain
+historical records and are not rewritten merely to add a license notice. For a
+historical version, use the license included with the exact version obtained.
+References to external repositories or datasets inside frozen evidence are
+provenance records, not grants of rights to those external materials.
+
+## Contributions
+
+Unless agreed otherwise in writing before submission, contributions accepted into
+Causal4D are provided under the same MIT License. By opening a contribution, the
+contributor represents that they have the right to submit it under those terms.
+Third-party code or assets must be identified explicitly and must have terms
+compatible with their proposed use in this repository.
+
+## Citation
+
+Licensing and scholarly attribution are separate. Reuse permitted by the MIT
+License should still cite the software, paper, dataset, or frozen milestone used in
+research. The current software citation is defined in [`CITATION.cff`](../CITATION.cff).
+""",
+              encoding="utf-8",
+          )
+
+          Path("tests/test_citation_metadata.py").write_text(
+              '''from __future__ import annotations
+
+import re
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _required_scalar(text: str, key: str) -> str:
+    match = re.search(rf"(?m)^{re.escape(key)}:\\s*([^\\n]+)$", text)
+    if match is None:
+        raise AssertionError(f"CITATION.cff is missing {key!r}")
+    return match.group(1).strip().strip("\\\"'")
+
+
+def test_citation_metadata_matches_package_version_repository_and_license() -> None:
+    citation = (ROOT / "CITATION.cff").read_text(encoding="utf-8")
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    license_text = (ROOT / "LICENSE").read_text(encoding="utf-8")
+    version_match = re.search(r'(?m)^version = "([^\"]+)"$', pyproject)
+    assert version_match is not None
+
+    assert _required_scalar(citation, "cff-version") == "1.2.0"
+    assert _required_scalar(citation, "title") == "Causal4D"
+    assert _required_scalar(citation, "type") == "software"
+    assert _required_scalar(citation, "version") == version_match.group(1)
+    assert _required_scalar(citation, "license") == "MIT"
+    assert _required_scalar(citation, "repository-code") == (
+        "https://github.com/IPS-Stuttgart/Causal4D"
+    )
+    assert _required_scalar(citation, "url") == (
+        "https://github.com/IPS-Stuttgart/Causal4D"
+    )
+    assert "family-names: Pfaff" in citation
+    assert "given-names: Florian" in citation
+    assert 'license = { file = "LICENSE" }' in pyproject
+    assert '"License :: OSI Approved :: MIT License"' in pyproject
+    assert (
+        'Citation = "https://github.com/IPS-Stuttgart/Causal4D/blob/main/CITATION.cff"'
+    ) in pyproject
+    assert 'Repository = "https://github.com/IPS-Stuttgart/Causal4D"' in pyproject
+    assert license_text.startswith("MIT License\\n")
+    assert "Copyright (c) 2026 Florian Pfaff" in license_text
+    assert "\\t" not in citation
+
+
+def test_current_documentation_explains_the_license_scope() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    licensing = (ROOT / "docs" / "licensing.md").read_text(encoding="utf-8")
+
+    assert "## License" in readme
+    assert "[MIT License](LICENSE)" in readme
+    assert "## Licensing" in contributing
+    assert "[MIT License](LICENSE)" in contributing
+    assert "third-party material" in licensing
+    assert "Frozen tags" in licensing
+''',
+              encoding="utf-8",
+          )
+          PY
+          git rm .github/workflows/rebuild-license-metadata-once.yml
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CITATION.cff CONTRIBUTING.md README.md docs/licensing.md pyproject.toml tests/test_citation_metadata.py
+          git commit -m "Rebuild MIT license metadata on current main"
+          git push origin HEAD:refs/heads/agent/license-metadata-rebuild-scratch
