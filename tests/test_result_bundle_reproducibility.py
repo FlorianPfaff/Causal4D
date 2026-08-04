@@ -12,6 +12,7 @@ from result_bundle_test_support import (
     _write_json,
 )
 
+
 def test_identical_bundles_are_byte_and_semantic_matches(tmp_path: Path) -> None:
     expected = tmp_path / "expected"
     actual = tmp_path / "actual"
@@ -68,8 +69,7 @@ def test_json_integer_type_is_exact_even_with_large_tolerance(tmp_path: Path) ->
     assert process.returncode == 2
     assert report["semantic_match"] is False
     assert any(
-        "protocol.json.seed: type differs" in item
-        for item in report["mismatches"]
+        "protocol.json.seed: type differs" in item for item in report["mismatches"]
     )
 
 
