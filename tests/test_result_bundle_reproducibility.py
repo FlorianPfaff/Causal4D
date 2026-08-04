@@ -245,3 +245,88 @@ def test_out_of_range_gate_number_is_rejected_without_crashing(
     assert process.returncode == 2
     assert report["semantic_match"] is False
     assert any("gate numbers are out of range" in item for item in report["mismatches"])
+
+
+def test_whitelisted_contact_diagnostics_are_additive_only(
+    tmp_path: Path,
+) -> None:
+    expected = tmp_path / "expected-additive"
+    actual = tmp_path / "actual-additive"
+    _write_bundle(expected)
+    _copy_bundle(expected, actual)
+
+    expected_summary = _read_json(expected / "summary.json")
+    expected_summary["aggregate"] = {
+        "contact_recovery": [
+            {
+                "case_count": 2,
+                "setting": "online_adaptation",
+                "world_condition": "shifted_contact",
+            }
+        ]
+    }
+    _write_json(expected / "summary.json", expected_summary)
+    _refresh_result_manifest(expected)
+
+    actual_summary = _read_json(actual / "summary.json")
+    actual_summary["aggregate"] = {
+        "contact_recovery": [
+            {
+                "case_count": 2,
+                "setting": "online_adaptation",
+                "world_condition": "shifted_contact",
+                "mean_node_map_set_size": 1.25,
+                "node_map_set_coverage": 0.95,
+            }
+        ]
+    }
+    _write_json(actual / "summary.json", actual_summary)
+
+    rows = list(csv.reader((actual / "contact_recovery.csv").open(encoding="utf-8")))
+    rows[0].extend(["node_map_set", "node_map_set_size"])
+    rows[1].extend(["2", "1"])
+    rows[2].extend(["3;4", "2"])
+    with (actual / "contact_recovery.csv").open(
+        "w", encoding="utf-8", newline=""
+    ) as handle:
+        csv.writer(handle).writerows(rows)
+    _refresh_result_manifest(actual)
+
+    process, report = _run_comparison(expected, actual, tmp_path)
+
+    assert process.returncode == 0
+    assert report["semantic_match"] is True
+    assert report["all_payload_bytes_match"] is False
+    assert report["additive_diagnostic_fields"]["contact_recovery.csv"] == [
+        "node_map_set",
+        "node_map_set_size",
+    ]
+    assert any(
+        path.startswith("summary.json.aggregate.contact_recovery[")
+        for path in report["additive_diagnostic_fields"]
+    )
+
+
+def test_unregistered_additive_field_remains_a_semantic_mismatch(
+    tmp_path: Path,
+) -> None:
+    expected = tmp_path / "expected-extra"
+    actual = tmp_path / "actual-extra"
+    _write_bundle(expected)
+    _copy_bundle(expected, actual)
+
+    rows = list(csv.reader((actual / "contact_recovery.csv").open(encoding="utf-8")))
+    rows[0].append("invented_diagnostic")
+    rows[1].append("1")
+    rows[2].append("1")
+    with (actual / "contact_recovery.csv").open(
+        "w", encoding="utf-8", newline=""
+    ) as handle:
+        csv.writer(handle).writerows(rows)
+    _refresh_result_manifest(actual)
+
+    process, report = _run_comparison(expected, actual, tmp_path)
+
+    assert process.returncode == 2
+    assert report["semantic_match"] is False
+    assert any("invented_diagnostic" in mismatch for mismatch in report["mismatches"])

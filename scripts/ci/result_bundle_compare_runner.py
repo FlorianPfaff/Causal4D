@@ -66,13 +66,20 @@ def _comparison_contract(
             "artifact names are exact across bundles."
         ),
         "exact_semantics": [
-            "JSON value types, object keys, list lengths, and list order",
+            "JSON value types, claim-bearing object keys, list lengths, and list order",
             "JSON integers and CSV integer lexemes",
             "strings, booleans, nulls, categories, and CSV row order",
             "success-gate names, comparisons, thresholds, decisions, and "
             "overall decision",
             "internal success-gate truth consistency",
         ],
+        "additive_diagnostic_projection": {
+            "scope": (
+                "Only the named contact-recovery diagnostics introduced after "
+                "the frozen bundle are projected out of the claim comparison."
+            ),
+            "all_other_extra_fields": "semantic mismatch",
+        },
         "floating_semantics": {
             "relative_tolerance": relative_tolerance,
             "absolute_tolerance": absolute_tolerance,
@@ -227,6 +234,9 @@ def compare_result_bundles(
         "semantic_match": not comparison.mismatches,
         "numeric_comparisons": comparison.numeric_comparisons,
         "exact_numeric_comparisons": comparison.exact_numeric_comparisons,
+        "additive_diagnostic_fields": dict(
+            sorted(comparison.additive_diagnostic_fields.items())
+        ),
         "maximum_absolute_difference": comparison.maximum_absolute_difference,
         "maximum_relative_difference": comparison.maximum_relative_difference,
         "maximum_direction_angle_difference_deg": (
@@ -245,7 +255,9 @@ def compare_result_bundles(
             "recorded environment. Independent reproduction is a separate, "
             "field-aware semantic contract. Float tolerances never apply to "
             "schema, identity, ordering, integer fields, thresholds, or gate "
-            "decisions, and byte mismatches remain explicit diagnostics."
+            "decisions. Only explicitly named additive, non-claim contact "
+            "diagnostics are projected out, and byte mismatches remain explicit "
+            "diagnostics."
         ),
     }
     return report

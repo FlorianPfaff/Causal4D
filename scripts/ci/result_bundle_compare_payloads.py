@@ -19,6 +19,20 @@ _FLOAT_TEXT = re.compile(
     r"^[+-]?(?:(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?|\d+[eE][+-]?\d+)$"
 )
 _INTEGER_TEXT = re.compile(r"^[+-]?\d+$")
+_ALLOWED_CONTACT_ROW_DIAGNOSTICS = frozenset(
+    {
+        "joint_positive_support_size",
+        "node_credible_set_size",
+        "node_entropy",
+        "node_map_set",
+        "node_map_set_size",
+        "node_normalized_entropy",
+        "node_support_size",
+        "node_tie_closed_credible_covered",
+        "node_tie_closed_credible_set_size",
+        "node_truth_in_map_set",
+    }
+)
 _NONFINITE_TEXT = {
     "nan",
     "+nan",
@@ -103,11 +117,29 @@ def _compare_csv_bytes(
     except ValueError as error:
         comparison.add_mismatch(str(error))
         return
+    actual_field_positions = {
+        field_name: index for index, field_name in enumerate(actual_fields)
+    }
     if expected_fields != actual_fields:
-        comparison.add_mismatch(
-            f"{label}: header differs ({expected_fields!r} versus {actual_fields!r})"
-        )
-        return
+        expected_set = set(expected_fields)
+        actual_set = set(actual_fields)
+        missing = expected_set - actual_set
+        extra = actual_set - expected_set
+        allowed_extra: set[str] = set()
+        if label == "contact_recovery.csv":
+            allowed_extra = extra & _ALLOWED_CONTACT_ROW_DIAGNOSTICS
+            comparison.record_additive_fields(label, allowed_extra)
+        unexpected_extra = extra - allowed_extra
+        retained_order = [
+            field_name for field_name in actual_fields if field_name in expected_set
+        ]
+        if missing or unexpected_extra or retained_order != expected_fields:
+            comparison.add_mismatch(
+                f"{label}: header differs; missing={sorted(missing)!r}, "
+                f"extra={sorted(unexpected_extra)!r}, "
+                f"retained_order_matches={retained_order == expected_fields}"
+            )
+            return
     if len(expected_rows) != len(actual_rows):
         comparison.add_mismatch(
             f"{label}: row count differs "
@@ -119,7 +151,7 @@ def _compare_csv_bytes(
     ):
         for field_index, field_name in enumerate(expected_fields):
             expected = expected_row[field_index]
-            actual = actual_row[field_index]
+            actual = actual_row[actual_field_positions[field_name]]
             path = f"{label}:row={row_index}:field={field_name}"
             if _nonfinite_text(expected) or _nonfinite_text(actual):
                 comparison.add_mismatch(f"{path}: non-finite numeric text is forbidden")

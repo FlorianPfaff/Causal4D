@@ -12,6 +12,17 @@ _SUCCESS_GATE_THRESHOLD_PATH = re.compile(
     r"^success_gates\.json\.gates\[\d+\]\.threshold$"
 )
 _DIRECTION_ANGLE_FIELD = "direction_error_deg"
+_ALLOWED_CONTACT_AGGREGATE_DIAGNOSTICS = frozenset(
+    {
+        "mean_joint_positive_support_size",
+        "mean_node_credible_set_size",
+        "mean_node_map_set_size",
+        "mean_node_normalized_entropy",
+        "mean_node_tie_closed_credible_set_size",
+        "node_map_set_coverage",
+        "node_tie_closed_credible_coverage",
+    }
+)
 
 
 @dataclass
@@ -24,9 +35,14 @@ class Comparison:
     maximum_absolute_difference: float = 0.0
     maximum_relative_difference: float = 0.0
     maximum_direction_angle_difference_deg: float = 0.0
+    additive_diagnostic_fields: dict[str, list[str]] = field(default_factory=dict)
 
     def add_mismatch(self, message: str) -> None:
         self.mismatches.append(message)
+
+    def record_additive_fields(self, path: str, fields: set[str]) -> None:
+        if fields:
+            self.additive_diagnostic_fields[path] = sorted(fields)
 
     def compare_exact_number(
         self,
@@ -139,11 +155,17 @@ def _compare_json_value(
     if isinstance(expected, dict):
         expected_keys = set(expected)
         actual_keys = set(actual)
-        if expected_keys != actual_keys:
-            missing = sorted(expected_keys - actual_keys)
-            extra = sorted(actual_keys - expected_keys)
+        missing = expected_keys - actual_keys
+        extra = actual_keys - expected_keys
+        allowed_extra: set[str] = set()
+        if path.startswith("summary.json.aggregate.contact_recovery["):
+            allowed_extra = extra & _ALLOWED_CONTACT_AGGREGATE_DIAGNOSTICS
+            comparison.record_additive_fields(path, allowed_extra)
+        unexpected_extra = extra - allowed_extra
+        if missing or unexpected_extra:
             comparison.add_mismatch(
-                f"{path}: object keys differ; missing={missing!r}, extra={extra!r}"
+                f"{path}: object keys differ; missing={sorted(missing)!r}, "
+                f"extra={sorted(unexpected_extra)!r}"
             )
         for key in sorted(expected_keys & actual_keys):
             _compare_json_value(

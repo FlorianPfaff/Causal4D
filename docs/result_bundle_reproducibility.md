@@ -111,3 +111,21 @@ semantic_match=true
 ```
 
 That outcome is evidence of numerical reproduction, not byte identity. It cannot alter the frozen result, a registered threshold, the real-data protocol, or claim readiness.
+
+
+## Additive diagnostic compatibility
+
+The frozen controlled bundle predates the tie-aware contact diagnostics added by
+Causal4D PR #118. An independently regenerated current bundle may therefore carry
+a strictly enumerated set of additional contact-recovery columns and aggregate
+fields. These fields are non-claim diagnostics and are projected out of the
+frozen claim comparison while remaining visible in
+`additive_diagnostic_fields` and in the byte mismatch.
+
+This is not a general schema relaxation. The comparator admits only the named
+contact diagnostics in `contact_recovery.csv` and
+`summary.json.aggregate.contact_recovery`. Missing frozen fields, changed field
+order, an unknown extra field, or any extra field elsewhere remains a semantic
+mismatch. Registered gates, thresholds, decisions, identities, and all retained
+claim-bearing values remain exact or tolerance-governed exactly as specified
+above.
