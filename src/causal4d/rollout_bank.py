@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from statistics import NormalDist
 from typing import Any, Sequence
@@ -9,7 +12,30 @@ from typing import Any, Sequence
 import numpy as np
 
 from causal4d.immutable_array import readonly_array as _readonly_array
+from causal4d.immutable_json import plain_json, validated_json_mapping
 from causal4d.weighting import log_weights_from_probabilities
+
+
+def _array_sha256(values: np.ndarray) -> str:
+    """Hash one array with its dtype and shape."""
+
+    array = np.ascontiguousarray(np.asarray(values))
+    digest = hashlib.sha256()
+    digest.update(array.dtype.str.encode("ascii"))
+    digest.update(json.dumps(array.shape, separators=(",", ":")).encode("ascii"))
+    digest.update(array.view(np.uint8))
+    return digest.hexdigest()
+
+
+def _canonical_json_sha256(values: Mapping[str, Any]) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            plain_json(values),
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def _normalized_weights(values: np.ndarray, *, name: str) -> np.ndarray:
@@ -231,7 +257,7 @@ class JointRolloutBank:
     """Finite support over rollout hypotheses and physical parameter particles."""
 
     hypothesis_ids: tuple[str, ...]
-    hypothesis_metadata: tuple[dict[str, Any], ...]
+    hypothesis_metadata: tuple[Mapping[str, Any], ...]
     hypothesis_prior_weights: np.ndarray
     parameter_particles: np.ndarray
     parameter_weights: np.ndarray
@@ -251,12 +277,30 @@ class JointRolloutBank:
         particles = _readonly_array(self.parameter_particles, dtype=float)
         trajectories = _readonly_array(self.trajectories, dtype=np.float32)
         hypothesis_count = len(self.hypothesis_ids)
-        if hypothesis_count < 1 or any(not value for value in self.hypothesis_ids):
-            raise ValueError("hypothesis_ids must be nonempty")
+        if hypothesis_count < 1 or any(
+            not isinstance(value, str) or not value for value in self.hypothesis_ids
+        ):
+            raise ValueError("hypothesis_ids must be nonempty strings")
         if len(set(self.hypothesis_ids)) != hypothesis_count:
             raise ValueError("hypothesis_ids must be unique")
         if len(self.hypothesis_metadata) != hypothesis_count:
             raise ValueError("hypothesis metadata must match hypothesis ids")
+        metadata = []
+        for raw_metadata in self.hypothesis_metadata:
+            if not isinstance(raw_metadata, Mapping):
+                raise ValueError("hypothesis metadata entries must be JSON objects")
+            normalized = validated_json_mapping(
+                raw_metadata,
+                error_message="hypothesis metadata must be finite JSON data",
+            )
+            declared_id = normalized.get("hypothesis_id")
+            if declared_id is not None and (
+                not isinstance(declared_id, str) or not declared_id
+            ):
+                raise ValueError(
+                    "hypothesis metadata hypothesis_id must be a nonempty string"
+                )
+            metadata.append(normalized)
         if hypothesis_weights.shape != (hypothesis_count,):
             raise ValueError("hypothesis weights must match hypothesis ids")
         if particles.ndim != 2 or particles.shape[0] != len(parameter_weights):
@@ -274,10 +318,35 @@ class JointRolloutBank:
             raise ValueError("variance_floor_m2 must be finite and positive")
         if not 0.0 < self.confidence_level < 1.0:
             raise ValueError("confidence_level must lie in (0, 1)")
+        object.__setattr__(self, "hypothesis_metadata", tuple(metadata))
         object.__setattr__(self, "hypothesis_prior_weights", hypothesis_weights)
         object.__setattr__(self, "parameter_weights", parameter_weights)
         object.__setattr__(self, "parameter_particles", particles)
         object.__setattr__(self, "trajectories", trajectories)
+
+    @property
+    def artifact_id(self) -> str:
+        """Return a content address for the complete rollout support."""
+
+        descriptor = {
+            "schema_name": "causal4d.joint-rollout-bank",
+            "schema_version": 1,
+            "hypothesis_ids": list(self.hypothesis_ids),
+            "hypothesis_metadata": [
+                plain_json(value) for value in self.hypothesis_metadata
+            ],
+            "variance_floor_m2": float(self.variance_floor_m2),
+            "confidence_level": float(self.confidence_level),
+            "arrays": {
+                "hypothesis_prior_weights": _array_sha256(
+                    self.hypothesis_prior_weights
+                ),
+                "parameter_particles": _array_sha256(self.parameter_particles),
+                "parameter_weights": _array_sha256(self.parameter_weights),
+                "trajectories": _array_sha256(self.trajectories),
+            },
+        }
+        return _canonical_json_sha256(descriptor)
 
     @property
     def prior_joint_weights(self) -> np.ndarray:
