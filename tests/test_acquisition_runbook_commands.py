@@ -36,6 +36,10 @@ CHECKER = _load_checker()
         "causal4d calibration execution-block evaluate folds.json",
         "causal4d commands migrate causal4d-real-protocol",
         "env MODE=confirmatory causal4d protocol real validate-dataset protocol.json data",
+        "sudo -n -u operator causal4d protocol real status protocol.json data",
+        "time -p causal4d protocol readiness status /opt/causal4d /data/evidence",
+        "command -p causal4d protocol freeze validate method.json /opt/causal4d",
+        "command -v causal4d",
         "causal4d --help",
     ],
 )
@@ -55,11 +59,48 @@ causal4d-real-protocol status protocol.json evidence
     assert "removed historical executable" in issues[0].message
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "echo ready && causal4d-real-protocol status protocol.json evidence",
+        "printf '%s\\n' ready | causal4d-real-experiment-freeze seal root freeze.json",
+        "if ! causal4d-real-protocol status protocol.json evidence; then exit 1; fi",
+        "sudo -u operator causal4d-real-protocol status protocol.json evidence",
+        "env -u TOKEN MODE=test causal4d-real-protocol status protocol.json evidence",
+        "time -p causal4d-real-protocol status protocol.json evidence",
+    ],
+)
+def test_removed_executable_is_rejected_in_compound_or_wrapped_commands(
+    command: str,
+) -> None:
+    text = f"```bash\n{command}\n```\n"
+    issues = CHECKER.validate_markdown(Path("runbook.md"), text)
+    assert len(issues) == 1
+    assert "removed historical executable" in issues[0].message
+
+
 def test_unknown_grouped_route_is_rejected() -> None:
     text = """```console
 $ causal4d protocol definitely-not-a-route --help
 ```
 """
+    issues = CHECKER.validate_markdown(Path("runbook.md"), text)
+    assert len(issues) == 1
+    assert "unknown grouped Causal4D route" in issues[0].message
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "echo ready; causal4d protocol definitely-not-a-route --help",
+        "true || sudo -n causal4d protocol definitely-not-a-route --help",
+        "printf ready | time -p causal4d protocol definitely-not-a-route --help",
+    ],
+)
+def test_unknown_route_is_rejected_in_compound_or_wrapped_commands(
+    command: str,
+) -> None:
+    text = f"```bash\n{command}\n```\n"
     issues = CHECKER.validate_markdown(Path("runbook.md"), text)
     assert len(issues) == 1
     assert "unknown grouped Causal4D route" in issues[0].message
@@ -88,10 +129,12 @@ causal4d-real-experiment-freeze seal \\
     assert issues[0].line == 3
 
 
-def test_non_causal4d_commands_are_ignored() -> None:
+def test_non_causal4d_commands_and_literal_arguments_are_ignored() -> None:
     text = """```bash
 python -m pip install -e .
 git rev-parse HEAD
+echo causal4d-real-protocol
+causal4d commands migrate causal4d-real-protocol
 ```
 """
     assert CHECKER.validate_markdown(Path("runbook.md"), text) == ()
