@@ -4,6 +4,14 @@
 
 ### Added
 
+- Add a locked, source-only Deform360 prefix-kinematics diagnostic that
+  reproduces the archived zero-velocity baseline, compares rigid and
+  graph-harmonic causal velocity fields on the unchanged source candidates,
+  preserves the p99 strain constraint, and keeps calibration and target data
+  closed.
+- Bind the diagnostic to the frozen source milestone and terminal backend
+  decision, record exact runtime provenance, and provide focused tests plus a
+  manual self-hosted evidence workflow.
 - Add a fail-closed source-panel status that validates the exact registered
   12-execution prefix, reports the next physical execution with its complete
   command profile, distinguishes invalid evidence from valid incompleteness, and
