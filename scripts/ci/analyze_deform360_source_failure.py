@@ -47,7 +47,6 @@ def main() -> None:
     reopened = json.loads(output.read_text(encoding="utf-8"))
     validation = validate_source_failure_attribution(reopened)
     summary = {
-        "output": str(output.resolve()),
         "result_sha256": validation["result_sha256"],
         "object_count": validation["object_count"],
         "classification_counts": validation["classification_counts"],
