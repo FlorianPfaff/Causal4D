@@ -27,6 +27,9 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
+          token_expression = "$" + "{{ secrets.BPT_READ_TOKEN }}"
+          ssh_expression = "$" + "{{ secrets.BPT_READ_SSH_KEY }}"
+
           workflow_path = Path(
               ".github/workflows/bayesian-phystwin-provider-compatibility.yml"
           )
@@ -35,11 +38,9 @@ jobs:
           gate_end = lines.index("  external-pull-request:")
           gate = lines[gate_start:gate_end]
 
-          token_line = (
-              "      PRIVATE_REPOSITORY_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}"
-          )
+          token_line = f"      PRIVATE_REPOSITORY_READ_TOKEN: {token_expression}"
           token_index = gate.index(token_line)
-          ssh_env_line = "      BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}"
+          ssh_env_line = f"      BPT_READ_SSH_KEY: {ssh_expression}"
           if ssh_env_line not in gate:
               gate.insert(token_index + 1, ssh_env_line)
 
@@ -96,8 +97,8 @@ jobs:
           bpt_repository = "          repository: IPS-Stuttgart/BayesianPhysTwin"
           bpt_index = lines.index(bpt_repository)
           checkout_window = lines[bpt_index : bpt_index + 6]
-          old_checkout_auth = "          token: ${{ secrets.BPT_READ_TOKEN }}"
-          new_checkout_auth = "          ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}"
+          old_checkout_auth = f"          token: {token_expression}"
+          new_checkout_auth = f"          ssh-key: {ssh_expression}"
           if checkout_window.count(old_checkout_auth) != 1:
               raise SystemExit("BayesianPhysTwin checkout token line was not unique")
           lines[bpt_index + checkout_window.index(old_checkout_auth)] = (
@@ -162,8 +163,8 @@ jobs:
           anchor_index = policy.index(anchor)
           extra_assertions = [
               '    assert "BPT_READ_SSH_KEY" in text',
-              '    assert "ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}" in text',
-              '    assert "token: ${{ secrets.BPT_READ_TOKEN }}" in text',
+              f'    assert "ssh-key: {ssh_expression}" in text',
+              f'    assert "token: {token_expression}" in text',
           ]
           for assertion in reversed(extra_assertions):
               if assertion not in policy:
