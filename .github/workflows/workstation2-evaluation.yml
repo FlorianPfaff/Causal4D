@@ -7,11 +7,13 @@ on:
       - ".github/workflows/workstation2-evaluation.yml"
       - ".github/workflows/optional-integrations.yml"
       - "scripts/ci/compare_result_bundles.py"
+      - "scripts/ci/result_bundle_compare_*.py"
       - "scripts/ci/reproduction_manifest_runtime.py"
       - "scripts/ci/reproduction_manifest_validation.py"
       - "scripts/ci/result_bundle_identity.py"
       - "scripts/ci/write_reproduction_manifest.py"
       - "scripts/ci/workstation2_gpu_qualification.py"
+      - "tests/test_result_bundle*.py"
       - "tests/test_workstation2_cache_policy.py"
   workflow_dispatch:
     inputs:
