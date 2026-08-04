@@ -9,6 +9,7 @@ from typing import Sequence
 
 from result_bundle_compare_runner import compare_result_bundles
 
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
