@@ -4,7 +4,7 @@ Causal4D software and its associated project documentation are distributed under
 the [MIT License](../LICENSE).
 
 The repository maintainer selected the MIT License for the current Causal4D
-repository and successor releases on 3 August 2026. This records the licensing
+repository and successor releases on 4 August 2026. This records the licensing
 choice; it does not transfer copyright or change the ownership of individual
 contributions.
 
