@@ -420,12 +420,74 @@ class GraphContactHypothesisModel:
         return tuple(states), normalized
 
 
+def _validate_prefix_likelihood_settings(
+    *,
+    likelihood_scale_m: float,
+    likelihood_power: float,
+    dynamic_likelihood_weight: float,
+) -> None:
+    for name, value in (
+        ("likelihood_scale_m", likelihood_scale_m),
+        ("likelihood_power", likelihood_power),
+        ("dynamic_likelihood_weight", dynamic_likelihood_weight),
+    ):
+        if not np.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if likelihood_scale_m <= 0.0:
+        raise ValueError("likelihood_scale_m must be positive")
+    if likelihood_power < 0.0 or dynamic_likelihood_weight < 0.0:
+        raise ValueError("likelihood weights must be nonnegative")
+
+
+def _validated_prefix_observations(
+    observations: np.ndarray,
+    *,
+    expected_shape: tuple[int, ...],
+    prefix_frame_count: int,
+) -> np.ndarray:
+    if type(prefix_frame_count) is not int:
+        raise ValueError("prefix_frame_count must be an integer")
+    if not 2 <= prefix_frame_count < expected_shape[0]:
+        raise ValueError("prefix_frame_count must leave at least one future frame")
+    values = np.asarray(observations, dtype=float)
+    if values.shape != expected_shape:
+        raise ValueError(f"observations must have shape {expected_shape}")
+    prefix = values[:prefix_frame_count]
+    if not np.all(np.isfinite(prefix)):
+        raise ValueError("observation prefix must be finite")
+    return prefix
+
+
+def _validated_observed_nodes(
+    observed_nodes: Sequence[int] | None,
+    *,
+    node_count: int,
+) -> np.ndarray:
+    nodes = np.asarray(
+        tuple(observed_nodes)
+        if observed_nodes is not None
+        else tuple(range(node_count)),
+        dtype=int,
+    )
+    if (
+        nodes.ndim != 1
+        or len(nodes) == 0
+        or np.any(nodes < 0)
+        or np.any(nodes >= node_count)
+        or len(np.unique(nodes)) != len(nodes)
+    ):
+        raise ValueError("observed_nodes must be unique valid node indices")
+    return nodes
+
+
 def select_parameter_support(
     posterior: ParameterPosterior,
     maximum_count: int,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Retain the highest-mass physical particles and renormalize their weights."""
 
+    if type(maximum_count) is not int or maximum_count < 1:
+        raise ValueError("maximum_count must be a positive integer")
     count = min(maximum_count, posterior.particles.shape[0])
     order = np.argsort(posterior.weights, kind="mergesort")[::-1][:count]
     weights = posterior.weights[order].copy()
@@ -518,49 +580,31 @@ class ContactRolloutBank:
     ) -> np.ndarray:
         """Update the joint contact/physics posterior using only an early prefix."""
 
-        for name, value in (
-            ("likelihood_scale_m", likelihood_scale_m),
-            ("likelihood_power", likelihood_power),
-            ("dynamic_likelihood_weight", dynamic_likelihood_weight),
-        ):
-            if not np.isfinite(value):
-                raise ValueError(f"{name} must be finite")
-        if likelihood_scale_m <= 0.0:
-            raise ValueError("likelihood_scale_m must be positive")
-        if likelihood_power < 0.0 or dynamic_likelihood_weight < 0.0:
-            raise ValueError("likelihood weights must be nonnegative")
-        if likelihood_power == 0.0:
-            return self.prior_joint_weights.copy()
-
-        observations = np.asarray(observations, dtype=float)
+        _validate_prefix_likelihood_settings(
+            likelihood_scale_m=likelihood_scale_m,
+            likelihood_power=likelihood_power,
+            dynamic_likelihood_weight=dynamic_likelihood_weight,
+        )
         expected_shape = (
             self.action.frame_count,
             self.graph_object.node_count,
             2,
         )
-        if observations.shape != expected_shape:
-            raise ValueError(f"observations must have shape {expected_shape}")
-        if not np.all(np.isfinite(observations)):
-            raise ValueError("observations must be finite")
-        if not 2 <= prefix_frame_count < self.action.frame_count:
-            raise ValueError("prefix_frame_count must leave at least one future frame")
-        nodes = np.asarray(
-            tuple(observed_nodes)
-            if observed_nodes is not None
-            else tuple(range(self.graph_object.node_count)),
-            dtype=int,
+        prefix = _validated_prefix_observations(
+            observations,
+            expected_shape=expected_shape,
+            prefix_frame_count=prefix_frame_count,
         )
-        if (
-            nodes.ndim != 1
-            or len(nodes) == 0
-            or np.any(nodes < 0)
-            or np.any(nodes >= self.graph_object.node_count)
-            or len(np.unique(nodes)) != len(nodes)
-        ):
-            raise ValueError("observed_nodes must be unique valid node indices")
+        nodes = _validated_observed_nodes(
+            observed_nodes,
+            node_count=self.graph_object.node_count,
+        )
+        if likelihood_power == 0.0:
+            return self.prior_joint_weights.copy()
+
         predicted = self.trajectories[:, :, 1:prefix_frame_count, :, :]
         predicted = predicted[:, :, :, nodes, :]
-        observed = observations[1:prefix_frame_count, nodes, :]
+        observed = prefix[1:, nodes, :]
         squared_error = np.sum(
             np.square(predicted - observed[None, None, ...]),
             axis=(2, 3, 4),
@@ -739,13 +783,18 @@ def posterior_predictive_for_state(
             raise ValueError(
                 "online fixed-contact prediction requires likelihood settings"
             )
-        observations = np.asarray(observations, dtype=float)
-        if observations.shape != trajectories.shape[1:]:
-            raise ValueError(
-                "observations and fixed-contact trajectories differ in shape"
-            )
+        _validate_prefix_likelihood_settings(
+            likelihood_scale_m=likelihood_scale_m,
+            likelihood_power=likelihood_power,
+            dynamic_likelihood_weight=dynamic_likelihood_weight,
+        )
+        prefix = _validated_prefix_observations(
+            observations,
+            expected_shape=trajectories.shape[1:],
+            prefix_frame_count=prefix_frame_count,
+        )
         predicted = trajectories[:, 1:prefix_frame_count]
-        observed = observations[1:prefix_frame_count]
+        observed = prefix[1:]
         squared_error = np.sum(
             np.square(predicted - observed[None, ...]), axis=(1, 2, 3)
         )
@@ -774,9 +823,11 @@ def posterior_predictive_for_state(
         log_weights -= float(np.max(log_weights))
         particle_weights = np.exp(log_weights)
         particle_weights /= np.sum(particle_weights)
-    elif any(
-        value is not None
-        for value in (prefix_frame_count, likelihood_scale_m, likelihood_power)
+    elif (
+        prefix_frame_count is not None
+        or likelihood_scale_m is not None
+        or likelihood_power is not None
+        or dynamic_likelihood_weight != 0.0
     ):
         raise ValueError("observations are required for an online theta update")
 

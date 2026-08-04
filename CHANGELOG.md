@@ -36,6 +36,8 @@ evidence. Source-panel executions remain source-only and cannot increment the
   contact regime.
 - Reject non-finite, zero, or negative fixed-contact posterior temperatures
   before simulation instead of allowing invalid posterior weights to propagate.
+- Enforce strict prefix-only validation for fixed-contact and rollout-bank online
+  updates, including zero-power calls, and reject invalid parameter-support limits.
 - Normalize and recursively freeze rollout-hypothesis metadata so external or
   nested mutation cannot change intervention semantics after bank construction.
 - Route rollout-producing and rollout-consuming commands through one strict
