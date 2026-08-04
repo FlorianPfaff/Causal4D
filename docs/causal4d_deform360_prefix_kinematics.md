@@ -125,6 +125,8 @@ BayesianPhysTwin, and official PhysTwin environments:
 ```bash
 python scripts/remote/run_deform360_prefix_kinematics.py \
   --data-root /path/to/deform360-replication-derived \
+  --bayesian-phystwin-repo /path/to/BayesianPhysTwin \
+  --deform360-repo /path/to/deform360 \
   --official-phystwin-repo /path/to/PhysTwin \
   --output runs/deform360-prefix-kinematics/result.json
 ```
