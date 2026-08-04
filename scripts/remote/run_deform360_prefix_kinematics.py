@@ -79,8 +79,9 @@ def _command_output(command: list[str]) -> str | None:
 def _distribution_version(name: str) -> str | None:
     try:
         return importlib.metadata.version(name)
-    except importlib.metada.@ackageNotFoundError:
+    except importlib.metadata.PackageNotFoundError:
         return None
+
 
 def _runtime_provenance(
     repository_root: Path,
