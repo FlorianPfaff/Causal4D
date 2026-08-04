@@ -1,0 +1,100 @@
+name: Temporary standalone contract archive application
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-contract-archive-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate-and-publish:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out mutable pull-request branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/harden-contract-archive-loading
+          fetch-depth: 0
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Apply strict archive patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ci/apply_contract_archive_hardening.py
+
+      - name: Install development environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python -m pip check
+
+      - name: Format and statically validate changed files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ruff format \
+            src/causal4d/contracts.py \
+            tests/test_contract_archive_strict_loading.py
+          python -m ruff check \
+            src/causal4d/contracts.py \
+            tests/test_contract_archive_strict_loading.py
+          python -m compileall -q \
+            src/causal4d/contracts.py \
+            tests/test_contract_archive_strict_loading.py
+          git diff --check
+
+      - name: Run focused contract regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q \
+            tests/test_causal4d_contracts.py \
+            tests/test_contract_archive_strict_loading.py
+
+      - name: Run complete core suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q
+
+      - name: Build and verify distributions
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist build
+          python -m build
+          python -m twine check dist/*
+
+      - name: Publish tested final product
+        env:
+          PUSH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Harden Causal4D contract archive loading"
+          basic_auth="$(printf 'x-access-token:%s' "${PUSH_TOKEN}" | base64 -w0)"
+          git -c \
+            http.https://github.com/.extraheader="AUTHORIZATION: basic ${basic_auth}" \
+            push origin HEAD:agent/harden-contract-archive-loading
