@@ -201,7 +201,7 @@ jobs:
         continue-on-error: true
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: IPS-Stuttgart/Bayesian-PhysTwin
+          repository: IPS-Stuttgart/BayesianPhysTwin
           ref: ${{ steps.pin.outputs.sha }}
           token: ${{ secrets.BPT_READ_TOKEN }}
           path: _bpt
@@ -213,7 +213,7 @@ jobs:
           steps.bpt_checkout.outcome != 'success'
         shell: bash
         run: |
-          echo "::warning::BPT_READ_TOKEN could not read IPS-Stuttgart/Bayesian-PhysTwin; provider checks were skipped."
+          echo "::warning::BPT_READ_TOKEN could not read IPS-Stuttgart/BayesianPhysTwin; provider checks were skipped."
 
       - name: Install pinned Bayesian-PhysTwin
         if: steps.bpt_checkout.outcome == 'success'
