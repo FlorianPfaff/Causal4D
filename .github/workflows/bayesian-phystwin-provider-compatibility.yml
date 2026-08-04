@@ -94,27 +94,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      PROB4D_READ_TOKEN: ${{ secrets.PROB4D_READ_TOKEN }}
       BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}
     steps:
-      - name: Enforce private-repository credentials
+      - name: Enforce private-repository credential
         run: |
-          if [[ -z "${PROB4D_READ_TOKEN}" || -z "${BPT_READ_SSH_KEY}" ]]; then
-            echo "::error::PROB4D_READ_TOKEN and BPT_READ_SSH_KEY must both be configured; the required three-repository golden path cannot run."
+          if [[ -z "${BPT_READ_SSH_KEY}" ]]; then
+            echo "::error::BPT_READ_SSH_KEY must be configured with read access to both transferred private repositories; the required three-repository golden path cannot run."
             {
               echo "### Three-repository installed-wheel compatibility"
               echo
-              echo "**Failed:** one or both required private-repository credentials are absent."
+              echo "**Failed:** the required private-repository SSH credential is absent."
               echo
               echo "This check is not allowed to pass by skipping its private repositories."
-              echo "Configure least-privilege credentials with read access:"
+              echo "Configure \`BPT_READ_SSH_KEY\` with read access to:"
               echo
-              echo "- \`BPT_READ_SSH_KEY\` for \`IPS-Stuttgart/BayesianPhysTwin\`;"
-              echo "- \`PROB4D_READ_TOKEN\` for \`IPS-Stuttgart/Prob4D\`."
+              echo "- \`IPS-Stuttgart/BayesianPhysTwin\`;"
+              echo "- \`IPS-Stuttgart/Prob4D\`."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
-          echo "Private-repository credentials are configured."
+          echo "Private-repository SSH credential is configured."
 
   external-pull-request:
     name: External PR cannot access private providers
@@ -141,8 +140,6 @@ jobs:
     if: needs.credential-gate.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      PROB4D_READ_TOKEN: ${{ secrets.PROB4D_READ_TOKEN }}
     steps:
       - name: Check out Causal4D
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -164,7 +161,7 @@ jobs:
         with:
           repository: IPS-Stuttgart/Prob4D
           ref: ${{ inputs.prob4d_ref || 'main' }}
-          token: ${{ secrets.PROB4D_READ_TOKEN }}
+          ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}
           path: prob4d
           persist-credentials: false
 
