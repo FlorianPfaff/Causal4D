@@ -56,10 +56,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p outputs/topology-correlation-publication
+          sha256sum .github/payloads/topology-correlation-final/part-* \
+            | tee outputs/topology-correlation-publication/chunk-sha256.txt
           cat .github/payloads/topology-correlation-final/part-* \
             > /tmp/topology-final.b64
           base64 --decode /tmp/topology-final.b64 \
             > /tmp/topology-final.tar.gz
+          cp /tmp/topology-final.b64 \
+            outputs/topology-correlation-publication/assembled.b64
+          cp /tmp/topology-final.tar.gz \
+            outputs/topology-correlation-publication/assembled.tar.gz
+          sha256sum /tmp/topology-final.b64 /tmp/topology-final.tar.gz \
+            | tee outputs/topology-correlation-publication/assembled-sha256.txt
+          tar -tzf /tmp/topology-final.tar.gz \
+            | tee outputs/topology-correlation-publication/archive-listing.txt
           echo "b910458cd3537efca0de07767a70464bbb2d31f9861ff57ba545d059505c905b  /tmp/topology-final.tar.gz" \
             | sha256sum --check --strict
           tar -xzf /tmp/topology-final.tar.gz
@@ -68,7 +79,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p outputs/topology-correlation-publication
           python -m ruff format \
             src/causal4d/topology_conditioned_correlation_diagnostic.py \
             scripts/ci/run_topology_conditioned_correlation_diagnostic.py \
