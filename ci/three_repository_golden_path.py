@@ -1,4 +1,4 @@
-"""Installed-wheel golden path for Prob4D, Bayesian-PhysTwin, and Causal4D.
+"""Installed-wheel golden path for Prob4D, BayesianPhysTwin, and Causal4D.
 
 The runner is copied outside every source checkout before execution. It accepts
 only data and exact repository revisions from those checkouts; all Python imports
@@ -13,7 +13,13 @@ import os
 from pathlib import Path
 from typing import Any
 
-from three_repository_common import installed_package_origins, require
+from three_repository_common import (
+    BAYESIAN_PHYSTWIN_REPOSITORY,
+    CAUSAL4D_REPOSITORY,
+    PROB4D_REPOSITORY,
+    installed_package_origins,
+    require,
+)
 from three_repository_manifest import run_evidence_manifest_checks
 from three_repository_observation import (
     fixture_artifact,
@@ -102,9 +108,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "package_origins": origins,
         "project_status": project_status,
         "repository_revisions": {
-            "FlorianPfaff/Prob4D": args.prob4d_revision,
-            "FlorianPfaff/Bayesian-PhysTwin": args.bpt_revision,
-            "FlorianPfaff/Causal4D": args.causal4d_revision,
+            PROB4D_REPOSITORY: args.prob4d_revision,
+            BAYESIAN_PHYSTWIN_REPOSITORY: args.bpt_revision,
+            CAUSAL4D_REPOSITORY: args.causal4d_revision,
         },
         "observation_artifact_id": restored_prob4d.artifact_id,
         "prob4d_provider_manifest": prob4d_manifest,
