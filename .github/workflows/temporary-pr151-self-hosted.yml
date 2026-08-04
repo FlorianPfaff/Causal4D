@@ -6,12 +6,13 @@ on:
     paths:
       - ".github/workflows/temporary-pr151-self-hosted.yml"
       - ".github/workflows/deform360-source-failure-attribution.yml"
+      - "milestones/deform360-source-failure-attribution-v1/**"
       - "scripts/ci/analyze_deform360_source_failure.py"
       - "src/causal4d_public/deform360_source_failure_attribution.py"
       - "tests/test_deform360_source_failure_attribution.py"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: temporary-pr151-self-hosted-${{ github.event.pull_request.number }}
@@ -24,12 +25,11 @@ jobs:
     runs-on: [self-hosted, Linux, X64, nvidia-smi]
     timeout-minutes: 30
     steps:
-      - name: Check out pull-request branch
+      - name: Check out pull-request merge commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
           clean: true
 
       - name: Set up Python 3.12
@@ -45,25 +45,6 @@ jobs:
           .pr151-venv/bin/python -m pip install --upgrade pip
           .pr151-venv/bin/python -m pip install -e ".[dev]"
           .pr151-venv/bin/python -m pip check
-
-      - name: Apply deterministic formatting
-        shell: bash
-        run: |
-          set -euo pipefail
-          .pr151-venv/bin/python -m ruff format \
-            src/causal4d_public/deform360_source_failure_attribution.py \
-            scripts/ci/analyze_deform360_source_failure.py \
-            tests/test_deform360_source_failure_attribution.py
-          git add \
-            src/causal4d_public/deform360_source_failure_attribution.py \
-            scripts/ci/analyze_deform360_source_failure.py \
-            tests/test_deform360_source_failure_attribution.py
-          if ! git diff --cached --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "Format Deform360 source failure attribution"
-            git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
-          fi
 
       - name: Run formatting, lint, and focused tests
         shell: bash
@@ -81,8 +62,9 @@ jobs:
             tests/test_deform360_source_failure_attribution.py \
             tests/test_deform360_replication_backend.py \
             tests/test_deform360_replication_fit.py
+          git diff --check
 
-      - name: Produce deterministic attribution evidence
+      - name: Reproduce deterministic attribution evidence
         shell: bash
         run: |
           set -euo pipefail
@@ -97,14 +79,8 @@ jobs:
             | tee outputs/pr151/summary-b.json
           cmp outputs/pr151/attribution-a.json outputs/pr151/attribution-b.json
           cmp outputs/pr151/summary-a.json outputs/pr151/summary-b.json
-          .pr151-venv/bin/python -m pip freeze --all > outputs/pr151/pip-freeze.txt
-          {
-            echo "repository=${GITHUB_REPOSITORY}"
-            echo "commit=$(git rev-parse HEAD)"
-            echo "workflow_run_id=${GITHUB_RUN_ID}"
-            echo "runner=${RUNNER_NAME}"
-            uname -a
-          } > outputs/pr151/environment.txt
+          cmp outputs/pr151/summary-a.json \
+            milestones/deform360-source-failure-attribution-v1/summary.json
 
       - name: Upload validation evidence
         if: always()
