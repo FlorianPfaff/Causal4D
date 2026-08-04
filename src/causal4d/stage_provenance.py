@@ -49,10 +49,116 @@ def _artifact_id(contract_type: str, payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _require_header(values: Mapping[str, Any], *, contract_type: str) -> None:
-    if int(values.get("schema_version", -1)) != STAGE_PROVENANCE_SCHEMA_VERSION:
+def _require_exact_fields(
+    values: Mapping[str, Any],
+    *,
+    fields: set[str],
+    name: str,
+) -> None:
+    if not isinstance(values, Mapping):
+        raise ValueError(f"{name} must be a JSON object")
+    if any(not isinstance(key, str) for key in values):
+        raise ValueError(f"{name} keys must be strings")
+    actual = set(values)
+    missing = sorted(fields - actual)
+    unexpected = sorted(actual - fields)
+    if missing or unexpected:
+        raise ValueError(
+            f"{name} fields do not match the schema; "
+            f"missing={missing}, unexpected={unexpected}"
+        )
+
+
+def _require_string(values: Mapping[str, Any], key: str, *, name: str) -> str:
+    value = values[key]
+    if not isinstance(value, str):
+        raise ValueError(f"{name}.{key} must be a string")
+    return value
+
+
+def _require_integer(values: Mapping[str, Any], key: str, *, name: str) -> int:
+    value = values[key]
+    if type(value) is not int:
+        raise ValueError(f"{name}.{key} must be an integer")
+    return value
+
+
+def _require_mapping(
+    values: Mapping[str, Any], key: str, *, name: str
+) -> Mapping[str, Any]:
+    value = values[key]
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{name}.{key} must be a JSON object")
+    return value
+
+
+def _observation_window_from_dict(
+    values: Mapping[str, Any], *, name: str
+) -> ObservationWindow:
+    _require_exact_fields(
+        values,
+        fields={
+            "case_id",
+            "stream_id",
+            "frame_start",
+            "frame_stop",
+            "content_sha256",
+        },
+        name=name,
+    )
+    return ObservationWindow(
+        case_id=_require_string(values, "case_id", name=name),
+        stream_id=_require_string(values, "stream_id", name=name),
+        frame_start=_require_integer(values, "frame_start", name=name),
+        frame_stop=_require_integer(values, "frame_stop", name=name),
+        content_sha256=_require_string(values, "content_sha256", name=name),
+    )
+
+
+def _action_window_from_dict(values: Mapping[str, Any], *, name: str) -> ActionWindow:
+    _require_exact_fields(
+        values,
+        fields={
+            "action_id",
+            "case_id",
+            "frame_start",
+            "frame_stop",
+            "trajectory_sha256",
+            "provenance",
+        },
+        name=name,
+    )
+    return ActionWindow(
+        action_id=_require_string(values, "action_id", name=name),
+        case_id=_require_string(values, "case_id", name=name),
+        frame_start=_require_integer(values, "frame_start", name=name),
+        frame_stop=_require_integer(values, "frame_stop", name=name),
+        trajectory_sha256=_require_string(
+            values,
+            "trajectory_sha256",
+            name=name,
+        ),
+        provenance=_require_string(values, "provenance", name=name),
+    )
+
+
+def _require_header(
+    values: Mapping[str, Any],
+    *,
+    contract_type: str,
+    payload_fields: set[str],
+) -> None:
+    name = f"stage-provenance {contract_type}"
+    _require_exact_fields(
+        values,
+        fields={"schema_version", "contract_type", *payload_fields},
+        name=name,
+    )
+    if _require_integer(values, "schema_version", name=name) != (
+        STAGE_PROVENANCE_SCHEMA_VERSION
+    ):
         raise ValueError("unsupported stage-provenance schema version")
-    if str(values.get("contract_type", "")) != contract_type:
+    if _require_string(values, "contract_type", name=name) != contract_type:
         raise ValueError(f"expected stage-provenance contract {contract_type}")
 
 
@@ -141,12 +247,26 @@ class FactualEvidenceContext:
 
     @classmethod
     def from_dict(cls, values: Mapping[str, Any]) -> FactualEvidenceContext:
-        _require_header(values, contract_type=cls.contract_type)
+        _require_header(
+            values,
+            contract_type=cls.contract_type,
+            payload_fields={"protocol_id", "o_minus", "o_plus_prefix", "u_obs"},
+        )
+        name = f"stage-provenance {cls.contract_type}"
         return cls(
-            protocol_id=str(values["protocol_id"]),
-            o_minus=ObservationWindow.from_dict(values["o_minus"]),
-            o_plus_prefix=ObservationWindow.from_dict(values["o_plus_prefix"]),
-            u_obs=ActionWindow.from_dict(values["u_obs"]),
+            protocol_id=_require_string(values, "protocol_id", name=name),
+            o_minus=_observation_window_from_dict(
+                _require_mapping(values, "o_minus", name=name),
+                name=f"{name}.o_minus",
+            ),
+            o_plus_prefix=_observation_window_from_dict(
+                _require_mapping(values, "o_plus_prefix", name=name),
+                name=f"{name}.o_plus_prefix",
+            ),
+            u_obs=_action_window_from_dict(
+                _require_mapping(values, "u_obs", name=name),
+                name=f"{name}.u_obs",
+            ),
         )
 
 
@@ -205,24 +325,51 @@ class CounterfactualQueryContext:
 
     @classmethod
     def from_dict(cls, values: Mapping[str, Any]) -> CounterfactualQueryContext:
-        _require_header(values, contract_type=cls.contract_type)
-        nodes = values.get("query_node_indices")
-        policy = str(values["contact_policy"])
+        _require_header(
+            values,
+            contract_type=cls.contract_type,
+            payload_fields={
+                "protocol_id",
+                "case_id",
+                "u_cf",
+                "contact_policy",
+                "language",
+                "query_node_indices",
+            },
+        )
+        name = f"stage-provenance {cls.contract_type}"
+        policy = _require_string(values, "contact_policy", name=name)
         if policy not in {"same_grasp", "new_contact"}:
             raise ValueError("contact_policy must be 'same_grasp' or 'new_contact'")
-        language = values.get("language")
+        language = values["language"]
+        if language is not None and not isinstance(language, str):
+            raise ValueError(f"{name}.language must be null or a string")
+        raw_nodes = values["query_node_indices"]
+        if raw_nodes is None:
+            nodes = None
+        else:
+            if not isinstance(raw_nodes, list):
+                raise ValueError(
+                    f"{name}.query_node_indices must be null or a JSON array"
+                )
+            if any(type(index) is not int for index in raw_nodes):
+                raise ValueError(
+                    f"{name}.query_node_indices must contain only integers"
+                )
+            nodes = tuple(raw_nodes)
         return cls(
-            protocol_id=str(values["protocol_id"]),
-            case_id=str(values["case_id"]),
-            u_cf=ActionWindow.from_dict(values["u_cf"]),
+            protocol_id=_require_string(values, "protocol_id", name=name),
+            case_id=_require_string(values, "case_id", name=name),
+            u_cf=_action_window_from_dict(
+                _require_mapping(values, "u_cf", name=name),
+                name=f"{name}.u_cf",
+            ),
             contact_policy=cast(
                 Literal["same_grasp", "new_contact"],
                 policy,
             ),
-            language=None if language is None else str(language),
-            query_node_indices=(
-                None if nodes is None else tuple(int(index) for index in nodes)
-            ),
+            language=language,
+            query_node_indices=nodes,
         )
 
 
@@ -262,10 +409,18 @@ class EvaluationTarget:
 
     @classmethod
     def from_dict(cls, values: Mapping[str, Any]) -> EvaluationTarget:
-        _require_header(values, contract_type=cls.contract_type)
+        _require_header(
+            values,
+            contract_type=cls.contract_type,
+            payload_fields={"protocol_id", "target"},
+        )
+        name = f"stage-provenance {cls.contract_type}"
         return cls(
-            protocol_id=str(values["protocol_id"]),
-            target=ObservationWindow.from_dict(values["target"]),
+            protocol_id=_require_string(values, "protocol_id", name=name),
+            target=_observation_window_from_dict(
+                _require_mapping(values, "target", name=name),
+                name=f"{name}.target",
+            ),
         )
 
 

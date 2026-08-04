@@ -1,4 +1,5 @@
 import copy
+from typing import Any
 
 import pytest
 
@@ -52,3 +53,16 @@ def test_validated_json_mapping_rejects_nonfinite_and_non_json_values() -> None:
         validated_json_mapping({"bad": float("nan")})
     with pytest.raises(ValueError, match="finite JSON"):
         validated_json_mapping({"bad": object()})
+
+
+def test_validated_json_mapping_rejects_non_string_object_keys() -> None:
+    top_level: dict[Any, Any] = {1: "integer-key"}
+    nested: dict[Any, Any] = {"valid": [{False: "boolean-key"}]}
+    colliding_after_json_coercion: dict[Any, Any] = {
+        1: "integer-key",
+        "1": "string-key",
+    }
+
+    for values in (top_level, nested, colliding_after_json_coercion):
+        with pytest.raises(ValueError, match="finite JSON"):
+            validated_json_mapping(values)
