@@ -160,6 +160,27 @@ causal4d protocol readiness scaffold \
   /data/causal4d-sloth-multi-action-v1
 ```
 
+Drive the required 12-execution physical source panel through its registered
+order and exactly-once evidence boundary:
+
+```bash
+causal4d protocol readiness source-panel-status \
+  /opt/causal4d-frozen \
+  /data/causal4d-sloth-multi-action-v1 \
+  --verify-file-hashes
+
+causal4d protocol readiness source-panel-publish \
+  /opt/causal4d-frozen \
+  /data/causal4d-sloth-multi-action-v1 \
+  /data/causal4d-sloth-multi-action-v1/staging/<execution-id>.json
+```
+
+The status identifies the next execution and its exact command profile. The
+publisher admits only that execution, verifies every bound artifact, and never
+overwrites a final manifest. See
+[docs/causal4d_source_panel_acquisition.md](docs/causal4d_source_panel_acquisition.md)
+for the operator workflow and evidence boundary.
+
 Complete and seal the source-panel, actuator, support/gravity, and
 nonconfirmatory dry-run gates. Then seal the exact clean Causal4D commit,
 Bayesian-PhysTwin pin, protocol files, analysis boundary, and reporting contract:
