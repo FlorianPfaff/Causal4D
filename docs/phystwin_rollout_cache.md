@@ -63,3 +63,22 @@ same rollout bank without constructing a real Warp provider when every record
 is present. In nondeterministic mode, the cache intentionally freezes the
 published sample for each content key; the manifest labels this behavior
 explicitly.
+
+## Final rollout-bank archive
+
+The assembled rollout bank is published separately from the per-call cache. New
+archives use schema version 2 and bind a `rollout_bank_id` over the complete
+hypothesis IDs and metadata, prior weights, physical parameter support,
+trajectories, variance floor, and confidence level. Hypothesis metadata is
+normalized as finite JSON and is recursively immutable after construction.
+
+Publication writes and fsyncs a temporary NPZ, reloads it through the strict
+reader, verifies the content identity and manifest, and only then atomically
+replaces the destination. Callers can set `overwrite=False` for once-only frozen
+outputs. Failed validation and repeated once-only publication leave the existing
+destination unchanged.
+
+The reader retains compatibility with legacy version-1 archives while requiring
+an exact member inventory and matching content identity for version-2 archives.
+Unknown members, duplicate JSON keys, non-finite metadata or manifests, malformed
+scalar fields, and a changed rollout-bank ID fail closed.
