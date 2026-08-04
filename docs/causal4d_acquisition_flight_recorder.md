@@ -139,6 +139,13 @@ The first event must be `session_started`. Append operations use an exclusive
 file lock on POSIX, `O_APPEND`, `O_NOFOLLOW` where available, `flush`, and
 `fsync`. Existing bytes are never rewritten.
 
+Journal append and seal are claim-bearing mutation operations and therefore
+require POSIX advisory locking through `fcntl.flock`. An environment without
+that locking backend fails before creating a new journal or publishing a seal;
+it does not continue with an unlocked compatibility fallback. Read-only journal
+and seal validation remains available wherever the files can be read. Run
+collection on a POSIX host and filesystem whose advisory locks are honored.
+
 Start a journal:
 
 ```bash
