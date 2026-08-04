@@ -35,11 +35,37 @@ python scripts/ci/analyze_contact_posterior.py \
 The manual `Contact-posterior diagnostics` GitHub Actions workflow runs the same
 sequence on `workstation2`.
 
+## Fail-closed source integrity
+
+The analysis command verifies the source bundle itself before it reconstructs any
+posterior. This check is part of the command and therefore also applies outside
+GitHub Actions; the workflow's standalone bundle verifier is defense in depth.
+The command rejects:
+
+- a manifest with the wrong benchmark or schema, an unsafe artifact name, or an
+  artifact inventory other than the six declared latent-contact payloads;
+- any missing, additional, symlinked, byte-count-mismatched, or checksum-mismatched
+  payload;
+- duplicate JSON keys, duplicate or empty CSV headers, blank rows, and rows whose
+  width differs from the declared header;
+- undeclared or duplicate seed/case identities, unsupported settings or world
+  conditions, inconsistent observation fractions, malformed node labels,
+  noncanonical booleans or integers, and non-finite required diagnostics;
+- intervention rows that do not match the online recovery cases, change source
+  identities within a case, or omit either the paired `nominal_physics` or
+  `latent_contact` trajectory; and
+- a `success_gates.json` payload that differs from the gate record embedded in
+  `summary.json`.
+
+The resulting integrity report, including the exact source-manifest SHA-256, is
+embedded in the diagnostic artifact under `source_bundle.integrity_verification`.
+Rehashing a contradictory CSV or JSON payload does not bypass the semantic checks.
+
 ## Fail-closed recomputation
 
 The diagnostic does not trust an independently reconstructed posterior merely
-because it used the same seed range. Before analysis it compares every recomputed
-online posterior with the retained `contact_recovery.csv` rows:
+because it used the same seed range. After source-integrity verification it compares
+every recomputed online posterior with the retained `contact_recovery.csv` rows:
 
 - seed, object, condition, and setting keys must be identical;
 - node truth, MAP node, correctness, credible coverage, delay MAP, and delay
