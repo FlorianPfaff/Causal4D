@@ -20,6 +20,9 @@ def test_trusted_events_cannot_pass_by_skipping_private_repositories() -> None:
     assert "needs: credential-gate" in text
     assert "steps.access.outputs.enabled" not in text
     assert "the required three-repository golden path cannot run" in text
+    assert "BPT_READ_SSH_KEY" in text
+    assert "ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}" in text
+    assert "token: ${{ secrets.BPT_READ_TOKEN }}" in text
 
 
 def test_external_fork_limitation_is_separate_and_explicit() -> None:
