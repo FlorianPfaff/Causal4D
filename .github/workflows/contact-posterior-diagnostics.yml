@@ -4,11 +4,14 @@ on:
   pull_request:
     paths:
       - ".github/workflows/contact-posterior-diagnostics.yml"
+      - "docs/contact_posterior_admission.md"
       - "docs/contact_posterior_diagnostics.md"
       - "scripts/ci/analyze_contact_posterior.py"
+      - "src/causal4d/contact_posterior_admission.py"
       - "src/causal4d/contact_posterior_diagnostics.py"
       - "src/causal4d/contact_posterior_source_integrity.py"
       - "src/causal4d/result_bundle_verification.py"
+      - "tests/test_contact_posterior_admission.py"
       - "tests/test_contact_posterior_bundle_verification.py"
       - "tests/test_contact_posterior_diagnostics.py"
       - "tests/test_contact_posterior_source_integrity.py"
@@ -140,6 +143,10 @@ jobs:
           )
           result = json.loads(path.read_text(encoding="utf-8"))
           overall = result["overall"]
+          print(
+              "- Source admission: "
+              f"`{result['admission_boundary']['passed']}`"
+          )
           print(
               "- Recomputation parity: "
               f"`{result['recomputation_parity']['passed']}`"
