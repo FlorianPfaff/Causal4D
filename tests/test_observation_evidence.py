@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from causal4d.grouped_likelihood import posterior_weights_from_grouped_evidence
 from causal4d.observation_evidence import GroupedObservationEvidence, ObservationGroup
@@ -46,3 +47,67 @@ def test_dense_prefix_excludes_future_frames() -> None:
         scale_m=0.01,
     )
     assert {int(group.frame_indices[0]) for group in evidence.groups} == {1, 2}
+
+
+@pytest.mark.parametrize(
+    "indices",
+    (
+        np.asarray([1.9]),
+        np.asarray([True]),
+        np.asarray(["1"]),
+    ),
+)
+def test_observation_indices_reject_coercible_values(indices: np.ndarray) -> None:
+    with pytest.raises(ValueError, match="frame_indices must contain integers"):
+        ObservationGroup(
+            group_id="group",
+            values_m=np.asarray([1.0]),
+            frame_indices=indices,
+            node_indices=np.asarray([0]),
+            coordinate_indices=np.asarray([0]),
+            covariance_m2=np.asarray([[0.01]]),
+            contributor_ids=("source",),
+            source_id="unit",
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("prior_nominal_probability", np.nan),
+        ("outlier_scale_multiplier", np.inf),
+        ("degrees_of_freedom", np.nan),
+        ("composite_weight", np.inf),
+    ),
+)
+def test_observation_group_rejects_nonfinite_likelihood_parameters(
+    field: str,
+    value: float,
+) -> None:
+    values = {
+        "group_id": "group",
+        "values_m": np.asarray([1.0]),
+        "frame_indices": np.asarray([1]),
+        "node_indices": np.asarray([0]),
+        "coordinate_indices": np.asarray([0]),
+        "covariance_m2": np.asarray([[0.01]]),
+        "contributor_ids": ("source",),
+        "source_id": "unit",
+        field: value,
+    }
+    with pytest.raises(ValueError, match=f"{field} must be a finite number"):
+        ObservationGroup(**values)
+
+
+def test_grouped_evidence_prefix_must_be_exact_and_within_rollout() -> None:
+    evidence = GroupedObservationEvidence(groups=(_group("g1", "source"),))
+    with pytest.raises(ValueError, match="prefix_frame_count must be an integer"):
+        evidence.validate_prefix(
+            prefix_frame_count=2.0,
+            rollout_shape=(3, 1, 1),
+        )
+    with pytest.raises(ValueError, match="exceeds the rollout frame count"):
+        evidence.validate_prefix(
+            prefix_frame_count=4,
+            rollout_shape=(3, 1, 1),
+        )

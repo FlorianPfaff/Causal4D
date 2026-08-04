@@ -1,5 +1,7 @@
 import copy
+import json
 from pathlib import Path
+from typing import Any, Callable
 
 import numpy as np
 import pytest
@@ -67,6 +69,28 @@ def _factual(context: CausalContext, belief: TwinBelief) -> FactualIntervention:
         weights=np.asarray([0.7, 0.3]),
         evidence_frame_stop=6,
         source_twin_belief_id=belief.artifact_id,
+    )
+
+
+def _rewrite_contract_descriptor(
+    source: Path,
+    target: Path,
+    mutate: Callable[[dict[str, Any]], None],
+) -> None:
+    with np.load(source, allow_pickle=False) as archive:
+        descriptor = json.loads(str(archive["descriptor_json"]))
+        arrays = {
+            name: np.asarray(archive[name])
+            for name in archive.files
+            if name != "descriptor_json"
+        }
+    mutate(descriptor)
+    np.savez_compressed(
+        target,
+        descriptor_json=np.asarray(
+            json.dumps(descriptor, sort_keys=True, separators=(",", ":"))
+        ),
+        **arrays,
     )
 
 
@@ -257,3 +281,130 @@ def test_contract_publication_can_refuse_overwrite(tmp_path: Path) -> None:
 
     assert target.read_bytes() == original
     assert load_contract(target).artifact_id == first.artifact_id
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    (
+        (
+            lambda descriptor: descriptor.__setitem__("contract_version", True),
+            "contract_version must be an integer",
+        ),
+        (
+            lambda descriptor: descriptor["payload"].__setitem__("endpoint_frame", 3.9),
+            "endpoint_frame must be an integer",
+        ),
+        (
+            lambda descriptor: descriptor["context"]["o_minus"].__setitem__(
+                "frame_start", 0.0
+            ),
+            "observation frame_start must be an integer",
+        ),
+    ),
+)
+def test_contract_loader_rejects_coercible_identity_fields(
+    tmp_path: Path,
+    mutate: Callable[[dict[str, Any]], None],
+    message: str,
+) -> None:
+    context, _ = _context()
+    valid = tmp_path / "valid.npz"
+    malformed = tmp_path / "malformed.npz"
+    save_contract(valid, _belief(context))
+    _rewrite_contract_descriptor(valid, malformed, mutate)
+
+    with pytest.raises(ValueError, match=message):
+        load_contract(malformed)
+
+
+def test_contract_loader_rejects_unknown_descriptor_and_array_fields(
+    tmp_path: Path,
+) -> None:
+    context, _ = _context()
+    valid = tmp_path / "valid.npz"
+    unknown_descriptor = tmp_path / "unknown-descriptor.npz"
+    save_contract(valid, _belief(context))
+    _rewrite_contract_descriptor(
+        valid,
+        unknown_descriptor,
+        lambda descriptor: descriptor.__setitem__("ignored", "ambiguous"),
+    )
+    with pytest.raises(ValueError, match="descriptor fields do not match schema"):
+        load_contract(unknown_descriptor)
+
+    with np.load(valid, allow_pickle=False) as archive:
+        payload = {name: np.asarray(archive[name]) for name in archive.files}
+    payload["ignored_array"] = np.asarray([1])
+    unknown_array = tmp_path / "unknown-array.npz"
+    np.savez_compressed(unknown_array, **payload)
+    with pytest.raises(ValueError, match="array fields do not match schema"):
+        load_contract(unknown_array)
+
+
+def test_contract_loader_rejects_noncanonical_float_array_dtype(
+    tmp_path: Path,
+) -> None:
+    context, _ = _context()
+    valid = tmp_path / "valid.npz"
+    malformed = tmp_path / "wrong-dtype.npz"
+    save_contract(valid, _belief(context))
+
+    with np.load(valid, allow_pickle=False) as archive:
+        payload = {name: np.asarray(archive[name]) for name in archive.files}
+    payload["endpoint_velocity_mps"] = payload["endpoint_velocity_mps"].astype(
+        np.float32
+    )
+    np.savez_compressed(malformed, **payload)
+
+    with pytest.raises(
+        ValueError,
+        match=r"endpoint_velocity_mps.*dtype float64.*float32",
+    ):
+        load_contract(malformed)
+
+
+@pytest.mark.parametrize(
+    "indices",
+    (
+        np.asarray([0.0, 1.0]),
+        np.asarray([False, True]),
+        np.asarray(["0", "1"]),
+    ),
+)
+def test_contract_support_indices_reject_coercible_arrays(indices: np.ndarray) -> None:
+    context, _ = _context()
+    belief = _belief(context)
+    factual = _factual(context, belief)
+    with pytest.raises(ValueError, match="hypothesis_indices must contain integers"):
+        FactualIntervention(
+            **{
+                **factual.__dict__,
+                "hypothesis_indices": indices,
+            }
+        )
+
+
+def test_integer_zero_semantic_beta_round_trips_without_identity_drift(
+    tmp_path: Path,
+) -> None:
+    context, _ = _context()
+    weights = np.asarray([0.6, 0.4], dtype=np.float64)
+    task = TaskPosterior(
+        context=context,
+        physical_posterior_id=array_sha256(np.zeros(1)),
+        component_ids=("a", "b"),
+        physical_weights=weights,
+        task_weights=weights.copy(),
+        semantic_log_scores=np.zeros(2),
+        beta=0,
+        query_node_indices=np.asarray([0]),
+        semantic_source="unit",
+    )
+    target = tmp_path / "integer-beta.npz"
+
+    save_contract(target, task)
+    restored = load_contract(target)
+
+    assert restored.artifact_id == task.artifact_id
+    assert restored.beta == 0
+    assert type(restored.beta) is int
