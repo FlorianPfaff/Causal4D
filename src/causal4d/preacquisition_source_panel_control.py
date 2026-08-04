@@ -69,8 +69,7 @@ def _registered_source_executions(
         "source-panel execution order differs from the registered panel",
     )
     _require(
-        [str(value.get("session_id")) for value in executions]
-        == expected_sessions,
+        [str(value.get("session_id")) for value in executions] == expected_sessions,
         "source-panel session order differs from the registered panel",
     )
     return executions
@@ -125,9 +124,7 @@ def _execution_status(
 ) -> dict[str, Any]:
     execution_id = str(execution["execution_id"])
     session_id = str(execution["session_id"])
-    manifest_relative = SOURCE_PANEL_MANIFEST_PATH.format(
-        execution_id=execution_id
-    )
+    manifest_relative = SOURCE_PANEL_MANIFEST_PATH.format(execution_id=execution_id)
     template_relative = SOURCE_PANEL_MANIFEST_TEMPLATE_PATH.format(
         execution_id=execution_id
     )
@@ -200,15 +197,16 @@ def _unexpected_execution_directories(
     return sorted(unexpected)
 
 
-def build_source_panel_status(
-    repository_root: str | Path,
+def _build_registered_source_panel_status(
+    protocol: Mapping[str, Any],
+    v2: Mapping[str, Any],
+    v4: Mapping[str, Any],
     dataset_root: str | Path,
     *,
     verify_file_hashes: bool = False,
 ) -> dict[str, Any]:
-    """Validate source-panel progress and identify the next physical execution."""
+    """Validate source-panel progress against an already loaded registration."""
 
-    protocol, v2, _, v4 = load_registered_preacquisition_chain(repository_root)
     root = _resolved_dataset_root(dataset_root)
     executions = _registered_source_executions(v2)
     profiles = _registered_profiles(v2)
@@ -235,14 +233,10 @@ def build_source_panel_status(
         if result["template_valid"] is False
     ]
     missing_ids = [
-        result["execution_id"]
-        for result in results
-        if not result["manifest_present"]
+        result["execution_id"] for result in results if not result["manifest_present"]
     ]
     missing_template_ids = [
-        result["execution_id"]
-        for result in results
-        if not result["template_present"]
+        result["execution_id"] for result in results if not result["template_present"]
     ]
     expected_prefix = expected_ids[: len(valid_ids)]
     out_of_order = valid_ids != expected_prefix
@@ -252,9 +246,7 @@ def build_source_panel_status(
     )
 
     next_execution: dict[str, Any] | None = None
-    for index, (execution, result) in enumerate(
-        zip(executions, results, strict=True)
-    ):
+    for index, (execution, result) in enumerate(zip(executions, results, strict=True)):
         if result["valid"]:
             continue
         profile_id = str(execution["command_profile_id"])
@@ -299,9 +291,7 @@ def build_source_panel_status(
         or out_of_order
     )
     complete = bool(
-        valid
-        and verify_file_hashes
-        and len(valid_ids) == len(expected_ids)
+        valid and verify_file_hashes and len(valid_ids) == len(expected_ids)
     )
     status: dict[str, Any] = {
         "schema_version": SOURCE_PANEL_STATUS_SCHEMA_VERSION,
@@ -335,6 +325,24 @@ def build_source_panel_status(
     status["evidence_sha256"] = source_panel_evidence_sha256(status)
     status["status_sha256"] = source_panel_status_sha256(status)
     return status
+
+
+def build_source_panel_status(
+    repository_root: str | Path,
+    dataset_root: str | Path,
+    *,
+    verify_file_hashes: bool = False,
+) -> dict[str, Any]:
+    """Validate source-panel progress and identify the next physical execution."""
+
+    protocol, v2, _, v4 = load_registered_preacquisition_chain(repository_root)
+    return _build_registered_source_panel_status(
+        protocol,
+        v2,
+        v4,
+        dataset_root,
+        verify_file_hashes=verify_file_hashes,
+    )
 
 
 def write_source_panel_status(
@@ -406,9 +414,7 @@ def publish_source_panel_manifest(
         payload.get("session_id") == session_id,
         "source-panel manifest names the wrong session",
     )
-    manifest_relative = SOURCE_PANEL_MANIFEST_PATH.format(
-        execution_id=execution_id
-    )
+    manifest_relative = SOURCE_PANEL_MANIFEST_PATH.format(execution_id=execution_id)
     final_path = root / manifest_relative
     _assert_ordinary_file_or_missing(final_path, name="source-panel manifest")
     _require(not final_path.exists(), "source-panel manifest already exists")

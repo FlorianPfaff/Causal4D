@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from causal4d.preacquisition_readiness_contracts import (
+    SOURCE_PANEL_MANIFEST_PATH,
     _canonical_sha256,
     _expected_source_panel,
     _finite_number,
@@ -32,7 +33,11 @@ def _validate_source_execution_manifest(
         relative, name="source execution manifest"
     )
     manifest = _read_json_mapping(path, name="source execution manifest")
-    _require(manifest.get("schema_version") == 1, "unsupported source execution schema")
+    schema_version = manifest.get("schema_version")
+    _require(
+        type(schema_version) is int and schema_version == 1,
+        "unsupported source execution schema",
+    )
     _require(
         manifest.get("artifact_kind") == "SourcePanelExecutionManifest",
         "unexpected source execution artifact kind",
@@ -99,15 +104,23 @@ def _validate_signature_panel(
     *,
     dataset_root: Path,
     verify_file_hashes: bool,
-) -> None:
+) -> str:
+    from causal4d.preacquisition_source_panel_control import (
+        _build_registered_source_panel_status,
+    )
+
     expected_execution_ids, expected_session_ids = _expected_source_panel(v2)
+    expected_manifest_files = {
+        execution_id: SOURCE_PANEL_MANIFEST_PATH.format(execution_id=execution_id)
+        for execution_id in expected_execution_ids
+    }
     manifest_files = checks.get("manifest_files")
     _require(
-        isinstance(manifest_files, Mapping), "source-panel manifest map is invalid"
+        isinstance(manifest_files, Mapping),
+        "source-panel manifest map is invalid",
     )
     _require(
-        set(manifest_files) == set(expected_execution_ids)
-        and len(manifest_files) == len(expected_execution_ids),
+        dict(manifest_files) == expected_manifest_files,
         "source-panel manifest map differs from the registered execution set",
     )
     _require(
@@ -118,17 +131,25 @@ def _validate_signature_panel(
         checks.get("session_ids") == expected_session_ids,
         "source-panel session ids differ from the registered panel",
     )
+    independent_session_count = checks.get("independent_session_count")
     _require(
-        checks.get("independent_session_count") == 12,
+        type(independent_session_count) is int
+        and independent_session_count == len(expected_session_ids),
         "source panel must contain 12 independent sessions",
     )
-    _require(checks.get("source_only") is True, "source panel is not source-only")
+    _require(
+        checks.get("source_only") is True,
+        "source panel is not source-only",
+    )
     for execution_id, session_id in zip(
-        expected_execution_ids, expected_session_ids, strict=True
+        expected_execution_ids,
+        expected_session_ids,
+        strict=True,
     ):
         relative = manifest_files.get(execution_id)
         _require(
-            isinstance(relative, str) and relative in evidence_paths,
+            relative == expected_manifest_files[execution_id]
+            and relative in evidence_paths,
             f"source execution manifest is not bound as evidence: {execution_id}",
         )
         _validate_source_execution_manifest(
@@ -141,6 +162,39 @@ def _validate_signature_panel(
             verify_file_hashes=verify_file_hashes,
         )
 
+    status = _build_registered_source_panel_status(
+        protocol,
+        v2,
+        v4,
+        dataset_root,
+        verify_file_hashes=verify_file_hashes,
+    )
+    blockers = status.get("blockers")
+    blocker_text = (
+        ", ".join(str(value) for value in blockers)
+        if isinstance(blockers, list)
+        else "unknown blocker"
+    )
+    _require(
+        status.get("valid") is True,
+        f"source-panel status is invalid: {blocker_text}",
+    )
+    _require(
+        status.get("validated_executions") == len(expected_execution_ids),
+        "source panel is incomplete",
+    )
+    if verify_file_hashes:
+        _require(
+            status.get("complete") is True,
+            f"source panel is not hash-verified and complete: {blocker_text}",
+        )
+    evidence_sha256 = status.get("evidence_sha256")
+    _require(
+        isinstance(evidence_sha256, str) and len(evidence_sha256) == 64,
+        "source-panel evidence digest is invalid",
+    )
+    return evidence_sha256
+
 
 def _validate_actuator_calibration(
     dataset_root: Path,
@@ -150,7 +204,11 @@ def _validate_actuator_calibration(
 ) -> str:
     path = dataset_root / _safe_relative_path(relative, name="actuator calibration")
     artifact = _read_json_mapping(path, name="actuator calibration")
-    _require(artifact.get("schema_version") == 1, "unsupported actuator schema")
+    schema_version = artifact.get("schema_version")
+    _require(
+        type(schema_version) is int and schema_version == 1,
+        "unsupported actuator schema",
+    )
     _require(
         artifact.get("artifact_kind") == "ActuatorRealizationCalibration",
         "unexpected actuator artifact kind",

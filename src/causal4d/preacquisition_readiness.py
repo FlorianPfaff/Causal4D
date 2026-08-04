@@ -214,9 +214,20 @@ def evaluate_preacquisition_readiness(
         and not result["valid"]
     ]
 
-    manifest_count = int(real_status.get("manifest_executions", 0))
-    acquired_count = int(real_status.get("acquired_executions", 0))
-    validated_count = int(real_status.get("validated_executions", 0))
+    collection_counts = {
+        name: real_status.get(name, 0)
+        for name in (
+            "manifest_executions",
+            "acquired_executions",
+            "validated_executions",
+        )
+    }
+    for name, value in collection_counts.items():
+        if type(value) is not int or value < 0:
+            raise ValueError(f"{name} must be a nonnegative integer")
+    manifest_count = collection_counts["manifest_executions"]
+    acquired_count = collection_counts["acquired_executions"]
+    validated_count = collection_counts["validated_executions"]
     collection_not_started = manifest_count == acquired_count == validated_count == 0
 
     chronology_blockers: list[str] = []
