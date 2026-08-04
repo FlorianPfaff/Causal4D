@@ -45,6 +45,8 @@ The sidecar binds the exact result manifest and every payload by byte count and 
 
 The sidecar itself is validated against the result bundle during comparison. Its schema is exact: invented, omitted, or incorrectly typed runtime and source fields are rejected. A stale sidecar cannot be reused after any payload or embedded result manifest changes.
 
+On a self-hosted runner, the workflow uses the runner's qualified Python tool cache but creates a fresh virtual environment for every evaluation. It intentionally avoids sharing the `setup-python` pip cache across concurrent research workflows; the exact resolved environment is preserved in `pip-freeze.txt` and the reproduction sidecar instead.
+
 ## Independent semantic comparison
 
 ```bash
@@ -111,7 +113,6 @@ semantic_match=true
 ```
 
 That outcome is evidence of numerical reproduction, not byte identity. It cannot alter the frozen result, a registered threshold, the real-data protocol, or claim readiness.
-
 
 ## Additive diagnostic compatibility
 
