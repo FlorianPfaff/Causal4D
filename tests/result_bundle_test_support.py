@@ -179,4 +179,3 @@ def _run_comparison(
     )
     assert output.is_file(), process.stderr
     return process, _read_json(output)
-
