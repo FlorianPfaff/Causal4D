@@ -36,7 +36,6 @@ def _load_runtime_dependencies() -> None:
     from bayesian_phystwin.causal4d_provider_v1 import target_validity
     from causal4d.contracts import PhysicalPosterior, TwinBelief, load_contract
     from causal4d.intervention_abduction import FactualAbductionConfig
-    from causal4d.phystwin_backend import load_rollout_bank
     from causal4d.real_oracle_audit import (
         HoldoutOracleProtocol,
         audit_oracle_bank,
@@ -49,6 +48,7 @@ def _load_runtime_dependencies() -> None:
         variance_decomposition,
         verify_nested_rollout_banks,
     )
+    from causal4d.rollout_bank_io import load_rollout_bank
 
 
 def build_parser() -> argparse.ArgumentParser:
