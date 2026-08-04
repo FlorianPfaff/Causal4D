@@ -5,11 +5,12 @@ message: >-
 title: Causal4D
 type: software
 version: 0.4.1
+license: MIT
 authors:
   - family-names: Pfaff
     given-names: Florian
-repository-code: https://github.com/FlorianPfaff/Causal4D
-url: https://github.com/FlorianPfaff/Causal4D
+repository-code: https://github.com/IPS-Stuttgart/Causal4D
+url: https://github.com/IPS-Stuttgart/Causal4D
 abstract: >-
   A research framework for Bayesian abduction of realized interventions and
   held-out interventional prediction for deformable-object dynamics.
