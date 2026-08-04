@@ -1,0 +1,100 @@
+name: Temporary PR 151 self-hosted validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/temporary-pr151-self-hosted.yml"
+      - ".github/workflows/deform360-source-failure-attribution.yml"
+      - "scripts/ci/analyze_deform360_source_failure.py"
+      - "src/causal4d_public/deform360_source_failure_attribution.py"
+      - "tests/test_deform360_source_failure_attribution.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: temporary-pr151-self-hosted-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Focused source-only validation
+    if: github.event.pull_request.number == 151
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 30
+    steps:
+      - name: Check out pull request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Create isolated environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv .pr151-venv
+          .pr151-venv/bin/python -m pip install --upgrade pip
+          .pr151-venv/bin/python -m pip install -e ".[dev]"
+          .pr151-venv/bin/python -m pip check
+
+      - name: Run formatting, lint, and focused tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          .pr151-venv/bin/python -m ruff check \
+            src/causal4d_public/deform360_source_failure_attribution.py \
+            scripts/ci/analyze_deform360_source_failure.py \
+            tests/test_deform360_source_failure_attribution.py
+          .pr151-venv/bin/python -m ruff format --check \
+            src/causal4d_public/deform360_source_failure_attribution.py \
+            scripts/ci/analyze_deform360_source_failure.py \
+            tests/test_deform360_source_failure_attribution.py
+          .pr151-venv/bin/python -m pytest -q \
+            tests/test_deform360_source_failure_attribution.py \
+            tests/test_deform360_replication_backend.py \
+            tests/test_deform360_replication_fit.py
+
+      - name: Produce deterministic attribution evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p outputs/pr151
+          .pr151-venv/bin/python \
+            scripts/ci/analyze_deform360_source_failure.py \
+            --output outputs/pr151/attribution-a.json \
+            | tee outputs/pr151/summary-a.json
+          .pr151-venv/bin/python \
+            scripts/ci/analyze_deform360_source_failure.py \
+            --output outputs/pr151/attribution-b.json \
+            | tee outputs/pr151/summary-b.json
+          cmp outputs/pr151/attribution-a.json outputs/pr151/attribution-b.json
+          cmp outputs/pr151/summary-a.json outputs/pr151/summary-b.json
+          .pr151-venv/bin/python -m pip freeze --all > outputs/pr151/pip-freeze.txt
+          {
+            echo "repository=${GITHUB_REPOSITORY}"
+            echo "commit=${GITHUB_SHA}"
+            echo "workflow_run_id=${GITHUB_RUN_ID}"
+            echo "runner=${RUNNER_NAME}"
+            uname -a
+          } > outputs/pr151/environment.txt
+
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: temporary-pr151-source-attribution-${{ github.run_id }}
+          path: outputs/pr151/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Remove isolated environment
+        if: always()
+        run: rm -rf .pr151-venv
