@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,10 @@ from causal4d_public.deform360_source_failure_attribution import (
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 PROTOCOL = REPOSITORY_ROOT / "configs/causal4d_public/deform360_replication_v1.json"
 MILESTONE = REPOSITORY_ROOT / "milestones/deform360-replication-source-backend-v1"
+SUMMARY = (
+    REPOSITORY_ROOT
+    / "milestones/deform360-source-failure-attribution-v1/summary.json"
+)
 EXPECTED_RESULT_SHA256 = (
     "8da1a6112a7afb959a6bf81c3f870a8135d8414b599db98d67656ba40e98c9eb"
 )
@@ -174,6 +179,36 @@ def test_frozen_source_attribution_is_locked_and_target_closed() -> None:
         "failed_stage"
     ] == "source-pooling"
     assert by_object["083-blanket-cloth"]["common_quality_candidate"] is None
+
+
+def test_compact_milestone_summary_matches_the_full_attribution() -> None:
+    full = analyze_source_failure_milestone(PROTOCOL, MILESTONE)
+    compact = json.loads(SUMMARY.read_text(encoding="utf-8"))
+
+    assert compact["full_attribution_result_sha256"] == EXPECTED_RESULT_SHA256
+    assert compact["cohort"]["classification_counts"] == (
+        EXPECTED_CLASSIFICATION_COUNTS
+    )
+    assert compact["cohort"]["quality_episode_oracle_gate_pass_object_count"] == 0
+    assert compact["cohort"]["common_quality_candidate_gate_pass_object_count"] == 0
+    assert compact["cohort"]["quality_oracle_available_episode_count"] == 28
+    assert compact["cohort"]["quality_oracle_win_count"] == 6
+    assert compact["cohort"]["quality_oracle_win_fraction"] == pytest.approx(6 / 28)
+    assert compact["decision"]["registered_method_changed"] is False
+    assert compact["decision"]["target_prefix_access_permitted"] is False
+    assert compact["decision"]["target_future_access_permitted"] is False
+    assert compact["information_boundary"]["calibration_outcomes_read"] is False
+    assert compact["information_boundary"]["target_prefix_read"] is False
+    assert compact["information_boundary"]["target_future_geometry_read"] is False
+    assert compact["information_boundary"]["target_future_tactile_read"] is False
+
+    full_by_object = {record["object_id"]: record for record in full["objects"]}
+    compact_by_object = {
+        record["object_id"]: record for record in compact["objects"]
+    }
+    assert set(compact_by_object) == set(full_by_object)
+    for object_id, record in compact_by_object.items():
+        assert record["classification"] == full_by_object[object_id]["classification"]
 
 
 def test_source_failure_attribution_rejects_mutated_content() -> None:
