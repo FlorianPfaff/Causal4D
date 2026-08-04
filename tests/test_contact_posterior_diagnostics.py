@@ -70,9 +70,7 @@ def _interventions() -> list[dict[str, object]]:
 def test_graph_distance_and_force_proxy() -> None:
     graph = _rope()
     distances = _all_pairs_graph_distances(graph)
-    mean_distance, maximum_distance = _assignment_distances(
-        (5,), (4,), distances
-    )
+    mean_distance, maximum_distance = _assignment_distances((5,), (4,), distances)
     truth = _diffused_force_field(graph, (5,), strength=1.0)
     exact = _diffused_force_field(graph, (5,), strength=1.0)
     neighbor = _diffused_force_field(graph, (4,), strength=1.0)
@@ -121,9 +119,7 @@ def test_enrichment_separates_exact_and_neighbor() -> None:
     assert exact[0]["diagnostic_category"] == "exact"
     assert neighbor[0]["one_hop_patch_recovered"] is True
     assert neighbor[0]["trajectory_improved"] is True
-    assert neighbor[0]["diagnostic_category"] == (
-        "trajectory_equivalent_neighbor"
-    )
+    assert neighbor[0]["diagnostic_category"] == ("trajectory_equivalent_neighbor")
     aggregate = _aggregate_rows([*exact, *neighbor])
     assert aggregate["exact_node_accuracy"] == 0.5
     assert aggregate["one_hop_patch_accuracy"] == 1.0
@@ -135,15 +131,11 @@ def test_recomputed_contact_identity_must_match_bundle() -> None:
         key: str(value) if isinstance(value, bool) else value
         for key, value in recomputed.items()
     }
-    report = _validate_recomputed_parity(
-        [retained], [recomputed], DiagnosticConfig()
-    )
+    report = _validate_recomputed_parity([retained], [recomputed], DiagnosticConfig())
     assert report["passed"] is True
 
     changed = dict(recomputed)
     changed["node_map"] = "4"
     changed["node_correct"] = False
     with pytest.raises(ValueError, match="node_map"):
-        _validate_recomputed_parity(
-            [retained], [changed], DiagnosticConfig()
-        )
+        _validate_recomputed_parity([retained], [changed], DiagnosticConfig())

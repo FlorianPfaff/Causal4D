@@ -73,13 +73,8 @@ class DiagnosticConfig:
         if not np.isfinite(self.diffusion_strength) or self.diffusion_strength <= 0:
             raise ValueError("diffusion_strength must be finite and positive")
         if not 0.0 <= self.force_field_equivalence_threshold <= 1.0:
-            raise ValueError(
-                "force_field_equivalence_threshold must be in [0, 1]"
-            )
-        if (
-            self.parity_relative_tolerance < 0.0
-            or self.parity_absolute_tolerance < 0.0
-        ):
+            raise ValueError("force_field_equivalence_threshold must be in [0, 1]")
+        if self.parity_relative_tolerance < 0.0 or self.parity_absolute_tolerance < 0.0:
             raise ValueError("parity tolerances must be nonnegative")
 
     def as_dict(self) -> dict[str, float]:
@@ -299,10 +294,7 @@ def _posterior_diagnostic_metrics(
         "node_posterior_support_size": support_size,
         "node_credible_set_size": len(selected),
         "node_posterior": json.dumps(
-            {
-                _node_label(nodes): probability
-                for nodes, probability in ordered
-            },
+            {_node_label(nodes): probability for nodes, probability in ordered},
             sort_keys=True,
             separators=(",", ":"),
         ),
@@ -367,9 +359,7 @@ def _recompute_online_posterior_rows(
                 model,
                 benchmark_config,
                 contact_config,
-                calibration_seed=(
-                    seed * 1_000_003 + target_index * 100_003 + 17
-                ),
+                calibration_seed=(seed * 1_000_003 + target_index * 100_003 + 17),
             )
             bank = build_rollout_bank(
                 target.protocol.graph_object,
@@ -378,22 +368,16 @@ def _recompute_online_posterior_rows(
                 model,
                 simulator_config=benchmark_config.simulator,
                 parameter_particle_count=contact_config.parameter_particle_count,
-                variance_floor_m2=(
-                    benchmark_config.predictive_variance_floor_m2
-                ),
+                variance_floor_m2=(benchmark_config.predictive_variance_floor_m2),
                 confidence_level=contact_config.confidence_level,
             )
-            prefix = contact_config.prefix_frame_count(
-                benchmark_config.frame_count
-            )
+            prefix = contact_config.prefix_frame_count(benchmark_config.frame_count)
             source_names = tuple(
                 source.protocol.graph_object.name for source in sources
             )
             for condition_index, episode in enumerate(target.held_out):
                 observation_rng = np.random.default_rng(
-                    seed * 1_000_003
-                    + target_index * 10_007
-                    + condition_index * 97
+                    seed * 1_000_003 + target_index * 10_007 + condition_index * 97
                 )
                 observations = episode.truth + observation_rng.normal(
                     scale=contact_config.observation_noise_std_m,
@@ -404,9 +388,7 @@ def _recompute_online_posterior_rows(
                     prefix_frame_count=prefix,
                     likelihood_scale_m=calibration.likelihood_scale_m,
                     likelihood_power=calibration.likelihood_power,
-                    dynamic_likelihood_weight=(
-                        calibration.dynamic_likelihood_weight
-                    ),
+                    dynamic_likelihood_weight=(calibration.dynamic_likelihood_weight),
                 )
                 joint_weights = _temper_joint_weights(
                     raw_weights,
@@ -425,9 +407,7 @@ def _recompute_online_posterior_rows(
                         "source_objects": ";".join(source_names),
                         "world_condition": episode.condition.name,
                         "setting": "online_adaptation",
-                        "observation_fraction": (
-                            contact_config.observation_fraction
-                        ),
+                        "observation_fraction": (contact_config.observation_fraction),
                         **contact_recovery_metrics(
                             bank.contact_states,
                             contact_weights,
@@ -540,9 +520,7 @@ def _trajectory_lookup(
 
 def _action_direction(graph: GraphObject, frame_count: int) -> np.ndarray:
     test_action = next(
-        action
-        for action in make_actions(graph, frame_count)
-        if action.split == "test"
+        action for action in make_actions(graph, frame_count) if action.split == "test"
     )
     vector = np.sum(test_action.commanded_forces, axis=(0, 1))
     norm = float(np.linalg.norm(vector))
@@ -616,9 +594,7 @@ def _enrich_rows(
         )
         adjacency = _adjacency(graph)
         truth_degree = float(np.mean([len(adjacency[node]) for node in truth]))
-        estimate_degree = float(
-            np.mean([len(adjacency[node]) for node in estimate])
-        )
+        estimate_degree = float(np.mean([len(adjacency[node]) for node in estimate]))
         truth_sensor_distance = float(
             np.mean(
                 [
@@ -643,9 +619,7 @@ def _enrich_rows(
         )
         exact = truth == estimate
         one_hop = maximum_distance <= 1
-        force_equivalent = (
-            force_similarity >= config.force_field_equivalence_threshold
-        )
+        force_equivalent = force_similarity >= config.force_field_equivalence_threshold
         if exact:
             category = "exact"
         elif sensor_symmetry and trajectory_gain > 0.0:
@@ -720,9 +694,7 @@ def _trajectory_subset(
     *,
     exact: bool,
 ) -> dict[str, Any]:
-    selected = [
-        row for row in rows if _as_bool(row["exact_node_recovered"]) is exact
-    ]
+    selected = [row for row in rows if _as_bool(row["exact_node_recovered"]) is exact]
     if not selected:
         return {
             "case_count": 0,
@@ -761,9 +733,7 @@ def _aggregate_rows(
             "maximum_assignment_graph_distance",
         ),
         "mean_node_confidence": mean_confidence,
-        "node_confidence_calibration_error": abs(
-            mean_confidence - exact_accuracy
-        ),
+        "node_confidence_calibration_error": abs(mean_confidence - exact_accuracy),
         "mean_node_truth_probability": _mean(
             rows,
             "node_truth_probability",
@@ -821,12 +791,8 @@ def _aggregate_rows(
         "trajectory_exact_map": _trajectory_subset(rows, exact=True),
         "trajectory_incorrect_map": _trajectory_subset(rows, exact=False),
         "diagnostic_category_counts": {
-            category: sum(
-                str(row["diagnostic_category"]) == category for row in rows
-            )
-            for category in sorted(
-                {str(row["diagnostic_category"]) for row in rows}
-            )
+            category: sum(str(row["diagnostic_category"]) == category for row in rows)
+            for category in sorted({str(row["diagnostic_category"]) for row in rows})
         },
         "confusion_matrix": _confusion_matrix(rows),
     }
@@ -847,9 +813,7 @@ def _grouped_aggregates(
     return [
         {
             field_name: value,
-            **_aggregate_rows(
-                [row for row in rows if str(row[field_name]) == value]
-            ),
+            **_aggregate_rows([row for row in rows if str(row[field_name]) == value]),
         }
         for value in values
     ]
@@ -859,10 +823,7 @@ def _degree_diagnostics(
     rows: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
     keys = sorted(
-        {
-            (str(row["object"]), float(row["truth_mean_degree"]))
-            for row in rows
-        }
+        {(str(row["object"]), float(row["truth_mean_degree"])) for row in rows}
     )
     return [
         {
@@ -902,8 +863,7 @@ def _sensor_distance_diagnostics(
                     row
                     for row in rows
                     if str(row["object"]) == object_name
-                    and float(row["truth_mean_nearest_sensor_distance"])
-                    == distance
+                    and float(row["truth_mean_nearest_sensor_distance"]) == distance
                 ]
             ),
         }
@@ -923,9 +883,7 @@ def analyze_contact_posterior_bundle(
     summary_path = bundle / "summary.json"
     manifest_path = bundle / "manifest.json"
     if not summary_path.is_file() or not manifest_path.is_file():
-        raise FileNotFoundError(
-            "bundle must contain summary.json and manifest.json"
-        )
+        raise FileNotFoundError("bundle must contain summary.json and manifest.json")
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     if summary.get("benchmark") != "causal4d-latent-contact-v1":
         raise ValueError("unsupported benchmark bundle")

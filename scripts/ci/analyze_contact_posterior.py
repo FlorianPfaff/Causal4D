@@ -32,9 +32,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     config = DiagnosticConfig(
         diffusion_strength=args.diffusion_strength,
-        force_field_equivalence_threshold=(
-            args.force_field_equivalence_threshold
-        ),
+        force_field_equivalence_threshold=(args.force_field_equivalence_threshold),
     )
     result = analyze_contact_posterior_bundle(
         args.bundle_dir,
