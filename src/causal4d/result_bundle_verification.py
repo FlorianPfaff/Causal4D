@@ -70,17 +70,13 @@ def verify_embedded_result_bundle(
     supplied = Path(bundle_directory)
     _reject_symlink_components(supplied)
     if not supplied.is_dir():
-        raise FileNotFoundError(
-            f"result bundle directory does not exist: {supplied}"
-        )
+        raise FileNotFoundError(f"result bundle directory does not exist: {supplied}")
     bundle = supplied.resolve()
     manifest_path = bundle / "manifest.json"
     if manifest_path.is_symlink():
         raise ValueError("bundle manifest must not be a symlink")
     if not manifest_path.is_file():
-        raise FileNotFoundError(
-            "bundle must contain an ordinary manifest.json file"
-        )
+        raise FileNotFoundError("bundle must contain an ordinary manifest.json file")
 
     manifest = _read_json_object(manifest_path)
     expected_manifest_keys = {"schema_version", "benchmark", "artifacts"}
@@ -96,9 +92,7 @@ def verify_embedded_result_bundle(
         raise ValueError("result manifest benchmark must be nonempty")
     artifacts = manifest["artifacts"]
     if not isinstance(artifacts, dict) or not artifacts:
-        raise ValueError(
-            "result manifest artifacts must be a nonempty object"
-        )
+        raise ValueError("result manifest artifacts must be a nonempty object")
 
     normalized: dict[str, dict[str, Any]] = {}
     for raw_name, raw_record in artifacts.items():
@@ -111,9 +105,7 @@ def verify_embedded_result_bundle(
             "bytes",
             "sha256",
         }:
-            raise ValueError(
-                f"artifact record for {name!r} has an invalid schema"
-            )
+            raise ValueError(f"artifact record for {name!r} has an invalid schema")
         expected_hash = raw_record["sha256"]
         expected_bytes = raw_record["bytes"]
         if (
@@ -124,9 +116,7 @@ def verify_embedded_result_bundle(
                 for character in expected_hash
             )
         ):
-            raise ValueError(
-                f"artifact {name!r} has an invalid SHA-256 digest"
-            )
+            raise ValueError(f"artifact {name!r} has an invalid SHA-256 digest")
         if (
             not isinstance(expected_bytes, int)
             or isinstance(expected_bytes, bool)
@@ -137,9 +127,7 @@ def verify_embedded_result_bundle(
         if path.is_symlink():
             raise ValueError(f"bundle artifact must not be a symlink: {name}")
         if not path.is_file():
-            raise FileNotFoundError(
-                f"bundle artifact must be an ordinary file: {name}"
-            )
+            raise FileNotFoundError(f"bundle artifact must be an ordinary file: {name}")
         actual_bytes = path.stat().st_size
         actual_hash = _sha256(path)
         if actual_bytes != expected_bytes:
@@ -149,8 +137,7 @@ def verify_embedded_result_bundle(
             )
         if actual_hash != expected_hash:
             raise ValueError(
-                f"artifact {name!r} checksum changed: "
-                f"{actual_hash} != {expected_hash}"
+                f"artifact {name!r} checksum changed: {actual_hash} != {expected_hash}"
             )
         normalized[name] = {
             "bytes": expected_bytes,
@@ -162,8 +149,7 @@ def verify_embedded_result_bundle(
     for entry in bundle.iterdir():
         if entry.is_symlink() or not entry.is_file():
             raise ValueError(
-                "result bundle entries must be ordinary files: "
-                f"{entry.name}"
+                f"result bundle entries must be ordinary files: {entry.name}"
             )
         actual_names.add(entry.name)
     missing = sorted(expected_names - actual_names)
@@ -180,7 +166,5 @@ def verify_embedded_result_bundle(
         "bundle_name": bundle.name,
         "manifest_sha256": _sha256(manifest_path),
         "artifact_count": len(normalized),
-        "artifacts": {
-            name: normalized[name] for name in sorted(normalized)
-        },
+        "artifacts": {name: normalized[name] for name in sorted(normalized)},
     }
