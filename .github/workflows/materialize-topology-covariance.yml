@@ -134,7 +134,7 @@ jobs:
             --shared-correlation-weights 0,1 \
             --identity-shrinkages 0.5,1
           test -s /tmp/topology-covariance-smoke/contact-topology-covariance-diagnostic.json
-          test -s /tmp/topology-covariance-smoke/contact-topology-covariance-manifest.json
+          test -s /tmp/topology-covariance-smoke/manifest.json
 
       - name: Publish clean implementation commit
         shell: bash
