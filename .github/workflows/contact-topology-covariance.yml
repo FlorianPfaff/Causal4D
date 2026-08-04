@@ -1,0 +1,196 @@
+name: Contact topology covariance diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/contact-topology-covariance.yml"
+      - "docs/contact_topology_covariance.md"
+      - "scripts/ci/run_contact_topology_covariance_diagnostic.py"
+      - "src/causal4d/contact_topology_covariance_diagnostic.py"
+      - "tests/test_contact_topology_covariance_diagnostic.py"
+      - "tests/test_contact_topology_covariance_workflow_policy.py"
+  workflow_dispatch:
+    inputs:
+      development_seeds:
+        description: Already-open development seed range
+        required: false
+        default: "300:320"
+        type: string
+      evaluation_seeds:
+        description: Fresh target-evaluation seed range
+        required: false
+        default: "400:420"
+        type: string
+      shared_correlation_weights:
+        description: Topology-to-shared covariance mixing grid
+        required: false
+        default: "0,0.25,0.50,0.75,1.00"
+        type: string
+      identity_shrinkages:
+        description: Correlation-to-identity shrinkage grid
+        required: false
+        default: "0.10,0.25,0.50,0.75,1.00"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contact-topology-covariance-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONHASHSEED: "0"
+  PYTHONUNBUFFERED: "1"
+  SEALED_MAIN_REVISION: "7eeb60c6084106ab24e227da1451b08a1d12d587"
+  DEVELOPMENT_SEEDS: ${{ inputs.development_seeds || '300:320' }}
+  EVALUATION_SEEDS: ${{ inputs.evaluation_seeds || '400:420' }}
+  SHARED_CORRELATION_WEIGHTS: ${{ inputs.shared_correlation_weights || '0,0.25,0.50,0.75,1.00' }}
+  IDENTITY_SHRINKAGES: ${{ inputs.identity_shrinkages || '0.10,0.25,0.50,0.75,1.00' }}
+
+jobs:
+  evaluate:
+    name: Fresh target-topology covariance evaluation
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 720
+    steps:
+      - name: Check out Causal4D
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Python 3.12 with pip cache
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install diagnostic environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install "pyrecest==2.4.1"
+          python -m pip install -e ".[dev]"
+          python -m pip check
+          mkdir -p outputs/contact-topology-covariance
+          python -m pip freeze --all \
+            > outputs/contact-topology-covariance/pip-freeze.txt
+          {
+            echo "runner_name=${RUNNER_NAME}"
+            echo "runner_os=${RUNNER_OS}"
+            echo "runner_arch=${RUNNER_ARCH}"
+            echo "repository=${GITHUB_REPOSITORY}"
+            echo "commit=${GITHUB_SHA}"
+            echo "sealed_main_revision=${SEALED_MAIN_REVISION}"
+            echo "workflow_run_id=${GITHUB_RUN_ID}"
+            echo "development_seeds=${DEVELOPMENT_SEEDS}"
+            echo "evaluation_seeds=${EVALUATION_SEEDS}"
+            echo "shared_correlation_weights=${SHARED_CORRELATION_WEIGHTS}"
+            echo "identity_shrinkages=${IDENTITY_SHRINKAGES}"
+            uname -a
+          } > outputs/contact-topology-covariance/environment.txt
+
+      - name: Validate topology covariance contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum -c <<'EOF'
+          31d9dbcfc794843a5ff45267d47c5cb21f8804437338dcf4f38ba27de4117ccf  src/causal4d/contact_topology_covariance_diagnostic.py
+          f640f9f366a770408d1d58e650fbf649acd435263125e04de1da509e056d8540  scripts/ci/run_contact_topology_covariance_diagnostic.py
+          c9a11dc160193b0ad397639e2d84fdbf0f09d789f97dfdcacec4270c77b6b5bd  tests/test_contact_topology_covariance_diagnostic.py
+          911a537bf2bcc025234724fa5825022f24b6231a1369b76a2204c1570c0bf4f8  tests/test_contact_topology_covariance_workflow_policy.py
+          08982d7553e00f804e72c940bc471168f98f6c250b2e40eba7b6d96f1119b84d  docs/contact_topology_covariance.md
+          EOF
+          python -m ruff check \
+            src/causal4d/contact_topology_covariance_diagnostic.py \
+            scripts/ci/run_contact_topology_covariance_diagnostic.py \
+            tests/test_contact_topology_covariance_diagnostic.py \
+            tests/test_contact_topology_covariance_workflow_policy.py
+          python -m ruff format --check \
+            src/causal4d/contact_topology_covariance_diagnostic.py \
+            scripts/ci/run_contact_topology_covariance_diagnostic.py \
+            tests/test_contact_topology_covariance_diagnostic.py \
+            tests/test_contact_topology_covariance_workflow_policy.py
+          python -m pytest -q \
+            tests/test_contact_topology_covariance_diagnostic.py \
+            tests/test_contact_topology_covariance_workflow_policy.py \
+            tests/test_contact_correlation_diagnostic.py \
+            tests/test_causal4d_contact_evaluation.py \
+            tests/test_probability_support_invariants.py
+          python -m pytest -q
+
+      - name: Run fresh target topology-conditioned comparison
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ci/run_contact_topology_covariance_diagnostic.py \
+            --output-dir outputs/contact-topology-covariance/results \
+            --development-seeds "${DEVELOPMENT_SEEDS}" \
+            --evaluation-seeds "${EVALUATION_SEEDS}" \
+            --shared-correlation-weights "${SHARED_CORRELATION_WEIGHTS}" \
+            --identity-shrinkages "${IDENTITY_SHRINKAGES}" \
+            | tee outputs/contact-topology-covariance/console.json
+
+      - name: Publish diagnostic summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Contact topology covariance diagnostic"
+            echo
+            echo "- Runner: \`${RUNNER_NAME}\` (GitHub-hosted CPU)"
+            echo "- Sealed main revision: \`${SEALED_MAIN_REVISION}\`"
+            echo "- Development seeds: \`${DEVELOPMENT_SEEDS}\`"
+            echo "- Fresh target-evaluation seeds: \`${EVALUATION_SEEDS}\`"
+            echo "- Pip download cache: enabled"
+            if [[ -f outputs/contact-topology-covariance/results/contact-topology-covariance-diagnostic.json ]]; then
+              python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path(
+              "outputs/contact-topology-covariance/results/"
+              "contact-topology-covariance-diagnostic.json"
+          )
+          result = json.loads(path.read_text(encoding="utf-8"))
+          print(
+              "- Selected global candidate: "
+              f"{result['selected_global_candidate']}"
+          )
+          print(
+              "- Selected topology candidates: "
+              f"{result['selected_topology_candidates']}"
+          )
+          for row in result["decision"]:
+              print(
+                  f"- {row['policy']}: "
+                  f"promotion_candidate={row['promotion_candidate']}, "
+                  f"interpretation={row['interpretation']}"
+              )
+          print(
+              "- Topology hypothesis supported: "
+              f"{result['topology_hypothesis_supported']}"
+          )
+          PY
+            else
+              echo "- Diagnostic stopped before producing its summary."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload complete diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: contact-topology-covariance-${{ github.run_id }}
+          path: outputs/contact-topology-covariance/
+          if-no-files-found: error
+          retention-days: 30
