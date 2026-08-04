@@ -21,6 +21,13 @@ from causal4d.simulator import (
 )
 
 
+def test_default_initial_distribution_retains_all_mass() -> None:
+    prior = enumerate_contact_paths(np.asarray([0.0]))
+
+    assert prior.path_ids == ("inactive:0-0",)
+    assert prior.retained_prior_mass == 1.0
+
+
 def test_single_frame_path_reports_initial_pruned_mass() -> None:
     config = ContactTransitionConfig(
         minimum_transition_probability=0.5,
