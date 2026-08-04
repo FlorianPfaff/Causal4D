@@ -1,0 +1,177 @@
+name: Repair contact probability boundary
+
+on:
+  push:
+    branches:
+      - agent/reproducibility-contact-diagnostics
+    paths:
+      - ".github/workflows/repair-contact-probability-boundary.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out diagnostic branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/reproducibility-contact-diagnostics
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Align probability admission with producer tolerance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path("src/causal4d/contact_posterior_source_integrity.py")
+          text = source.read_text(encoding="utf-8")
+
+          constant_anchor = (
+              '_REQUIRED_TRAJECTORY_METHODS = frozenset('
+              '{"nominal_physics", "latent_contact"})\n'
+          )
+          constants = (
+              constant_anchor
+              + "_PROBABILITY_ABS_TOLERANCE = 1e-10\n"
+              + "_PROBABILITY_REL_TOLERANCE = 1e-10\n"
+          )
+          if "_PROBABILITY_ABS_TOLERANCE" not in text:
+              if text.count(constant_anchor) != 1:
+                  raise RuntimeError("probability constant anchor changed")
+              text = text.replace(constant_anchor, constants)
+
+          helper_anchor = '''\
+          def _parse_bool(value: str, *, field: str, location: str) -> bool:
+          '''
+          helper = '''\
+          def _is_probability_with_roundoff(value: float) -> bool:
+              """Accept only unit-interval values or producer-scale roundoff."""
+
+              if 0.0 <= value <= 1.0:
+                  return True
+              boundary = 0.0 if value < 0.0 else 1.0
+              return math.isclose(
+                  value,
+                  boundary,
+                  rel_tol=_PROBABILITY_REL_TOLERANCE,
+                  abs_tol=_PROBABILITY_ABS_TOLERANCE,
+              )
+
+
+          def _parse_bool(value: str, *, field: str, location: str) -> bool:
+          '''
+          if "def _is_probability_with_roundoff" not in text:
+              if text.count(helper_anchor) != 1:
+                  raise RuntimeError("probability helper anchor changed")
+              text = text.replace(helper_anchor, helper)
+
+          old_check = '''\
+                      if field in {"node_confidence", "node_truth_probability"} and not (
+                          0.0 <= value <= 1.0
+                      ):
+                          raise ValueError(f"{location}/{field} must be in [0, 1]")
+          '''
+          new_check = '''\
+                      if (
+                          field in {"node_confidence", "node_truth_probability"}
+                          and not _is_probability_with_roundoff(value)
+                      ):
+                          raise ValueError(f"{location}/{field} must be in [0, 1]")
+          '''
+          if old_check in text:
+              text = text.replace(old_check, new_check)
+          elif new_check not in text:
+              raise RuntimeError("probability range check anchor changed")
+          source.write_text(text, encoding="utf-8")
+
+          tests = Path("tests/test_contact_posterior_source_integrity.py")
+          test_text = tests.read_text(encoding="utf-8")
+          marker = "def test_probability_roundoff_at_unit_boundary_is_admitted"
+          if marker not in test_text:
+              test_text += '''
+
+
+def _replace_first_recovery_value(
+    bundle: Path,
+    *,
+    field: str,
+    value: str,
+) -> None:
+    path = bundle / "contact_recovery.csv"
+    with path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.reader(handle))
+    field_index = rows[0].index(field)
+    rows[1][field_index] = value
+    _write_csv(
+        path,
+        tuple(rows[0]),
+        [tuple(row) for row in rows[1:]],
+    )
+    _write_manifest(bundle)
+
+
+def test_probability_roundoff_at_unit_boundary_is_admitted(
+    tmp_path: Path,
+) -> None:
+    bundle = _valid_bundle(tmp_path)
+    _replace_first_recovery_value(
+        bundle,
+        field="node_confidence",
+        value="1.0000000000000002",
+    )
+
+    report = verify_contact_posterior_source_bundle(bundle)
+
+    assert report["passed"] is True
+
+
+def test_material_probability_overflow_is_rejected(tmp_path: Path) -> None:
+    bundle = _valid_bundle(tmp_path)
+    _replace_first_recovery_value(
+        bundle,
+        field="node_truth_probability",
+        value="1.000001",
+    )
+
+    with pytest.raises(ValueError, match="node_truth_probability must be in"):
+        verify_contact_posterior_source_bundle(bundle)
+'''
+              tests.write_text(test_text, encoding="utf-8")
+          PY
+
+      - name: Validate focused contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e ".[dev]"
+          python -m ruff format \
+            src/causal4d/contact_posterior_source_integrity.py \
+            tests/test_contact_posterior_source_integrity.py
+          python -m ruff check \
+            src/causal4d/contact_posterior_source_integrity.py \
+            tests/test_contact_posterior_source_integrity.py
+          python -m pytest -q \
+            tests/test_contact_posterior_source_integrity.py \
+            tests/test_contact_posterior_admission.py
+          git diff --check
+
+      - name: Commit validated repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/causal4d/contact_posterior_source_integrity.py \
+            tests/test_contact_posterior_source_integrity.py
+          git commit -m "Admit probability normalization roundoff"
+          git push origin HEAD:agent/reproducibility-contact-diagnostics
