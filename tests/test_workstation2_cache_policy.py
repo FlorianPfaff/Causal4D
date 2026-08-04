@@ -19,3 +19,5 @@ def test_workstation2_uses_isolated_grouped_reproduction_path() -> None:
     assert text.count("scripts/ci/write_reproduction_manifest.py") >= 2
     assert "--actual-reproduction-manifest" in text
     assert "--require-actual-reproduction-manifest" in text
+    assert '"scripts/ci/result_bundle_compare_*.py"' in text
+    assert '"tests/test_result_bundle*.py"' in text

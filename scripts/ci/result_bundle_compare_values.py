@@ -12,6 +12,7 @@ _SUCCESS_GATE_THRESHOLD_PATH = re.compile(
     r"^success_gates\.json\.gates\[\d+\]\.threshold$"
 )
 _DIRECTION_ANGLE_FIELD = "direction_error_deg"
+_DIRECTION_ANGLE_AGGREGATE_FIELD = f"mean_{_DIRECTION_ANGLE_FIELD}"
 _ALLOWED_CONTACT_AGGREGATE_DIAGNOSTICS = frozenset(
     {
         "mean_joint_positive_support_size",
@@ -105,8 +106,9 @@ class Comparison:
 
 
 def _is_direction_angle_path(path: str) -> bool:
-    return path.endswith(f".{_DIRECTION_ANGLE_FIELD}") or path.endswith(
-        f"field={_DIRECTION_ANGLE_FIELD}"
+    return any(
+        path.endswith(f".{field}") or path.endswith(f"field={field}")
+        for field in (_DIRECTION_ANGLE_FIELD, _DIRECTION_ANGLE_AGGREGATE_FIELD)
     )
 
 
