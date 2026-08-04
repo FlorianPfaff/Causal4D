@@ -158,6 +158,25 @@ def _valid_bundle(bundle: Path) -> Path:
     return bundle
 
 
+def _rewrite_recovery_value(
+    bundle: Path,
+    *,
+    field: str,
+    value: str,
+) -> None:
+    path = bundle / "contact_recovery.csv"
+    with path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.reader(handle))
+    field_index = rows[0].index(field)
+    rows[1][field_index] = value
+    _write_csv(
+        path,
+        tuple(rows[0]),
+        [tuple(row) for row in rows[1:]],
+    )
+    _write_manifest(bundle)
+
+
 def test_valid_source_bundle_passes(tmp_path: Path) -> None:
     bundle = _valid_bundle(tmp_path)
 
@@ -168,6 +187,32 @@ def test_valid_source_bundle_passes(tmp_path: Path) -> None:
     assert report["artifact_count"] == 6
     assert report["seed_count"] == 1
     assert report["online_case_count"] == 3
+    assert report["unit_interval_tolerance"] == 1e-12
+
+
+def test_machine_scale_probability_overshoot_is_admitted(tmp_path: Path) -> None:
+    bundle = _valid_bundle(tmp_path)
+    _rewrite_recovery_value(
+        bundle,
+        field="node_confidence",
+        value="1.0000000000000002",
+    )
+
+    report = verify_contact_posterior_source_bundle(bundle)
+
+    assert report["passed"] is True
+
+
+def test_substantive_probability_overshoot_is_rejected(tmp_path: Path) -> None:
+    bundle = _valid_bundle(tmp_path)
+    _rewrite_recovery_value(
+        bundle,
+        field="node_confidence",
+        value="1.0000000001",
+    )
+
+    with pytest.raises(ValueError, match=r"node_confidence must be in \[0, 1\]"):
+        verify_contact_posterior_source_bundle(bundle)
 
 
 def test_payload_tampering_is_rejected_before_parsing(tmp_path: Path) -> None:
