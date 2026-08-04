@@ -109,7 +109,9 @@ def _safe_artifact_name(value: Any) -> str:
     return path.name
 
 
-def _read_csv_rows(path: Path) -> tuple[tuple[str, ...], list[tuple[int, dict[str, str]]]]:
+def _read_csv_rows(
+    path: Path,
+) -> tuple[tuple[str, ...], list[tuple[int, dict[str, str]]]]:
     _require_regular_file(path)
     with path.open(newline="", encoding="utf-8") as handle:
         reader = csv.reader(handle)
@@ -295,8 +297,7 @@ def _validate_manifest(bundle: Path) -> tuple[dict[str, Any], str]:
             )
         if actual_hash != expected_hash:
             raise ValueError(
-                f"artifact {name!r} checksum changed: "
-                f"{actual_hash} != {expected_hash}"
+                f"artifact {name!r} checksum changed: {actual_hash} != {expected_hash}"
             )
     return manifest, _sha256(manifest_path)
 
