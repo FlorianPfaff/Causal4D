@@ -13,6 +13,7 @@ _SUCCESS_GATE_THRESHOLD_PATH = re.compile(
 )
 _DIRECTION_ANGLE_FIELD = "direction_error_deg"
 
+
 @dataclass
 class Comparison:
     """Accumulate exact and tolerance-governed semantic differences."""
@@ -37,8 +38,7 @@ class Comparison:
         self.exact_numeric_comparisons += 1
         if expected != actual:
             self.add_mismatch(
-                f"{path}: exact numeric value differs "
-                f"({expected!r} versus {actual!r})"
+                f"{path}: exact numeric value differs ({expected!r} versus {actual!r})"
             )
 
     def compare_float(
@@ -53,9 +53,7 @@ class Comparison:
     ) -> None:
         self.numeric_comparisons += 1
         if not math.isfinite(expected) or not math.isfinite(actual):
-            self.add_mismatch(
-                f"{path}: non-finite floating-point values are forbidden"
-            )
+            self.add_mismatch(f"{path}: non-finite floating-point values are forbidden")
             return
         absolute = abs(actual - expected)
         denominator = max(abs(expected), abs(actual), absolute_tolerance)
@@ -266,4 +264,3 @@ def _validate_success_gates_document(
             f"{label}.overall_passed: {overall_passed!r} is inconsistent with "
             "the individual gate decisions"
         )
-
