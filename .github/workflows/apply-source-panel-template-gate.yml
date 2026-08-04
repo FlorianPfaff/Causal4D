@@ -1,0 +1,184 @@
+name: Apply source-panel template completeness gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-source-panel-template-gate.yml"
+      - "src/causal4d/preacquisition_source_panel_control.py"
+      - "tests/test_preacquisition_source_panel_control.py"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out acquisition-control branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/source-panel-acquisition-control
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Apply fail-closed template gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+
+          source_path = Path(
+              "src/causal4d/preacquisition_source_panel_control.py"
+          )
+          source = source_path.read_text(encoding="utf-8")
+          old_missing = '''    missing_template_ids = [
+              result["execution_id"]
+              for result in results
+              if not result["template_present"] and not result["manifest_present"]
+          ]
+          '''
+          new_missing = '''    missing_template_ids = [
+              result["execution_id"]
+              for result in results
+              if not result["template_present"]
+          ]
+          '''
+          if old_missing in source:
+              source = source.replace(old_missing, new_missing)
+          elif new_missing not in source:
+              raise RuntimeError("missing-template identity anchor changed")
+
+          old_valid = '''    valid = not (
+              invalid_ids
+              or invalid_template_ids
+              or unexpected_directories
+              or out_of_order
+          )
+          '''
+          new_valid = '''    valid = not (
+              invalid_ids
+              or invalid_template_ids
+              or missing_template_ids
+              or unexpected_directories
+              or out_of_order
+          )
+          '''
+          if old_valid in source:
+              source = source.replace(old_valid, new_valid)
+          elif new_valid not in source:
+              raise RuntimeError("source-panel validity anchor changed")
+          source_path.write_text(source, encoding="utf-8")
+
+          tests_path = Path("tests/test_preacquisition_source_panel_control.py")
+          tests = tests_path.read_text(encoding="utf-8")
+          addition = dedent(
+              '''\
+
+
+              def test_status_rejects_missing_template_before_manifest(
+                  monkeypatch: pytest.MonkeyPatch,
+                  tmp_path: Path,
+              ) -> None:
+                  protocol, v2, v4 = _patch_chain(monkeypatch)
+                  _scaffold(tmp_path, protocol, v2, v4)
+                  first = v2["preacquisition_signature_panel"]["executions"][0]
+                  template = tmp_path / SOURCE_PANEL_MANIFEST_TEMPLATE_PATH.format(
+                      execution_id=first["execution_id"]
+                  )
+                  template.unlink()
+
+                  status = source_control.build_source_panel_status(
+                      tmp_path,
+                      tmp_path,
+                      verify_file_hashes=True,
+                  )
+
+                  assert status["valid"] is False
+                  assert status["complete"] is False
+                  assert status["missing_template_ids"] == [first["execution_id"]]
+                  assert (
+                      f"template_missing:{first['execution_id']}"
+                      in status["blockers"]
+                  )
+
+
+              def test_complete_panel_rejects_deleted_template(
+                  monkeypatch: pytest.MonkeyPatch,
+                  tmp_path: Path,
+              ) -> None:
+                  protocol, v2, v4 = _patch_chain(monkeypatch)
+                  _scaffold(tmp_path, protocol, v2, v4)
+                  executions = v2["preacquisition_signature_panel"]["executions"]
+                  for execution in executions:
+                      manifest = _completed_manifest(
+                          tmp_path,
+                          execution,
+                          protocol,
+                          v4,
+                      )
+                      _write_final_manifest(tmp_path, execution, manifest)
+                  first = executions[0]
+                  template = tmp_path / SOURCE_PANEL_MANIFEST_TEMPLATE_PATH.format(
+                      execution_id=first["execution_id"]
+                  )
+                  template.unlink()
+
+                  status = source_control.build_source_panel_status(
+                      tmp_path,
+                      tmp_path,
+                      verify_file_hashes=True,
+                  )
+
+                  assert status["validated_executions"] == 12
+                  assert status["valid"] is False
+                  assert status["complete"] is False
+                  assert status["passed"] is False
+                  assert status["missing_template_ids"] == [first["execution_id"]]
+              '''
+          )
+          if "test_complete_panel_rejects_deleted_template" not in tests:
+              tests += addition
+          tests_path.write_text(tests, encoding="utf-8")
+          PY
+
+      - name: Validate focused acquisition contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e ".[dev]"
+          python -m ruff format \
+            src/causal4d/preacquisition_source_panel_control.py \
+            tests/test_preacquisition_source_panel_control.py
+          python -m ruff check \
+            src/causal4d/preacquisition_source_panel_control.py \
+            tests/test_preacquisition_source_panel_control.py
+          python -m pytest -q \
+            tests/test_preacquisition_source_panel_control.py \
+            tests/test_preacquisition_source_panel_registered_chain.py \
+            tests/test_preacquisition_readiness.py
+
+      - name: Commit validated source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add \
+            src/causal4d/preacquisition_source_panel_control.py \
+            tests/test_preacquisition_source_panel_control.py
+          if git diff --cached --quiet; then
+            echo "Template completeness gate is already applied."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Require all source-panel templates"
+          git push origin HEAD:agent/source-panel-acquisition-control
