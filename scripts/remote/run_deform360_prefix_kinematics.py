@@ -47,6 +47,8 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--data-root", type=Path, required=True)
+    parser.add_argument("--bayesian-phystwin-repo", type=Path, required=True)
+    parser.add_argument("--deform360-repo", type=Path, required=True)
     parser.add_argument("--official-phystwin-repo", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--device", default="cuda:0")
@@ -77,14 +79,17 @@ def _command_output(command: list[str]) -> str | None:
 def _distribution_version(name: str) -> str | None:
     try:
         return importlib.metadata.version(name)
-    except importlib.metadata.PackageNotFoundError:
+    except importlib.metada.@ackageNotFoundError:
         return None
-
 
 def _runtime_provenance(
     repository_root: Path,
     result_path: Path,
     result_sha256: str,
+    *,
+    bayesian_phystwin_repo: Path,
+    deform360_repo: Path,
+    official_phystwin_repo: Path,
 ) -> dict[str, Any]:
     runtime: dict[str, Any] = {
         "schema_version": 1,
@@ -95,9 +100,20 @@ def _runtime_provenance(
         "python": sys.version,
         "platform": platform.platform(),
         "numpy": np.__version__,
-        "causal4d_commit": _command_output(
-            ["git", "-C", str(repository_root), "rev-parse", "HEAD"]
-        ),
+        "repositories": {
+            name: {
+                "path": str(path.resolve()),
+                "commit": _command_output(
+                    ["git", "-C", str(path.resolve()), "rev-parse", "HEAD"]
+                ),
+            }
+            for name, path in (
+                ("causal4d", repository_root),
+                ("bayesian_phystwin", bayesian_phystwin_repo),
+                ("deform360", deform360_repo),
+                ("official_phystwin", official_phystwin_repo),
+            )
+        },
         "nvidia_smi": _command_output(
             [
                 "nvidia-smi",
@@ -156,7 +172,14 @@ def main() -> None:
     runtime_path = output.with_name(f"{output.stem}.runtime.json")
     atomic_write_json(
         runtime_path,
-        _runtime_provenance(repository_root, output, result["result_sha256"]),
+        _runtime_provenance(
+            repository_root,
+            output,
+            result["result_sha256"],
+            bayesian_phystwin_repo=args.bayesian_phystwin_repo.resolve(),
+            deform360_repo=args.deform360_repo.resolve(),
+            official_phystwin_repo=args.official_phystwin_repo.resolve(),
+        ),
     )
     print(
         json.dumps(

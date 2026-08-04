@@ -99,6 +99,8 @@ result="$output_dir/result.json"
 python "$repository_root/scripts/remote/run_deform360_prefix_kinematics.py" \
   --repository-root "$repository_root" \
   --data-root "$data_root" \
+  --bayesian-phystwin-repo "$bpt_root" \
+  --deform360-repo "$deform360_root" \
   --official-phystwin-repo "$official_root" \
   --output "$result" \
   --device cuda:0

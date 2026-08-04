@@ -38,6 +38,21 @@ def test_prefix_kinematics_workflow_pins_inputs_and_archives_evidence() -> None:
     assert "ref: 2b6630528141b9cba5a7677c8b88b2129b4a8390" in text
     assert "read_bpt_pin.py" in text
     assert "run_deform360_prefix_kinematics_workflow.sh" in text
+    shell = (
+        ROOT / "scripts" / "remote" / "run_deform360_prefix_kinematics_workflow.sh"
+    ).read_text(encoding="utf-8")
+    assert "--bayesian-phystwin-repo" in shell
+    assert "--deform360-repo" in shell
+    runner = (
+        ROOT / "scripts" / "remote" / "run_deform360_prefix_kinematics.py"
+    ).read_text(encoding="utf-8")
+    for repository_name in (
+        "causal4d",
+        "bayesian_phystwin",
+        "deform360",
+        "official_phystwin",
+    ):
+        assert f'("{repository_name}",' in runner
     assert "result.runtime.json" in (
         ROOT / "scripts" / "remote" / "run_deform360_prefix_kinematics_workflow.sh"
     ).read_text(encoding="utf-8")
