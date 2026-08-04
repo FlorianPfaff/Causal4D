@@ -364,7 +364,7 @@ def publish_source_panel_manifest(
 ) -> dict[str, Any]:
     """Validate and publish exactly the next source-panel manifest once."""
 
-    protocol, v2, _, v4 = load_registered_preacquisition_chain(repository_root)
+    protocol, _, _, v4 = load_registered_preacquisition_chain(repository_root)
     root = _resolved_dataset_root(dataset_root)
     status_before = build_source_panel_status(
         repository_root,
