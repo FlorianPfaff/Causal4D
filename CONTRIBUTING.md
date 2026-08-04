@@ -133,6 +133,8 @@ promotion. When a change is maintenance-only, state that boundary explicitly.
 
 ## Licensing
 
-A repository license has not yet been selected. Do not add, replace, or infer a
-license in a technical pull request. Licensing requires an explicit maintainer and,
-where applicable, institutional rights-holder decision.
+Causal4D is distributed under the MIT License in `LICENSE`. Contributions are
+accepted for inclusion under those terms. Do not replace the repository license or
+apply different terms to datasets, checkpoints, evidence bundles, or paper assets
+without an explicit maintainer and, where applicable, institutional rights-holder
+decision.
