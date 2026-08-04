@@ -50,6 +50,12 @@ def test_demo_workflow_uploads_all_presentation_artifacts() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
     assert "workflow_dispatch:" in text
+    assert "default: github-hosted" in text
+    assert "'ubuntu-latest'" in text
+    assert (
+        "fromJSON('[\"self-hosted\",\"Linux\",\"X64\",\"collaborator-demo\"]')"
+        in text
+    )
     assert "causal4d.cli.dynamic_contact_demo" in text
     assert "--require-gates" in text
     assert "causal4d_dynamic_contact_demo.mp4" in text
@@ -58,3 +64,17 @@ def test_demo_workflow_uploads_all_presentation_artifacts() -> None:
     assert "summary.json" in text
     assert "SHA256SUMS" in text
     assert "actions/upload-artifact@" in text
+
+
+def test_demo_workflow_caches_only_on_hosted_runners() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    hosted = "      - name: Set up Python 3.12 with pip cache\n"
+    self_hosted = "      - name: Set up Python 3.12 without Actions cache\n"
+    install = "      - name: Install controlled-demo renderer\n"
+    assert hosted in text
+    assert self_hosted in text
+    assert "        if: inputs.runner != 'self-hosted'\n" in text
+    assert "        if: inputs.runner == 'self-hosted'\n" in text
+    assert text.count("          cache: pip\n") == 1
+    assert text.index(hosted) < text.index(self_hosted) < text.index(install)
