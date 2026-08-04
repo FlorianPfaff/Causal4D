@@ -31,6 +31,7 @@ _NONFINITE_TEXT = {
     "-infinity",
 }
 
+
 def _read_csv_bytes(
     payload: bytes,
     *,
