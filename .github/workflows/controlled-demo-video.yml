@@ -1,0 +1,85 @@
+name: Controlled collaborator demo video
+
+on:
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: Representative controlled-case seed
+        required: true
+        default: "0"
+        type: string
+      prefix_frame_count:
+        description: Representative contact-onset frame
+        required: true
+        default: "6"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: controlled-collaborator-demo-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  render:
+    name: Render controlled MP4, GIF, and poster
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out Causal4D
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install controlled-demo renderer
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . matplotlib pillow imageio-ffmpeg
+          python -m pip check
+
+      - name: Render collaborator bundle
+        run: |
+          python -m causal4d.cli.dynamic_contact_demo \
+            --output-dir controlled-collaborator-demo \
+            --seed "${{ inputs.seed }}" \
+            --prefix-frame-count "${{ inputs.prefix_frame_count }}" \
+            --fps 4 \
+            --require-gates
+
+      - name: Verify rendered artifacts
+        shell: bash
+        run: |
+          test -s controlled-collaborator-demo/causal4d_dynamic_contact_demo.mp4
+          test -s controlled-collaborator-demo/causal4d_dynamic_contact_demo.gif
+          test -s controlled-collaborator-demo/causal4d_dynamic_contact_poster.png
+          test -s controlled-collaborator-demo/summary.json
+          test -s controlled-collaborator-demo/summary.md
+          python -m json.tool controlled-collaborator-demo/summary.json > /dev/null
+          (
+            cd controlled-collaborator-demo
+            sha256sum \
+              causal4d_dynamic_contact_demo.mp4 \
+              causal4d_dynamic_contact_demo.gif \
+              causal4d_dynamic_contact_poster.png \
+              summary.json \
+              summary.md \
+              | sort > SHA256SUMS
+          )
+
+      - name: Publish result summary
+        run: cat controlled-collaborator-demo/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload collaborator bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v6.0.0
+        with:
+          name: causal4d-controlled-collaborator-demo-${{ github.run_id }}
+          path: controlled-collaborator-demo
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 6

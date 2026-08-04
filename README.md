@@ -133,6 +133,12 @@ causal4d benchmark latent-contact \
   --output-dir runs/causal4d-latent-contact-v1
 ```
 
+Generate the controlled collaborator video through the
+[`Controlled collaborator demo video`](.github/workflows/controlled-demo-video.yml)
+workflow. The uploaded bundle contains an MP4, GIF, poster, summary, and
+checksums. Its presentation and claim boundary are documented in
+[docs/controlled_collaborator_demo.md](docs/controlled_collaborator_demo.md).
+
 Validate the locked same-object real protocol:
 
 ```bash

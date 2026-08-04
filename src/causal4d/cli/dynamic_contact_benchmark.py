@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
 from typing import Any
@@ -15,10 +15,23 @@ from causal4d.dynamic_contact import (
     ContactTransitionConfig,
     DynamicContactInferenceConfig,
     DynamicContactPathBank,
+    DynamicContactPosterior,
     enumerate_contact_paths,
     first_activation_frame,
     infer_dynamic_contact_posterior,
 )
+
+
+@dataclass(frozen=True)
+class DelayedContactTrace:
+    """Trace used to audit and visualize one controlled benchmark case."""
+
+    summary: dict[str, Any]
+    command_activation: np.ndarray
+    truth_m: np.ndarray
+    observations_m: np.ndarray
+    static_persistence_m: np.ndarray
+    posterior: DynamicContactPosterior
 
 
 def _simulate_path(
@@ -43,13 +56,13 @@ def _simulate_path(
     return trajectory
 
 
-def delayed_contact_case(
+def delayed_contact_trace(
     *,
     seed: int = 0,
     frame_count: int = 24,
     prefix_frame_count: int = 6,
-) -> dict[str, Any]:
-    """Run one action-known contact-onset case without reading future observations."""
+) -> DelayedContactTrace:
+    """Run and retain one case without reading future observations."""
 
     if not 2 <= prefix_frame_count < frame_count - 2:
         raise ValueError("prefix_frame_count must leave a meaningful future")
@@ -125,7 +138,7 @@ def delayed_contact_case(
     )
     future_coverage = float(np.mean(truth_covered[future]))
     improvement = 1.0 - dynamic_rmse / static_rmse
-    return {
+    summary = {
         "protocol": "delayed_contact_onset_v1",
         "seed": seed,
         "frame_count": frame_count,
@@ -141,9 +154,7 @@ def delayed_contact_case(
         "relative_rmse_improvement": improvement,
         "true_contact_onset_frame": prefix_frame_count,
         "posterior_expected_contact_onset_frame": expected_onset,
-        "contact_onset_absolute_error_frames": abs(
-            expected_onset - prefix_frame_count
-        ),
+        "contact_onset_absolute_error_frames": abs(expected_onset - prefix_frame_count),
         "future_coverage": future_coverage,
         "map_path_id": posterior.map_path_id,
         "maximum_switch_probability": float(np.max(posterior.switch_probability)),
@@ -157,6 +168,29 @@ def delayed_contact_case(
             ),
         },
     }
+    return DelayedContactTrace(
+        summary=summary,
+        command_activation=activation,
+        truth_m=truth,
+        observations_m=observations,
+        static_persistence_m=static_inactive,
+        posterior=posterior,
+    )
+
+
+def delayed_contact_case(
+    *,
+    seed: int = 0,
+    frame_count: int = 24,
+    prefix_frame_count: int = 6,
+) -> dict[str, Any]:
+    """Run one action-known contact-onset case without reading future observations."""
+
+    return delayed_contact_trace(
+        seed=seed,
+        frame_count=frame_count,
+        prefix_frame_count=prefix_frame_count,
+    ).summary
 
 
 def _parser() -> argparse.ArgumentParser:
