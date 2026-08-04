@@ -16,8 +16,10 @@ The boundary performs two independent checks before recomputation:
    agreement between summary and gate artifacts.
 
 The two verifiers must report the same source-manifest SHA-256. The low-level
-analyzer must then retain that exact manifest identity. A disagreement at any of
-those three stages stops publication.
+analyzer must then retain that exact manifest identity. After analysis, both
+verifiers run again and their complete reports must equal the pre-analysis reports.
+This closes the interval in which a mutable bundle could otherwise change after
+admission but before interpretation. Any disagreement stops publication.
 
 Published source provenance contains the portable bundle name, manifest digest,
 verified artifact identities, and both integrity reports. Runner-local absolute
