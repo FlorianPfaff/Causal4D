@@ -31,19 +31,21 @@ Ruff-formatted without forcing unrelated historical files into the same change.
 
 ## Private repository access
 
-Configure two least-privilege repository credentials:
+Configure the least-privilege repository credentials used at each private
+boundary:
 
-- `BPT_READ_SSH_KEY`, a read-only deploy key for
+- `BPT_READ_SSH_KEY`, a read-only SSH identity for
   `IPS-Stuttgart/BayesianPhysTwin`;
 - `PROB4D_READ_TOKEN`, a token with read access to
   `IPS-Stuttgart/Prob4D`.
 
-The canonical Prob4D token name matches BayesianPhysTwin's producer-gate
-workflow, while BayesianPhysTwin uses the repository's working deploy-key path
-after the organization transfer. Trusted same-repository pull requests, pushes,
-scheduled runs, and manual dispatches now **fail** when either required
-credential is absent. The three-repository workflow is not allowed to report
-success after skipping its checkouts, wheel builds, and compatibility tests.
+`BPT_READ_SSH_KEY` is mandatory for trusted same-repository validation because
+Causal4D must execute its current BayesianPhysTwin consumer boundary. The
+credentialed Prob4D producer gate follows the same policy as BayesianPhysTwin's
+canonical three-repository workflow: on pull-request and push events, an absent
+or inaccessible `PROB4D_READ_TOKEN` is reported explicitly and no current
+Prob4D execution or evidence is admitted. Scheduled and manually dispatched
+validation remains fail-closed when the token is unavailable.
 
 Tag releases also fail in the main CI workflow when its required private
 credential is absent, so a skipped pinned-provider job cannot authorize release
@@ -52,22 +54,24 @@ publication.
 GitHub does not expose repository secrets to pull requests from external forks.
 Those events receive a dedicated `External PR cannot access private providers`
 result explaining that private coverage is unavailable. A maintainer must
-reproduce the proposed head on a trusted same-repository branch and obtain a
-passing installed-wheel golden path before merge.
+reproduce the proposed head on a trusted same-repository branch before merge.
 
 ## Three-repository installed-wheel golden path
 
 `.github/workflows/bayesian-phystwin-provider-compatibility.yml` is the terminal
-Prob4D -> Bayesian-PhysTwin -> Causal4D compatibility check. It runs on relevant
+Prob4D -> BayesianPhysTwin -> Causal4D compatibility check. It runs on relevant
 same-repository pull requests and pushes, can be dispatched with explicit BPT
 and Prob4D revisions, and runs weekly against both private repositories' `main`
 branches.
 
-The workflow begins with a separate credential gate. For trusted events, a
-missing `PROB4D_READ_TOKEN` or `BPT_READ_SSH_KEY` is a hard configuration
-failure and prevents a false green result. Only an external-fork pull request
-can use the explicitly labelled unavailable path, because GitHub withholds
-repository secrets by design.
+The workflow first requires the working BayesianPhysTwin SSH credential. It then
+probes `PROB4D_READ_TOKEN` before any producer checkout. When the token is
+available, the full installed-wheel path is mandatory. When it is unavailable
+on a continuous pull-request or push event, the workflow records the exact
+unavailable status and states that no current-Prob4D execution or evidence was
+admitted; the required Causal4D CI and pinned BayesianPhysTwin integration run as
+separate checks. Scheduled and manual validation rejects the same unavailable
+state.
 
 The installed-wheel job records the exact clean revision of every checkout,
 builds one wheel for each repository, records each wheel's SHA-256 identity, and
@@ -83,7 +87,7 @@ The compatibility path:
 
 1. reconstructs the deterministic Prob4D joint-gauge observation fixture and
    checks its fixed content address;
-2. lets Bayesian-PhysTwin independently validate causal lineage, adapt the
+2. lets BayesianPhysTwin independently validate causal lineage, adapt the
    observation to a gauge-aware batch, and execute a deterministic update;
 3. asserts that conditional local covariance is passed unchanged while the
    shared low-rank gauge root remains an explicit nuisance, preventing
@@ -115,7 +119,7 @@ formed:
 1. Prob4D's strict loader requires an explicit causal stream contract v2, the
    sequential joint gauge tree, canonical shared factors, both calibration IDs,
    and independently verified runtime provenance;
-2. Bayesian-PhysTwin's claim-bearing adapter validates the producer statement,
+2. BayesianPhysTwin's claim-bearing adapter validates the producer statement,
    full cross-window covariance, calibration completeness, and fallback policy
    before constructing the innovation, then executes the deterministic guarded
    update twice and requires exact parity;
@@ -155,12 +159,12 @@ expected rejection.
 core job:
 
 - hosted CPU vision/OpenCV tests run weekly;
-- BPT OpenCV collection and Warp CPU tests run separately when the private token
-  is configured;
+- BPT OpenCV collection and Warp CPU tests run separately when the private SSH
+  credential is configured;
 - the CUDA/Warp job is manual and targets a self-hosted runner carrying the
   labels `self-hosted`, `linux`, `x64`, and `gpu`.
 
-The manual GPU job additionally requires the same `BPT_READ_TOKEN` secret.
+The manual GPU job additionally requires `BPT_READ_SSH_KEY`.
 
 ## Reproducing the wheel boundary locally
 
@@ -170,7 +174,7 @@ repositories and a token is not needed once they are available:
 
 ```bash
 python -m build --wheel --outdir /tmp/three-repo-wheels Prob4D
-python -m build --wheel --outdir /tmp/three-repo-wheels Bayesian-PhysTwin
+python -m build --wheel --outdir /tmp/three-repo-wheels BayesianPhysTwin
 python -m build --wheel --outdir /tmp/three-repo-wheels Causal4D
 python -m venv /tmp/three-repo-venv
 /tmp/three-repo-venv/bin/python -m pip install /tmp/three-repo-wheels/*.whl
