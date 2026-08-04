@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = (
     ROOT / ".github" / "workflows" / "bayesian-phystwin-provider-compatibility.yml"
 )
+SELF_HOSTED_WORKFLOW = ROOT / ".github" / "workflows" / "self-hosted-evaluation.yml"
 COMMON = ROOT / "ci" / "three_repository_common.py"
 MANIFEST = ROOT / "ci" / "three_repository_manifest.py"
 GOLDEN_PATH = ROOT / "ci" / "three_repository_golden_path.py"
@@ -17,10 +18,22 @@ def test_trusted_events_cannot_pass_by_skipping_private_repositories() -> None:
 
     assert "credential-gate:" in text
     assert "Require private-repository read access" in text
+    assert "Enforce private-repository deploy keys" in text
     assert "exit 1" in text
     assert "needs: credential-gate" in text
     assert "steps.access.outputs.enabled" not in text
-    assert "the required three-repository golden path cannot run" in text
+    assert "This check is not allowed to pass" in text
+
+
+def test_private_provider_checkouts_use_repository_scoped_deploy_keys() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}" in text
+    assert "PROB4D_READ_SSH_KEY: ${{ secrets.PROB4D_READ_SSH_KEY }}" in text
+    assert "ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}" in text
+    assert "ssh-key: ${{ secrets.PROB4D_READ_SSH_KEY }}" in text
+    assert "BPT_READ_TOKEN" not in text
+    assert "token: ${{ secrets." not in text
 
 
 def test_external_fork_limitation_is_separate_and_explicit() -> None:
@@ -34,6 +47,7 @@ def test_external_fork_limitation_is_separate_and_explicit() -> None:
 
 def test_transferred_repository_locations_are_used_consistently() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
+    self_hosted = SELF_HOSTED_WORKFLOW.read_text(encoding="utf-8")
     common = COMMON.read_text(encoding="utf-8")
     manifest = MANIFEST.read_text(encoding="utf-8")
     golden_path = GOLDEN_PATH.read_text(encoding="utf-8")
@@ -48,6 +62,10 @@ def test_transferred_repository_locations_are_used_consistently() -> None:
 
     assert "repository: IPS-Stuttgart/BayesianPhysTwin" in workflow
     assert "repository: IPS-Stuttgart/Prob4D" in workflow
+    assert "repository: IPS-Stuttgart/BayesianPhysTwin" in self_hosted
+    assert "ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}" in self_hosted
+    assert "BPT_READ_TOKEN" not in self_hosted
+    assert "IPS-Stuttgart/Bayesian-PhysTwin" not in self_hosted
     assert "FlorianPfaff/Bayesian-PhysTwin" not in workflow
     assert "FlorianPfaff/Prob4D" not in workflow
     assert "FlorianPfaff/Causal4D" not in manifest
