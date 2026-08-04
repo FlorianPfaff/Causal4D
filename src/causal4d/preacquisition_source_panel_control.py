@@ -138,7 +138,9 @@ def _execution_status(
         "session_id": session_id,
         "manifest_path": manifest_relative,
         "template_path": template_relative,
-        "manifest_present": manifest_path.is_file(),
+        "manifest_present": (
+            manifest_path.exists() or manifest_path.is_symlink()
+        ),
         "template_present": template_path.is_file(),
         "template_valid": None,
         "template_error": None,
