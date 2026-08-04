@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+import importlib
 from typing import BinaryIO, Protocol, cast
 
 
@@ -15,11 +16,11 @@ class _FcntlModule(Protocol):
 
 
 try:
-    import fcntl as _fcntl_import
-except ImportError:  # pragma: no cover - exercised through the fail-closed test
-    _fcntl_import = None
+    _fcntl_module: object | None = importlib.import_module("fcntl")
+except ModuleNotFoundError:  # pragma: no cover - fail-closed test replaces backend
+    _fcntl_module = None
 
-_fcntl = cast(_FcntlModule | None, _fcntl_import)
+_fcntl = cast(_FcntlModule | None, _fcntl_module)
 _LOCKING_ERROR = (
     "acquisition journal append and seal require POSIX advisory file locking"
 )
