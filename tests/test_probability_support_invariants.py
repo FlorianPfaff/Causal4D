@@ -266,12 +266,19 @@ def test_contact_rollout_bank_is_immutable_validated_and_support_preserving() ->
     np.testing.assert_array_equal(posterior, expected)
 
     no_op = bank.update_weights(
-        np.asarray([np.nan]),
-        prefix_frame_count=-1,
+        bank.trajectories[0, 0].copy(),
+        prefix_frame_count=4,
         likelihood_scale_m=1.0,
         likelihood_power=0.0,
     )
     np.testing.assert_array_equal(no_op, expected)
+    with pytest.raises(ValueError, match="prefix_frame_count"):
+        bank.update_weights(
+            np.asarray([np.nan]),
+            prefix_frame_count=-1,
+            likelihood_scale_m=1.0,
+            likelihood_power=0.0,
+        )
     assert not bank.trajectories.flags.writeable
     assert not bank.parameter_particles.flags.writeable
 
