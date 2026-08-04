@@ -44,8 +44,9 @@ def _validate_common_gate(
     dataset_root: Path,
     verify_file_hashes: bool,
 ) -> tuple[Mapping[str, Any], set[str], datetime]:
+    schema_version = gate.get("schema_version")
     _require(
-        gate.get("schema_version") == GATE_EVIDENCE_SCHEMA_VERSION,
+        type(schema_version) is int and schema_version == GATE_EVIDENCE_SCHEMA_VERSION,
         f"unsupported gate schema: {gate_id}",
     )
     _require(
@@ -384,8 +385,10 @@ def _validate_gate_file(
     try:
         gate = _read_json_mapping(path, name=f"{gate_id} gate")
         if gate.get("status") == "template":
+            schema_version = gate.get("schema_version")
             _require(
-                gate.get("schema_version") == GATE_EVIDENCE_SCHEMA_VERSION,
+                type(schema_version) is int
+                and schema_version == GATE_EVIDENCE_SCHEMA_VERSION,
                 "unsupported gate template schema",
             )
             _require(
@@ -438,7 +441,7 @@ def _validate_gate_file(
             verify_file_hashes=verify_file_hashes,
         )
         if gate_id == "signature_panel_complete":
-            _validate_signature_panel(
+            result["source_panel_evidence_sha256"] = _validate_signature_panel(
                 protocol,
                 v2,
                 v4,
@@ -505,8 +508,11 @@ def seal_preacquisition_gate(
         gate.get("target_outcomes_used") is False,
         "target_outcomes_used must be explicitly false before sealing",
     )
-    approver = str(approved_by).strip()
-    _require(bool(approver), "approved_by is required")
+    _require(
+        isinstance(approved_by, str) and bool(approved_by.strip()),
+        "approved_by must be a nonempty string",
+    )
+    approver = approved_by.strip()
     _parse_utc_timestamp(gate.get("completed_at_utc"), name="gate completed_at_utc")
     approved_at = approved_at_utc or datetime.now(timezone.utc).isoformat()
     _parse_utc_timestamp(approved_at, name="gate approved_at_utc")
@@ -525,10 +531,21 @@ def seal_preacquisition_gate(
         repository_root=repository_root,
         verify_file_hashes=True,
     )
+    collection_counts = {
+        name: real_status.get(name, 0)
+        for name in (
+            "manifest_executions",
+            "acquired_executions",
+            "validated_executions",
+        )
+    }
+    for name, value in collection_counts.items():
+        _require(
+            type(value) is int and value >= 0,
+            f"{name} must be a nonnegative integer",
+        )
     _require(
-        int(real_status.get("manifest_executions", 0)) == 0
-        and int(real_status.get("acquired_executions", 0)) == 0
-        and int(real_status.get("validated_executions", 0)) == 0,
+        all(value == 0 for value in collection_counts.values()),
         "confirmatory collection has already started",
     )
     freeze = real_status["prerequisites"]["method_freeze"]

@@ -148,9 +148,23 @@ def _reject_json_constant(value: str) -> Any:
     raise ValueError(f"non-finite JSON constant is forbidden: {value}")
 
 
+def _object_without_duplicate_json_keys(
+    pairs: list[tuple[str, Any]],
+) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        _require(
+            key not in value,
+            f"duplicate JSON object key is forbidden: {key!r}",
+        )
+        value[key] = item
+    return value
+
+
 def _read_json_mapping(path: Path, *, name: str) -> dict[str, Any]:
     payload = json.loads(
         path.read_text(encoding="utf-8"),
+        object_pairs_hook=_object_without_duplicate_json_keys,
         parse_constant=_reject_json_constant,
     )
     _require(isinstance(payload, Mapping), f"{name} must be a JSON object")
@@ -249,18 +263,49 @@ def _validate_descriptor_list(
     return paths
 
 
-def _expected_source_panel(v2: Mapping[str, Any]) -> tuple[list[str], list[str]]:
-    executions = list(v2["preacquisition_signature_panel"]["executions"])
-    execution_ids = [str(execution["execution_id"]) for execution in executions]
-    session_ids = [str(execution["session_id"]) for execution in executions]
+def _expected_source_panel(
+    v2: Mapping[str, Any],
+) -> tuple[list[str], list[str]]:
+    panel = v2.get("preacquisition_signature_panel")
     _require(
-        len(execution_ids) == 12, "registered source panel must contain 12 executions"
+        isinstance(panel, Mapping),
+        "registered source panel is missing",
+    )
+    raw_executions = panel.get("executions")
+    _require(
+        isinstance(raw_executions, list),
+        "registered source executions are missing",
+    )
+    execution_ids: list[str] = []
+    session_ids: list[str] = []
+    for index, execution in enumerate(raw_executions):
+        _require(
+            isinstance(execution, Mapping),
+            f"registered source execution {index} is invalid",
+        )
+        execution_id = execution.get("execution_id")
+        session_id = execution.get("session_id")
+        _require(
+            isinstance(execution_id, str) and bool(execution_id.strip()),
+            f"registered source execution {index} id is invalid",
+        )
+        _require(
+            isinstance(session_id, str) and bool(session_id.strip()),
+            f"registered source execution {index} session id is invalid",
+        )
+        execution_ids.append(execution_id)
+        session_ids.append(session_id)
+    _require(
+        len(execution_ids) == 12,
+        "registered source panel must contain 12 executions",
     )
     _require(
-        len(set(execution_ids)) == 12, "registered source execution ids are not unique"
+        len(set(execution_ids)) == 12,
+        "registered source execution ids are not unique",
     )
     _require(
-        len(set(session_ids)) == 12, "registered source sessions are not independent"
+        len(set(session_ids)) == 12,
+        "registered source sessions are not independent",
     )
     return execution_ids, session_ids
 
@@ -272,10 +317,14 @@ def source_panel_execution_manifest_template(
 ) -> dict[str, Any]:
     """Return one explicitly incomplete source-panel execution record."""
 
-    execution_id = str(execution["execution_id"])
-    session_id = str(execution["session_id"])
+    execution_id = execution.get("execution_id")
+    session_id = execution.get("session_id")
     _require(
-        bool(execution_id) and bool(session_id), "source execution ids are missing"
+        isinstance(execution_id, str)
+        and bool(execution_id.strip())
+        and isinstance(session_id, str)
+        and bool(session_id.strip()),
+        "source execution ids are missing or invalid",
     )
     return {
         "schema_version": 1,

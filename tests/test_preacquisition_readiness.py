@@ -37,10 +37,16 @@ def _registered_values() -> tuple[dict, dict, dict]:
         {
             "execution_id": f"source-{index:02d}",
             "session_id": f"session-{index:02d}",
+            "command_profile_id": "test-profile",
         }
         for index in range(12)
     ]
-    v2 = {"preacquisition_signature_panel": {"executions": executions}}
+    v2 = {
+        "preacquisition_signature_panel": {
+            "executions": executions,
+            "profiles": [{"id": "test-profile"}],
+        }
+    }
     v4 = {
         "plan_id": "test-preacquisition-v4",
         "amendment_sha256": "b" * 64,
@@ -281,7 +287,21 @@ def test_signature_gate_validates_all_bound_source_manifests(tmp_path: Path) -> 
         data_path = tmp_path / data_relative
         data_path.parent.mkdir(parents=True, exist_ok=True)
         data_path.write_bytes(execution_id.encode("utf-8"))
-        manifest = source_panel_execution_manifest_template(execution, protocol, v4)
+        template = source_panel_execution_manifest_template(
+            execution,
+            protocol,
+            v4,
+        )
+        template_relative = SOURCE_PANEL_MANIFEST_TEMPLATE_PATH.format(
+            execution_id=execution_id
+        )
+        template_path = tmp_path / template_relative
+        template_path.parent.mkdir(parents=True, exist_ok=True)
+        template_path.write_text(
+            json.dumps(template, sort_keys=True, allow_nan=False),
+            encoding="utf-8",
+        )
+        manifest = deepcopy(template)
         manifest.update(
             {
                 "status": "complete",
@@ -319,6 +339,7 @@ def test_signature_gate_validates_all_bound_source_manifests(tmp_path: Path) -> 
 
     assert result["valid"] is True
     assert result["error"] is None
+    assert len(result["source_panel_evidence_sha256"]) == 64
 
 
 def test_software_gate_binds_freeze_attestation_and_distributions(
@@ -485,6 +506,23 @@ def test_confirmatory_manifest_before_readiness_is_invalid(
     assert status["valid"] is False
     assert status["ready"] is False
     assert "confirmatory_collection_already_started" in status["blockers"]
+
+
+def test_readiness_rejects_noninteger_confirmatory_counts(
+    monkeypatch, tmp_path: Path
+) -> None:
+    protocol, v2, v4 = _registered_values()
+    _patch_gate_results(monkeypatch)
+
+    with pytest.raises(ValueError, match="manifest_executions"):
+        evaluate_preacquisition_readiness(
+            protocol,
+            v2,
+            v4,
+            tmp_path,
+            _real_status(manifest_executions=0.0),
+            verify_file_hashes=True,
+        )
 
 
 def test_operational_gate_may_not_postdate_method_freeze(
