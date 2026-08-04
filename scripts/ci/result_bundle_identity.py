@@ -13,6 +13,7 @@ from typing import Any, Mapping, Sequence
 
 RESULT_MANIFEST_NAME = "manifest.json"
 
+
 @dataclass(frozen=True)
 class ArtifactRecord:
     """Verified immutable identity for one result-bundle payload."""
@@ -163,10 +164,10 @@ def verify_result_manifest(
     for raw_name, raw_record in raw_artifacts.items():
         name = _safe_artifact_name(raw_name)
         if name in expected_names:
-            raise ValueError("duplicate normalized artifact name: {name!r}")
+            raise ValueError(f"duplicate normalized artifact name: {name!r}")
         expected_names.add(name)
         if not isinstance(raw_record, dict):
-            raise ValueError("artifact record for {name!r} must be an object")
+            raise ValueError(f"artifact record for {name!r} must be an object")
         expected_hash = raw_record.get("sha256")
         expected_bytes = raw_record.get("bytes")
         if not _valid_sha256(expected_hash):
@@ -201,7 +202,7 @@ def verify_result_manifest(
         if path.name == manifest_path.name:
             continue
         if path.is_symlink():
-            raise ValueError("result bundle contains a symlink: {path}")
+            raise ValueError(f"result bundle contains a symlink: {path}")
         if not path.is_file():
             raise ValueError(
                 f"result bundle contains an undeclared non-file entry: {path}"
@@ -222,4 +223,3 @@ def verify_result_manifest(
         benchmark=benchmark,
         artifacts=tuple(sorted(records, key=lambda record: record.name)),
     )
-
