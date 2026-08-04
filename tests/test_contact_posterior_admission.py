@@ -186,4 +186,6 @@ def test_analyzer_manifest_disagreement_is_rejected(
     )
 
     with pytest.raises(ValueError, match="analyzer and admission"):
-        admission.analyze_admitted_contact_posterior_bundle(tmp_path)
+        admission.analyze_admitted_contact_posterior_bundle(
+            tmp_path
+        )
