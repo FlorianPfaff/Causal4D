@@ -1,9 +1,9 @@
 name: Materialize topology covariance diagnostic
 
 on:
-  push:
-    branches:
-      - agent/topology-conditioned-contact-covariance
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
     paths:
       - ".github/workflows/materialize-topology-covariance.yml"
 
@@ -11,18 +11,22 @@ permissions:
   contents: write
 
 concurrency:
-  group: materialize-topology-covariance-${{ github.ref }}
-  cancel-in-progress: false
+  group: materialize-topology-covariance-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   materialize:
-    if: github.repository == 'IPS-Stuttgart/Causal4D'
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref ==
+      'agent/topology-conditioned-contact-covariance-v2'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Check out transport branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
           clean: true
 
@@ -118,6 +122,8 @@ jobs:
 
       - name: Publish clean implementation commit
         shell: bash
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -125,4 +131,4 @@ jobs:
           git add -A
           git diff --cached --check
           git commit -m "Add topology covariance diagnostic"
-          git push origin HEAD:agent/topology-conditioned-contact-covariance
+          git push origin "HEAD:${HEAD_BRANCH}"
