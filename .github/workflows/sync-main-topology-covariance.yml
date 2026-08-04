@@ -1,0 +1,40 @@
+name: Sync main into topology covariance branch
+
+on:
+  push:
+    branches:
+      - agent/topology-conditioned-contact-covariance-v2
+    paths:
+      - ".github/workflows/sync-main-topology-covariance.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-main-topology-covariance
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'IPS-Stuttgart/Causal4D'
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 15
+    steps:
+      - name: Check out implementation branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/topology-conditioned-contact-covariance-v2
+          fetch-depth: 0
+          clean: true
+
+      - name: Merge current main and remove one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --no-tags origin main
+          git merge --no-edit --no-ff origin/main
+          git rm .github/workflows/sync-main-topology-covariance.yml
+          git commit -m "Remove topology branch synchronization workflow"
+          git push origin HEAD:agent/topology-conditioned-contact-covariance-v2
