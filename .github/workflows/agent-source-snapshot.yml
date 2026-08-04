@@ -13,10 +13,13 @@ permissions:
 
 jobs:
   snapshot:
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          clean: true
       - name: Create source archive
         run: git archive --format=tar.gz --output=causal4d-source.tar.gz HEAD
       - name: Upload source archive
