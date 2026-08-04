@@ -219,8 +219,6 @@ def run_causal4d_rollout(
     from causal4d.phystwin_backend import (
         PhysTwinActionProposal,
         PhysTwinHypothesisConfig,
-        load_rollout_bank,
-        save_rollout_bank,
     )
     from causal4d.graph_provider_contract import (
         require_bayesian_phystwin_graph_provider,
@@ -233,6 +231,7 @@ def run_causal4d_rollout(
         require_bayesian_phystwin_replay_provider,
         validate_bayesian_phystwin_replay_provider,
     )
+    from causal4d.rollout_bank_io import load_rollout_bank, save_rollout_bank
 
     provider_manifest = require_bayesian_phystwin_provider(
         provider_revision="installed-wheel-golden-path"
