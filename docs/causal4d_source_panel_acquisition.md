@@ -23,10 +23,11 @@ The source-panel control surface enforces these invariants:
 - publication creates `manifest.json` exactly once and never overwrites it;
 - target-outcome fields are forbidden recursively;
 - templates do not count as completed evidence; and
-- source-panel completion requires all 12 manifests plus file-hash verification.
+- source-panel completion requires all 12 intact templates, all 12 final
+  manifests, and file-hash verification.
 
-An invalid template, an out-of-order manifest, an unexpected execution entry, a
-stale digest, or a malformed completed manifest fails closed.
+An invalid or missing template, an out-of-order manifest, an unexpected execution
+entry, a stale digest, or a malformed completed manifest fails closed.
 
 ## Scaffold once
 
@@ -50,9 +51,9 @@ source execution:
 preacquisition/source_panel/executions/<execution-id>/manifest.template.json
 ```
 
-Do not rename, edit in place, or promote that worksheet by a filesystem move.
-Create a separate completed JSON file for validation and exactly-once
-publication.
+Do not rename, edit in place, delete, or promote that worksheet by a filesystem
+move. Retain every worksheet through source-panel gate sealing. Create a separate
+completed JSON file for validation and exactly-once publication.
 
 ## Inspect the next execution
 
