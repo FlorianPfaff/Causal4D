@@ -1,0 +1,143 @@
+name: Deform360 source failure attribution
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/deform360-source-failure-attribution.yml"
+      - "scripts/ci/analyze_deform360_source_failure.py"
+      - "src/causal4d_public/deform360_source_failure_attribution.py"
+      - "tests/test_deform360_source_failure_attribution.py"
+      - "configs/causal4d_public/deform360_replication_v1.json"
+      - "milestones/deform360-replication-source-backend-v1/**"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/deform360-source-failure-attribution.yml"
+      - "scripts/ci/analyze_deform360_source_failure.py"
+      - "src/causal4d_public/deform360_source_failure_attribution.py"
+      - "tests/test_deform360_source_failure_attribution.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deform360-source-failure-attribution-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  attribution:
+    name: Verify and decompose frozen source failure
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install development environment
+        run: python -m pip install -e ".[dev]"
+
+      - name: Validate implementation and contracts
+        run: |
+          python -m ruff check \
+            src/causal4d_public/deform360_source_failure_attribution.py \
+            scripts/ci/analyze_deform360_source_failure.py \
+            tests/test_deform360_source_failure_attribution.py
+          python -m ruff format --check \
+            src/causal4d_public/deform360_source_failure_attribution.py \
+            scripts/ci/analyze_deform360_source_failure.py \
+            tests/test_deform360_source_failure_attribution.py
+          python -m pytest -q \
+            tests/test_deform360_source_failure_attribution.py \
+            tests/test_deform360_replication_backend.py \
+            tests/test_deform360_replication_fit.py
+
+      - name: Run deterministic source-only attribution twice
+        run: |
+          mkdir -p outputs/deform360-source-failure
+          python scripts/ci/analyze_deform360_source_failure.py \
+            --output outputs/deform360-source-failure/attribution-a.json \
+            | tee outputs/deform360-source-failure/summary-a.json
+          python scripts/ci/analyze_deform360_source_failure.py \
+            --output outputs/deform360-source-failure/attribution-b.json \
+            | tee outputs/deform360-source-failure/summary-b.json
+          cmp \
+            outputs/deform360-source-failure/attribution-a.json \
+            outputs/deform360-source-failure/attribution-b.json
+          cmp \
+            outputs/deform360-source-failure/summary-a.json \
+            outputs/deform360-source-failure/summary-b.json
+
+      - name: Record runtime environment
+        run: |
+          python -m pip freeze --all \
+            > outputs/deform360-source-failure/pip-freeze.txt
+          {
+            echo "repository=${GITHUB_REPOSITORY}"
+            echo "commit=${GITHUB_SHA}"
+            echo "workflow_run_id=${GITHUB_RUN_ID}"
+            echo "runner=${RUNNER_NAME}"
+            python --version
+            uname -a
+          } > outputs/deform360-source-failure/environment.txt
+
+      - name: Publish source-only interpretation
+        if: always()
+        run: |
+          {
+            echo "### Deform360 source failure attribution"
+            echo
+            if [[ -f outputs/deform360-source-failure/attribution-a.json ]]; then
+              python - <<'PY'
+          import json
+          from pathlib import Path
+
+          result = json.loads(
+              Path(
+                  "outputs/deform360-source-failure/attribution-a.json"
+              ).read_text(encoding="utf-8")
+          )
+          print(f"- Result SHA-256: `{result['result_sha256']}`")
+          print(
+              "- Classification counts: `"
+              + json.dumps(
+                  result["cohort_summary"]["classification_counts"],
+                  sort_keys=True,
+              )
+              + "`"
+          )
+          print(
+              "- Per-episode quality oracle wins: "
+              f"`{result['cohort_summary']['quality_oracle_win_fraction']}`"
+          )
+          print(
+              "- Target prefix access remains permitted: "
+              f"`{result['decision']['target_prefix_access_permitted']}`"
+          )
+          print(
+              "- Target future access remains permitted: "
+              f"`{result['decision']['target_future_access_permitted']}`"
+          )
+          PY
+            else
+              echo "- Attribution stopped before producing an artifact."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload complete attribution evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: deform360-source-failure-attribution-${{ github.run_id }}
+          path: outputs/deform360-source-failure/
+          if-no-files-found: error
+          retention-days: 30
