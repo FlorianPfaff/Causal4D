@@ -1,0 +1,92 @@
+name: Temporary Deform360 prefix-kinematics evidence
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/temporary-deform360-prefix-kinematics-evidence.yml"
+      - "configs/causal4d_public/deform360_prefix_kinematics_v1.json"
+      - "scripts/remote/find_deform360_replication_root.py"
+      - "scripts/remote/run_deform360_prefix_kinematics.py"
+      - "scripts/remote/run_deform360_prefix_kinematics_workflow.sh"
+      - "src/causal4d_public/deform360_prefix_kinematics.py"
+      - "src/causal4d_public/deform360_prefix_kinematics_diagnostic.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: temporary-deform360-prefix-kinematics-evidence-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  evaluate:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 360
+    steps:
+      - name: Require BayesianPhysTwin read access
+        env:
+          BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}
+        run: test -n "${BPT_READ_SSH_KEY}"
+
+      - name: Check out exact Causal4D pull-request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          clean: true
+
+      - name: Read exact BayesianPhysTwin pin
+        id: bpt-pin
+        run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out pinned BayesianPhysTwin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/BayesianPhysTwin
+          ref: ${{ steps.bpt-pin.outputs.sha }}
+          ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}
+          path: _bpt
+          persist-credentials: false
+          clean: true
+
+      - name: Check out pinned Deform360 code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: lhy0807/deform360
+          ref: 7fea8e20231a47641d1d2bc8791920ec4e62ec5e
+          path: _deform360
+          persist-credentials: false
+          clean: true
+
+      - name: Check out pinned official PhysTwin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Jianghanxiao/PhysTwin
+          ref: 2b6630528141b9cba5a7677c8b88b2129b4a8390
+          path: _official_phystwin
+          persist-credentials: false
+          clean: true
+
+      - name: Run locked source-only diagnostic
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p deform360-prefix-kinematics
+          bash scripts/remote/run_deform360_prefix_kinematics_workflow.sh \
+            "$PWD" \
+            "$PWD/_bpt" \
+            "$PWD/_deform360" \
+            "$PWD/_official_phystwin" \
+            "$PWD/deform360-prefix-kinematics" \
+            2>&1 | tee deform360-prefix-kinematics/run.log
+
+      - name: Upload exact source evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: deform360-prefix-kinematics-evidence-${{ github.event.pull_request.head.sha }}
+          path: deform360-prefix-kinematics/
+          if-no-files-found: error
+          retention-days: 30
