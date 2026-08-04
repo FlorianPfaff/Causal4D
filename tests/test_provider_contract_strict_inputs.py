@@ -47,9 +47,7 @@ def test_root_provider_loader_binds_the_requested_revision(
         "provider_revision": "different-revision",
         "schema_version": 1,
         "capabilities": list(BAYESIAN_PHYSTWIN_PROVIDER_CAPABILITIES),
-        "artifact_schema_versions": dict(
-            BAYESIAN_PHYSTWIN_ARTIFACT_SCHEMA_VERSIONS
-        ),
+        "artifact_schema_versions": dict(BAYESIAN_PHYSTWIN_ARTIFACT_SCHEMA_VERSIONS),
         "metadata": {
             "provider_api": "bayesian_phystwin.causal4d_provider_v1",
             "provider_api_version": 1,
@@ -69,6 +67,4 @@ def test_root_provider_loader_binds_the_requested_revision(
     )
 
     with pytest.raises(ValueError, match="revision does not match"):
-        load_bayesian_phystwin_provider_manifest(
-            provider_revision="requested-revision"
-        )
+        load_bayesian_phystwin_provider_manifest(provider_revision="requested-revision")
