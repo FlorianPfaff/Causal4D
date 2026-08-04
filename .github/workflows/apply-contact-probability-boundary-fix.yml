@@ -1,0 +1,251 @@
+name: Apply contact probability boundary fix
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-contact-probability-boundary-fix.yml"
+      - "src/causal4d/contact_posterior_source_integrity.py"
+      - "tests/test_contact_posterior_source_integrity.py"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out diagnostic branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/reproducibility-contact-diagnostics
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Apply machine-boundary validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          source_path = Path(
+              "src/causal4d/contact_posterior_source_integrity.py"
+          )
+          source = source_path.read_text(encoding="utf-8")
+
+          constant_anchor = (
+              "_REQUIRED_TRAJECTORY_METHODS = "
+              'frozenset({"nominal_physics", "latent_contact"})\n'
+          )
+          constant = (
+              constant_anchor
+              + "_UNIT_INTERVAL_BOUNDARY_TOLERANCE = 8.0 * math.ulp(1.0)\n"
+          )
+          if "_UNIT_INTERVAL_BOUNDARY_TOLERANCE" not in source:
+              if source.count(constant_anchor) != 1:
+                  raise RuntimeError("unit-interval constant anchor changed")
+              source = source.replace(constant_anchor, constant)
+
+          helper_anchor = (
+              "def _parse_bool(value: str, *, field: str, location: str) -> bool:\n"
+          )
+          helper = (
+              "def _parse_unit_interval_float(\n"
+              "    value: str,\n"
+              "    *,\n"
+              "    field: str,\n"
+              "    location: str,\n"
+              ") -> float:\n"
+              "    parsed = _parse_finite_float(\n"
+              "        value,\n"
+              "        field=field,\n"
+              "        location=location,\n"
+              "    )\n"
+              "    tolerance = _UNIT_INTERVAL_BOUNDARY_TOLERANCE\n"
+              "    if parsed < -tolerance or parsed > 1.0 + tolerance:\n"
+              "        raise ValueError(\n"
+              "            f\"{location}/{field} must be in [0, 1] within \"\n"
+              "            \"machine-boundary tolerance\"\n"
+              "        )\n"
+              "    return min(max(parsed, 0.0), 1.0)\n\n\n"
+          )
+          if "def _parse_unit_interval_float(" not in source:
+              if source.count(helper_anchor) != 1:
+                  raise RuntimeError("unit-interval helper anchor changed")
+              source = source.replace(helper_anchor, helper + helper_anchor)
+
+          old_validation = '''        for field in (
+              "node_confidence",
+              "node_truth_probability",
+              "node_brier",
+              "joint_effective_sample_size",
+              "joint_normalized_entropy",
+          ):
+              value = _parse_finite_float(row[field], field=field, location=location)
+              if field in {"node_confidence", "node_truth_probability"} and not (
+                  0.0 <= value <= 1.0
+              ):
+                  raise ValueError(f"{location}/{field} must be in [0, 1]")
+              if field == "node_brier" and value < 0.0:
+                  raise ValueError(f"{location}/{field} must be nonnegative")
+              if field == "joint_effective_sample_size" and value <= 0.0:
+                  raise ValueError(f"{location}/{field} must be positive")
+              if field == "joint_normalized_entropy" and not (
+                  0.0 <= value <= 1.0 + 1e-12
+              ):
+                  raise ValueError(f"{location}/{field} must be in [0, 1]")
+          '''
+          new_validation = '''        for field in (
+              "node_confidence",
+              "node_truth_probability",
+              "joint_normalized_entropy",
+          ):
+              _parse_unit_interval_float(
+                  row[field],
+                  field=field,
+                  location=location,
+              )
+          node_brier = _parse_finite_float(
+              row["node_brier"],
+              field="node_brier",
+              location=location,
+          )
+          if node_brier < 0.0:
+              raise ValueError(f"{location}/node_brier must be nonnegative")
+          joint_ess = _parse_finite_float(
+              row["joint_effective_sample_size"],
+              field="joint_effective_sample_size",
+              location=location,
+          )
+          if joint_ess <= 0.0:
+              raise ValueError(
+                  f"{location}/joint_effective_sample_size must be positive"
+              )
+          '''
+          if old_validation in source:
+              source = source.replace(old_validation, new_validation)
+          elif new_validation not in source:
+              raise RuntimeError("recovery probability validation anchor changed")
+          source_path.write_text(source, encoding="utf-8")
+
+          test_path = Path("tests/test_contact_posterior_source_integrity.py")
+          tests = test_path.read_text(encoding="utf-8")
+          if "import math\n" not in tests:
+              tests = tests.replace("import json\n", "import json\nimport math\n")
+
+          addition = '''
+
+
+def _rewrite_recovery_field(
+    bundle: Path,
+    *,
+    field: str,
+    value: str,
+) -> None:
+    path = bundle / "contact_recovery.csv"
+    with path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        assert reader.fieldnames is not None
+        header = tuple(reader.fieldnames)
+        rows = list(reader)
+    rows[0][field] = value
+    _write_csv(
+        path,
+        header,
+        [tuple(row[name] for name in header) for row in rows],
+    )
+    _write_manifest(bundle)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "node_confidence",
+        "node_truth_probability",
+        "joint_normalized_entropy",
+    ],
+)
+@pytest.mark.parametrize(
+    "value",
+    [
+        str(math.nextafter(1.0, math.inf)),
+        str(math.nextafter(0.0, -math.inf)),
+    ],
+)
+def test_unit_interval_fields_accept_machine_boundary_drift(
+    tmp_path: Path,
+    field: str,
+    value: str,
+) -> None:
+    bundle = _valid_bundle(tmp_path)
+    _rewrite_recovery_field(bundle, field=field, value=value)
+
+    report = verify_contact_posterior_source_bundle(bundle)
+
+    assert report["passed"] is True
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "node_confidence",
+        "node_truth_probability",
+        "joint_normalized_entropy",
+    ],
+)
+@pytest.mark.parametrize("value", ["1.0000000001", "-0.0000000001"])
+def test_unit_interval_fields_reject_material_boundary_violations(
+    tmp_path: Path,
+    field: str,
+    value: str,
+) -> None:
+    bundle = _valid_bundle(tmp_path)
+    _rewrite_recovery_field(bundle, field=field, value=value)
+
+    with pytest.raises(ValueError, match="must be in \\[0, 1\\]"):
+        verify_contact_posterior_source_bundle(bundle)
+          '''
+          if "test_unit_interval_fields_accept_machine_boundary_drift" not in tests:
+              tests += addition
+          test_path.write_text(tests, encoding="utf-8")
+          PY
+
+      - name: Validate focused contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e ".[dev]"
+          python -m ruff format \
+            src/causal4d/contact_posterior_source_integrity.py \
+            tests/test_contact_posterior_source_integrity.py
+          python -m ruff check \
+            src/causal4d/contact_posterior_source_integrity.py \
+            tests/test_contact_posterior_source_integrity.py
+          python -m pytest -q \
+            tests/test_contact_posterior_source_integrity.py \
+            tests/test_contact_posterior_admission.py \
+            tests/test_contact_posterior_bundle_verification.py
+
+      - name: Commit validated source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add \
+            src/causal4d/contact_posterior_source_integrity.py \
+            tests/test_contact_posterior_source_integrity.py
+          if git diff --cached --quiet; then
+            echo "Probability boundary fix is already applied."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Allow machine-boundary probability drift"
+          git push origin HEAD:agent/reproducibility-contact-diagnostics
