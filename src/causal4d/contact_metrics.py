@@ -51,9 +51,7 @@ def _credible_set(
     *,
     close_boundary_ties: bool = False,
 ) -> set[Value]:
-    ordered = sorted(
-        probabilities.items(), key=lambda item: item[1], reverse=True
-    )
+    ordered = sorted(probabilities.items(), key=lambda item: item[1], reverse=True)
     cumulative = 0.0
     selected: set[Value] = set()
     boundary_probability: float | None = None
@@ -89,9 +87,7 @@ def _categorical_entropy(probabilities: dict[Value, float]) -> tuple[float, floa
         [probability for probability in probabilities.values() if probability > 0.0]
     )
     entropy = -float(np.sum(positive * np.log(positive)))
-    normalized = (
-        entropy / np.log(len(probabilities)) if len(probabilities) > 1 else 0.0
-    )
+    normalized = entropy / np.log(len(probabilities)) if len(probabilities) > 1 else 0.0
     return entropy, float(normalized)
 
 
@@ -192,9 +188,7 @@ def contact_recovery_metrics(
         "node_map": ";".join(map(str, node_map)),
         "node_correct": bool(node_map == truth.contact_nodes),
         "node_confidence": float(node_confidence),
-        "node_map_set": "|".join(
-            ";".join(map(str, nodes)) for nodes in node_map_set
-        ),
+        "node_map_set": "|".join(";".join(map(str, nodes)) for nodes in node_map_set),
         "node_map_set_size": len(node_map_set),
         "node_truth_in_map_set": truth.contact_nodes in node_map_set,
         "node_support_size": len(node_probabilities),
@@ -277,9 +271,7 @@ def aggregate_contact_recovery(
             "mean_node_truth_probability": float(
                 np.mean([row["node_truth_probability"] for row in selected])
             ),
-            "mean_node_brier": float(
-                np.mean([row["node_brier"] for row in selected])
-            ),
+            "mean_node_brier": float(np.mean([row["node_brier"] for row in selected])),
             "node_credible_coverage": float(
                 np.mean([float(row["node_credible_covered"]) for row in selected])
             ),
@@ -289,9 +281,7 @@ def aggregate_contact_recovery(
             "gain_coverage": float(
                 np.mean([float(row["gain_covered"]) for row in selected])
             ),
-            "mean_gain_crps": float(
-                np.mean([row["gain_crps"] for row in selected])
-            ),
+            "mean_gain_crps": float(np.mean([row["gain_crps"] for row in selected])),
             "delay_map_accuracy": float(
                 np.mean([float(row["delay_map_correct"]) for row in selected])
             ),
@@ -301,9 +291,7 @@ def aggregate_contact_recovery(
             "delay_coverage": float(
                 np.mean([float(row["delay_covered"]) for row in selected])
             ),
-            "mean_delay_crps": float(
-                np.mean([row["delay_crps"] for row in selected])
-            ),
+            "mean_delay_crps": float(np.mean([row["delay_crps"] for row in selected])),
             "mean_slip_absolute_error": float(
                 np.mean([row["slip_absolute_error"] for row in selected])
             ),
@@ -324,9 +312,7 @@ def aggregate_contact_recovery(
             "node_map_set_coverage": "node_truth_in_map_set",
             "mean_node_map_set_size": "node_map_set_size",
             "mean_node_credible_set_size": "node_credible_set_size",
-            "node_tie_closed_credible_coverage": (
-                "node_tie_closed_credible_covered"
-            ),
+            "node_tie_closed_credible_coverage": ("node_tie_closed_credible_covered"),
             "mean_node_tie_closed_credible_set_size": (
                 "node_tie_closed_credible_set_size"
             ),
