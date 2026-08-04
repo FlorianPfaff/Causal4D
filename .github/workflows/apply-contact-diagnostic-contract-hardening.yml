@@ -1,0 +1,659 @@
+name: Apply contact diagnostic contract hardening
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - agent/reproducibility-contact-diagnostics
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out diagnostic branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/reproducibility-contact-diagnostics
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Apply fail-closed bundle and row-identity contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+
+
+          def replace_once(path: Path, old: str, new: str, label: str) -> None:
+              text = path.read_text(encoding="utf-8")
+              if text.count(old) != 1:
+                  raise RuntimeError(f"{label} patch anchor is not unique")
+              path.write_text(text.replace(old, new), encoding="utf-8")
+
+
+          Path("src/causal4d/result_bundle_verification.py").write_text(
+              dedent(
+                  '''\
+                  """Fail-closed verification for flat Causal4D result bundles."""
+
+                  from __future__ import annotations
+
+                  import hashlib
+                  import json
+                  from pathlib import Path, PurePosixPath
+                  from typing import Any
+
+
+                  def _sha256(path: Path) -> str:
+                      digest = hashlib.sha256()
+                      with path.open("rb") as handle:
+                          for block in iter(lambda: handle.read(1 << 20), b""):
+                              digest.update(block)
+                      return digest.hexdigest()
+
+
+                  def _object_without_duplicate_keys(
+                      pairs: list[tuple[str, Any]],
+                  ) -> dict[str, Any]:
+                      value: dict[str, Any] = {}
+                      for key, item in pairs:
+                          if key in value:
+                              raise ValueError(f"duplicate JSON object key: {key!r}")
+                          value[key] = item
+                      return value
+
+
+                  def _read_json_object(path: Path) -> dict[str, Any]:
+                      value = json.loads(
+                          path.read_text(encoding="utf-8"),
+                          object_pairs_hook=_object_without_duplicate_keys,
+                      )
+                      if not isinstance(value, dict):
+                          raise ValueError(f"JSON root must be an object: {path.name}")
+                      return value
+
+
+                  def _safe_artifact_name(value: str) -> str:
+                      path = PurePosixPath(value)
+                      if (
+                          path.is_absolute()
+                          or len(path.parts) != 1
+                          or path.name in {"", ".", ".."}
+                      ):
+                          raise ValueError(f"unsafe artifact name: {value!r}")
+                      return path.name
+
+
+                  def verify_embedded_result_bundle(
+                      bundle_directory: str | Path,
+                  ) -> dict[str, Any]:
+                      """Verify exact inventory, byte counts, and SHA-256 identities."""
+
+                      supplied = Path(bundle_directory)
+                      if supplied.is_symlink():
+                          raise ValueError("result bundle directory must not be a symlink")
+                      if not supplied.is_dir():
+                          raise FileNotFoundError(
+                              f"result bundle directory does not exist: {supplied}"
+                          )
+                      bundle = supplied.resolve()
+                      manifest_path = bundle / "manifest.json"
+                      if manifest_path.is_symlink() or not manifest_path.is_file():
+                          raise FileNotFoundError(
+                              "bundle must contain an ordinary manifest.json file"
+                          )
+
+                      manifest = _read_json_object(manifest_path)
+                      if manifest.get("schema_version") != 1:
+                          raise ValueError(
+                              "result manifest schema_version must equal 1"
+                          )
+                      benchmark = manifest.get("benchmark")
+                      if not isinstance(benchmark, str) or not benchmark:
+                          raise ValueError(
+                              "result manifest benchmark must be nonempty"
+                          )
+                      artifacts = manifest.get("artifacts")
+                      if not isinstance(artifacts, dict) or not artifacts:
+                          raise ValueError(
+                              "result manifest artifacts must be a nonempty object"
+                          )
+
+                      normalized: dict[str, dict[str, Any]] = {}
+                      for raw_name, raw_record in artifacts.items():
+                          if not isinstance(raw_name, str):
+                              raise ValueError(
+                                  "result manifest artifact names must be strings"
+                              )
+                          name = _safe_artifact_name(raw_name)
+                          if name == manifest_path.name:
+                              raise ValueError(
+                                  "manifest.json cannot declare itself as an artifact"
+                              )
+                          if not isinstance(raw_record, dict):
+                              raise ValueError(
+                                  f"artifact record for {name!r} must be an object"
+                              )
+                          expected_hash = raw_record.get("sha256")
+                          expected_bytes = raw_record.get("bytes")
+                          if (
+                              not isinstance(expected_hash, str)
+                              or len(expected_hash) != 64
+                              or any(
+                                  character not in "0123456789abcdef"
+                                  for character in expected_hash
+                              )
+                          ):
+                              raise ValueError(
+                                  f"artifact {name!r} has an invalid SHA-256 digest"
+                              )
+                          if (
+                              not isinstance(expected_bytes, int)
+                              or isinstance(expected_bytes, bool)
+                              or expected_bytes < 0
+                          ):
+                              raise ValueError(
+                                  f"artifact {name!r} has an invalid byte count"
+                              )
+                          path = bundle / name
+                          if path.is_symlink() or not path.is_file():
+                              raise FileNotFoundError(
+                                  f"bundle artifact must be an ordinary file: {name}"
+                              )
+                          actual_bytes = path.stat().st_size
+                          actual_hash = _sha256(path)
+                          if actual_bytes != expected_bytes:
+                              raise ValueError(
+                                  f"artifact {name!r} byte count changed: "
+                                  f"{actual_bytes} != {expected_bytes}"
+                              )
+                          if actual_hash != expected_hash:
+                              raise ValueError(
+                                  f"artifact {name!r} checksum changed: "
+                                  f"{actual_hash} != {expected_hash}"
+                              )
+                          normalized[name] = {
+                              "bytes": expected_bytes,
+                              "sha256": expected_hash,
+                          }
+
+                      expected_names = set(normalized) | {manifest_path.name}
+                      actual_names: set[str] = set()
+                      for entry in bundle.iterdir():
+                          if entry.is_symlink() or not entry.is_file():
+                              raise ValueError(
+                                  "result bundle entries must be ordinary files: "
+                                  f"{entry.name}"
+                              )
+                          actual_names.add(entry.name)
+                      missing = sorted(expected_names - actual_names)
+                      unexpected = sorted(actual_names - expected_names)
+                      if missing or unexpected:
+                          raise ValueError(
+                              "bundle file set differs from the manifest: "
+                              f"missing={missing}, unexpected={unexpected}"
+                          )
+
+                      return {
+                          "schema_version": 1,
+                          "benchmark": benchmark,
+                          "bundle_name": bundle.name,
+                          "manifest_sha256": _sha256(manifest_path),
+                          "artifact_count": len(normalized),
+                          "artifacts": {
+                              name: normalized[name] for name in sorted(normalized)
+                          },
+                      }
+                  '''
+              ),
+              encoding="utf-8",
+          )
+
+          diagnostic = Path("src/causal4d/contact_posterior_diagnostics.py")
+          replace_once(
+              diagnostic,
+              "from causal4d.contact_metrics import contact_recovery_metrics\n"
+              "from causal4d.simulator import GraphObject\n",
+              "from causal4d.contact_metrics import contact_recovery_metrics\n"
+              "from causal4d.result_bundle_verification import (\n"
+              "    verify_embedded_result_bundle,\n"
+              ")\n"
+              "from causal4d.simulator import GraphObject\n",
+              "verification import",
+          )
+          replace_once(
+              diagnostic,
+              '                        "object": target.protocol.graph_object.name,\n'
+              '                        "source_objects": ";".join(source_names),\n',
+              '                        "object": target.protocol.graph_object.name,\n'
+              '                        "held_out_topology": True,\n'
+              '                        "source_objects": ";".join(source_names),\n',
+              "recomputed held-out identity",
+          )
+          replace_once(
+              diagnostic,
+              dedent(
+                  '''\
+                  def _row_key(row: Mapping[str, Any]) -> tuple[int, str, str, str]:
+                      return (
+                          int(row["seed"]),
+                          str(row["object"]),
+                          str(row["world_condition"]),
+                          str(row["setting"]),
+                      )
+
+
+                  '''
+              ),
+              dedent(
+                  '''\
+                  def _row_key(
+                      row: Mapping[str, Any],
+                  ) -> tuple[int, str, bool, str, str, str, float]:
+                      return (
+                          int(row["seed"]),
+                          str(row["object"]),
+                          _as_bool(row["held_out_topology"]),
+                          str(row["source_objects"]),
+                          str(row["world_condition"]),
+                          str(row["setting"]),
+                          float(row["observation_fraction"]),
+                      )
+
+
+                  def _unique_row_index(
+                      rows: Sequence[Mapping[str, Any]],
+                      *,
+                      label: str,
+                      online_only: bool = False,
+                  ) -> dict[tuple[int, str, bool, str, str, str, float], Mapping[str, Any]]:
+                      indexed: dict[
+                          tuple[int, str, bool, str, str, str, float],
+                          Mapping[str, Any],
+                      ] = {}
+                      for row in rows:
+                          if online_only and str(row["setting"]) != "online_adaptation":
+                              continue
+                          key = _row_key(row)
+                          if key in indexed:
+                              raise ValueError(f"duplicate {label} row identity: {key!r}")
+                          indexed[key] = row
+                      return indexed
+
+
+                  '''
+              ),
+              "row identity",
+          )
+          replace_once(
+              diagnostic,
+              dedent(
+                  '''\
+                      retained = {
+                          _row_key(row): row
+                          for row in retained_rows
+                          if str(row["setting"]) == "online_adaptation"
+                      }
+                      recomputed = {_row_key(row): row for row in recomputed_rows}
+                  '''
+              ),
+              dedent(
+                  '''\
+                      retained = _unique_row_index(
+                          retained_rows,
+                          label="retained posterior",
+                          online_only=True,
+                      )
+                      recomputed = _unique_row_index(
+                          recomputed_rows,
+                          label="recomputed posterior",
+                      )
+                  '''
+              ),
+              "unique parity index",
+          )
+          replace_once(
+              diagnostic,
+              dedent(
+                  '''\
+                  def _trajectory_lookup(
+                      intervention_rows: Sequence[Mapping[str, Any]],
+                  ) -> dict[tuple[int, str, str, str], dict[str, float]]:
+                      grouped: dict[tuple[int, str, str, str], dict[str, float]] = {}
+                      for row in intervention_rows:
+                          if str(row["setting"]) != "online_adaptation":
+                              continue
+                          key = _row_key(row)
+                          grouped.setdefault(key, {})[str(row["method"])] = float(
+                              row["trajectory_rmse_m"]
+                          )
+                      return grouped
+
+
+                  '''
+              ),
+              dedent(
+                  '''\
+                  def _trajectory_lookup(
+                      intervention_rows: Sequence[Mapping[str, Any]],
+                  ) -> dict[
+                      tuple[int, str, bool, str, str, str, float],
+                      dict[str, float],
+                  ]:
+                      grouped: dict[
+                          tuple[int, str, bool, str, str, str, float],
+                          dict[str, float],
+                      ] = {}
+                      for row in intervention_rows:
+                          if str(row["setting"]) != "online_adaptation":
+                              continue
+                          key = _row_key(row)
+                          method = str(row["method"])
+                          methods = grouped.setdefault(key, {})
+                          if method in methods:
+                              raise ValueError(
+                                  "duplicate intervention method row for "
+                                  f"{key!r}/{method!r}"
+                              )
+                          methods[method] = float(row["trajectory_rmse_m"])
+                      return grouped
+
+
+                  '''
+              ),
+              "trajectory row uniqueness",
+          )
+          replace_once(
+              diagnostic,
+              dedent(
+                  '''\
+                      bundle = Path(bundle_directory).resolve()
+                      summary_path = bundle / "summary.json"
+                      manifest_path = bundle / "manifest.json"
+                      if not summary_path.is_file() or not manifest_path.is_file():
+                          raise FileNotFoundError("bundle must contain summary.json and manifest.json")
+                      summary = json.loads(summary_path.read_text(encoding="utf-8"))
+                  '''
+              ),
+              dedent(
+                  '''\
+                      bundle = Path(bundle_directory).resolve()
+                      verification = verify_embedded_result_bundle(bundle)
+                      summary_path = bundle / "summary.json"
+                      manifest_path = bundle / "manifest.json"
+                      summary = json.loads(summary_path.read_text(encoding="utf-8"))
+                  '''
+              ),
+              "embedded bundle verification",
+          )
+          replace_once(
+              diagnostic,
+              dedent(
+                  '''\
+                          "source_bundle": {
+                              "directory": str(bundle),
+                              "manifest_sha256": _sha256(manifest_path),
+                              "benchmark": summary["benchmark"],
+                              "seeds": summary["seeds"],
+                          },
+                  '''
+              ),
+              dedent(
+                  '''\
+                          "source_bundle": {
+                              "bundle_name": verification["bundle_name"],
+                              "manifest_sha256": verification["manifest_sha256"],
+                              "artifact_count": verification["artifact_count"],
+                              "artifacts": verification["artifacts"],
+                              "benchmark": summary["benchmark"],
+                              "seeds": summary["seeds"],
+                          },
+                  '''
+              ),
+              "portable source provenance",
+          )
+
+          tests = Path("tests/test_contact_posterior_diagnostics.py")
+          replace_once(
+              tests,
+              "    _posterior_diagnostic_metrics,\n"
+              "    _validate_recomputed_parity,\n",
+              "    _posterior_diagnostic_metrics,\n"
+              "    _trajectory_lookup,\n"
+              "    _validate_recomputed_parity,\n",
+              "trajectory lookup test import",
+          )
+          replace_once(
+              tests,
+              '        "object": "rope",\n'
+              '        "source_objects": "cloth;soft_block",\n',
+              '        "object": "rope",\n'
+              '        "held_out_topology": True,\n'
+              '        "source_objects": "cloth;soft_block",\n',
+              "posterior row held-out identity",
+          )
+          replace_once(
+              tests,
+              dedent(
+                  '''\
+                      common = {
+                          "seed": 100,
+                          "object": "rope",
+                          "world_condition": "shifted_contact",
+                          "setting": "online_adaptation",
+                      }
+                  '''
+              ),
+              dedent(
+                  '''\
+                      common = {
+                          "seed": 100,
+                          "object": "rope",
+                          "held_out_topology": True,
+                          "source_objects": "cloth;soft_block",
+                          "world_condition": "shifted_contact",
+                          "setting": "online_adaptation",
+                          "observation_fraction": 0.2,
+                      }
+                  '''
+              ),
+              "intervention row identity",
+          )
+          with tests.open("a", encoding="utf-8") as handle:
+              handle.write(
+                  dedent(
+                      '''\
+
+
+                      def test_duplicate_posterior_identities_are_rejected() -> None:
+                          row = _posterior_row("5", "5")
+                          retained = {
+                              key: str(value) if isinstance(value, bool) else value
+                              for key, value in row.items()
+                          }
+                          with pytest.raises(
+                              ValueError,
+                              match="duplicate retained posterior row identity",
+                          ):
+                              _validate_recomputed_parity(
+                                  [retained, dict(retained)],
+                                  [row],
+                                  DiagnosticConfig(),
+                              )
+
+
+                      def test_duplicate_intervention_methods_are_rejected() -> None:
+                          rows = _interventions()
+                          with pytest.raises(
+                              ValueError,
+                              match="duplicate intervention method row",
+                          ):
+                              _trajectory_lookup([*rows, dict(rows[0])])
+                      '''
+                  )
+              )
+
+          Path("tests/test_contact_posterior_bundle_verification.py").write_text(
+              dedent(
+                  '''\
+                  from __future__ import annotations
+
+                  import hashlib
+                  import json
+                  from pathlib import Path
+
+                  import pytest
+
+                  from causal4d.result_bundle_verification import (
+                      verify_embedded_result_bundle,
+                  )
+
+
+                  def _sha256(path: Path) -> str:
+                      return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+                  def _bundle(root: Path) -> Path:
+                      root.mkdir()
+                      payloads = {
+                          "summary.json": "{}\n",
+                          "contact_recovery.csv": "seed\n",
+                          "interventions.csv": "seed\n",
+                      }
+                      for name, content in payloads.items():
+                          (root / name).write_text(content, encoding="utf-8")
+                      manifest = {
+                          "schema_version": 1,
+                          "benchmark": "causal4d-latent-contact-v1",
+                          "artifacts": {
+                              name: {
+                                  "bytes": (root / name).stat().st_size,
+                                  "sha256": _sha256(root / name),
+                              }
+                              for name in payloads
+                          },
+                      }
+                      (root / "manifest.json").write_text(
+                          json.dumps(manifest, sort_keys=True) + "\n",
+                          encoding="utf-8",
+                      )
+                      return root
+
+
+                  def test_verified_bundle_provenance_is_portable(tmp_path: Path) -> None:
+                      bundle = _bundle(tmp_path / "bundle")
+                      result = verify_embedded_result_bundle(bundle)
+
+                      assert result["bundle_name"] == "bundle"
+                      assert result["artifact_count"] == 3
+                      assert result["benchmark"] == "causal4d-latent-contact-v1"
+                      assert "bundle" not in result or not isinstance(
+                          result.get("bundle"),
+                          str,
+                      )
+
+
+                  def test_bundle_rejects_undeclared_files(tmp_path: Path) -> None:
+                      bundle = _bundle(tmp_path / "bundle")
+                      (bundle / "undeclared.txt").write_text("extra\n", encoding="utf-8")
+
+                      with pytest.raises(ValueError, match="unexpected"):
+                          verify_embedded_result_bundle(bundle)
+
+
+                  def test_bundle_rejects_symlinked_artifacts(tmp_path: Path) -> None:
+                      bundle = _bundle(tmp_path / "bundle")
+                      payload = bundle / "summary.json"
+                      external = tmp_path / "external-summary.json"
+                      external.write_bytes(payload.read_bytes())
+                      payload.unlink()
+                      payload.symlink_to(external)
+
+                      with pytest.raises(
+                          FileNotFoundError,
+                          match="ordinary file",
+                      ):
+                          verify_embedded_result_bundle(bundle)
+                  '''
+              ),
+              encoding="utf-8",
+          )
+
+          docs = Path("docs/contact_posterior_diagnostics.md")
+          with docs.open("a", encoding="utf-8") as handle:
+              handle.write(
+                  dedent(
+                      '''\
+
+
+                      ## Bundle admission and portable provenance
+
+                      The analyzer verifies the embedded result manifest itself before
+                      reading scientific payloads. The exact flat file inventory, byte
+                      counts, lowercase SHA-256 identities, ordinary-file requirement,
+                      and absence of symlinks or undeclared entries are mandatory even
+                      when the analyzer is called directly rather than through CI.
+
+                      Retained posterior rows and intervention-method rows must have
+                      unique complete identities across seed, held-out topology,
+                      source topology set, condition, setting, and observation fraction.
+                      Duplicate rows are rejected rather than collapsed by dictionary
+                      construction.
+
+                      Diagnostic provenance records the portable bundle name, manifest
+                      digest, and complete declared artifact identities. It does not
+                      serialize a runner-local absolute directory as scientific evidence.
+                      '''
+                  )
+              )
+          PY
+
+      - name: Install and validate focused contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e ".[dev]"
+          python -m ruff format \
+            src/causal4d/contact_posterior_diagnostics.py \
+            src/causal4d/result_bundle_verification.py \
+            tests/test_contact_posterior_diagnostics.py \
+            tests/test_contact_posterior_bundle_verification.py
+          python -m ruff check \
+            src/causal4d/contact_posterior_diagnostics.py \
+            src/causal4d/result_bundle_verification.py \
+            tests/test_contact_posterior_diagnostics.py \
+            tests/test_contact_posterior_bundle_verification.py
+          python -m pytest -q \
+            tests/test_contact_posterior_diagnostics.py \
+            tests/test_contact_posterior_bundle_verification.py
+          python -m py_compile \
+            src/causal4d/contact_posterior_diagnostics.py \
+            src/causal4d/result_bundle_verification.py
+
+      - name: Commit validated changes and remove bootstrap workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/apply-contact-diagnostic-contract-hardening.yml
+          git add \
+            docs/contact_posterior_diagnostics.md \
+            src/causal4d/contact_posterior_diagnostics.py \
+            src/causal4d/result_bundle_verification.py \
+            tests/test_contact_posterior_diagnostics.py \
+            tests/test_contact_posterior_bundle_verification.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Harden contact diagnostic evidence contracts"
+          git push origin HEAD:agent/reproducibility-contact-diagnostics
