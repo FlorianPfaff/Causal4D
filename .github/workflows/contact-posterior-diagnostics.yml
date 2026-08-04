@@ -8,6 +8,9 @@ on:
       - "scripts/ci/analyze_contact_posterior.py"
       - "src/causal4d/contact_posterior_diagnostics.py"
       - "tests/test_contact_posterior_diagnostics.py"
+  push:
+    branches:
+      - agent/reproducibility-contact-diagnostics
   workflow_dispatch:
     inputs:
       seeds:
