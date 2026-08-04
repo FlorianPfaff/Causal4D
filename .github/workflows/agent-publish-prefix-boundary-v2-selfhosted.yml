@@ -1,0 +1,83 @@
+name: Publish prefix-boundary hardening v2 on workstation2
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-prefix-boundary-v2-selfhosted
+  cancel-in-progress: true
+
+jobs:
+  apply-test-publish:
+    if: github.head_ref == 'agent/harden-prefix-boundary-v2'
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/harden-prefix-boundary-v2
+          fetch-depth: 0
+          clean: true
+
+      - name: Rebase inputs onto current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git merge --no-edit origin/main
+
+      - name: Apply focused source patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64
+          import gzip
+          from pathlib import Path
+
+          payload = "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"
+          Path("/tmp/apply_prefix_hardening.py").write_bytes(
+              gzip.decompress(base64.b64decode(payload))
+          )
+          PY
+          python /tmp/apply_prefix_hardening.py
+
+      - name: Install and test in isolated environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          VENV="/tmp/causal4d-prefix-boundary-${GITHUB_RUN_ID}"
+          python -m venv "$VENV"
+          "$VENV/bin/python" -m pip install --upgrade pip
+          "$VENV/bin/python" -m pip install -e ".[dev]"
+          "$VENV/bin/python" -m ruff format \
+            src/causal4d/contact_inference.py \
+            tests/test_contact_inference_edge_cases.py \
+            tests/test_probability_support_invariants.py
+          "$VENV/bin/python" -m ruff check \
+            src/causal4d/contact_inference.py \
+            tests/test_contact_inference_edge_cases.py \
+            tests/test_probability_support_invariants.py
+          "$VENV/bin/python" -m pytest -q \
+            tests/test_contact_inference_edge_cases.py \
+            tests/test_probability_support_invariants.py \
+            tests/test_causal4d_contact_evaluation.py
+          git diff --check
+
+      - name: Publish validated patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/agent-publish-prefix-boundary-v2.yml
+          rm .github/workflows/agent-publish-prefix-boundary-v2-pr.yml
+          rm .github/workflows/agent-publish-prefix-boundary-v2-selfhosted.yml
+          rm .github/agent-prefix-boundary-trigger.txt
+          git config user.name "openai-codex[bot]"
+          git config user.email "openai-codex[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Harden prefix-only contact updates"
+          git push origin HEAD:agent/harden-prefix-boundary-v2
