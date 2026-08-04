@@ -14,9 +14,7 @@ from causal4d_public.deform360_source_failure_attribution import (
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 PROTOCOL = REPOSITORY_ROOT / "configs/causal4d_public/deform360_replication_v1.json"
-MILESTONE = (
-    REPOSITORY_ROOT / "milestones/deform360-replication-source-backend-v1"
-)
+MILESTONE = REPOSITORY_ROOT / "milestones/deform360-replication-source-backend-v1"
 
 
 @pytest.mark.parametrize(
@@ -100,9 +98,7 @@ def test_source_failure_classification_is_ordered_and_fail_closed(
     assert (
         classify_source_failure(
             complete_source_episode_set=complete,
-            every_episode_has_quality_candidate=(
-                every_episode_has_quality_candidate
-            ),
+            every_episode_has_quality_candidate=(every_episode_has_quality_candidate),
             quality_oracle_gate_passed=quality_oracle_passed,
             unconstrained_oracle_gate_passed=unconstrained_oracle_passed,
             common_quality_candidate_count=common_quality_candidate_count,
@@ -112,7 +108,9 @@ def test_source_failure_classification_is_ordered_and_fail_closed(
     )
 
 
-def test_frozen_source_milestone_attribution_is_deterministic_and_target_closed() -> None:
+def test_frozen_source_milestone_attribution_is_deterministic_and_target_closed() -> (
+    None
+):
     first = analyze_source_failure_milestone(PROTOCOL, MILESTONE)
     second = analyze_source_failure_milestone(PROTOCOL, MILESTONE)
 
@@ -137,9 +135,10 @@ def test_frozen_source_milestone_attribution_is_deterministic_and_target_closed(
     assert by_object["092-squirrel"]["classification"] == (
         "observation_geometry_failure"
     )
-    assert by_object["083-blanket-cloth"]["recorded_source_outcome"][
-        "failed_stage"
-    ] == "source-pooling"
+    assert (
+        by_object["083-blanket-cloth"]["recorded_source_outcome"]["failed_stage"]
+        == "source-pooling"
+    )
     assert by_object["083-blanket-cloth"]["common_quality_candidate"] is None
 
 

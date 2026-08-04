@@ -190,7 +190,9 @@ def _oracle_record(
     indices = np.flatnonzero(np.isfinite(scores))
     if not len(indices):
         return None
-    index = int(min(indices, key=lambda candidate: (float(scores[candidate]), int(candidate))))
+    index = int(
+        min(indices, key=lambda candidate: (float(scores[candidate]), int(candidate)))
+    )
     score = float(scores[index])
     strain = float(p99_strain[index]) if np.isfinite(p99_strain[index]) else None
     return {
@@ -259,15 +261,11 @@ def _transfer_summary(
                 "fit_episode_id": source["episode_id"],
                 "evaluation_episode_id": target["episode_id"],
                 "candidate_index": candidate_index,
-                "same_bimanual_condition": (
-                    source["bimanual"] is target["bimanual"]
-                ),
+                "same_bimanual_condition": (source["bimanual"] is target["bimanual"]),
                 "quality_valid": valid,
                 "candidate_chamfer_m": float(score) if valid else None,
                 "persistence_chamfer_m": float(persistence[target_index]),
-                "win_vs_persistence": bool(
-                    valid and score < persistence[target_index]
-                ),
+                "win_vs_persistence": bool(valid and score < persistence[target_index]),
                 "target_oracle_chamfer_m": target_oracle_score,
                 "normalized_regret_vs_target_oracle": None,
             }
@@ -286,9 +284,7 @@ def _transfer_summary(
 
     def group(condition: bool) -> dict[str, Any]:
         selected = [
-            row
-            for row in rows
-            if bool(row["same_bimanual_condition"]) is condition
+            row for row in rows if bool(row["same_bimanual_condition"]) is condition
         ]
         valid_selected = [row for row in selected if row["quality_valid"]]
         return {
@@ -303,9 +299,7 @@ def _transfer_summary(
                 else None
             ),
             "conditional_win_fraction": (
-                float(
-                    np.mean([row["win_vs_persistence"] for row in valid_selected])
-                )
+                float(np.mean([row["win_vs_persistence"] for row in valid_selected]))
                 if valid_selected
                 else None
             ),
@@ -364,8 +358,14 @@ def _analyze_object(
         set(by_episode).issubset(expected_episode_ids),
         "source grid includes an unregistered episode",
     )
-    available_ids = [episode_id for episode_id in expected_episode_ids if episode_id in by_episode]
-    missing_ids = [episode_id for episode_id in expected_episode_ids if episode_id not in by_episode]
+    available_ids = [
+        episode_id for episode_id in expected_episode_ids if episode_id in by_episode
+    ]
+    missing_ids = [
+        episode_id
+        for episode_id in expected_episode_ids
+        if episode_id not in by_episode
+    ]
     complete = not missing_ids
     if not available_ids:
         classification = classify_source_failure(
@@ -401,9 +401,7 @@ def _analyze_object(
     episode_records: list[dict[str, Any]] = []
 
     for episode_index, grid in enumerate(grids):
-        configured_limit = float(
-            grid["config"]["maximum_p99_relative_edge_strain"]
-        )
+        configured_limit = float(grid["config"]["maximum_p99_relative_edge_strain"])
         if quality_limit is None:
             quality_limit = configured_limit
         else:
@@ -564,9 +562,9 @@ def _analyze_object(
         pooled_fit_record: dict[str, Any] | None = {
             "result_sha256": pooled_fit["result_sha256"],
             "candidate_index": pooled_index,
-            "archived_competence_passed": pooled_fit[
-                "source_backend_competence"
-            ]["passed"],
+            "archived_competence_passed": pooled_fit["source_backend_competence"][
+                "passed"
+            ],
         }
     else:
         pooled_fit_record = None
@@ -578,9 +576,7 @@ def _analyze_object(
         complete_source_episode_set=complete,
         every_episode_has_quality_candidate=every_episode_has_quality_candidate,
         quality_oracle_gate_passed=bool(quality_oracle_gate["passed"]),
-        unconstrained_oracle_gate_passed=bool(
-            unconstrained_oracle_gate["passed"]
-        ),
+        unconstrained_oracle_gate_passed=bool(unconstrained_oracle_gate["passed"]),
         common_quality_candidate_count=len(common_quality),
         common_quality_gate_passed=bool(common_quality_gate["passed"]),
     )
@@ -690,8 +686,7 @@ def build_source_failure_attribution(
     validate_deform360_replication_protocol(protocol)
     validate_source_backend_decision_artifact(source_backend_decision)
     _require(
-        source_backend_decision["protocol_config_sha256"]
-        == protocol["config_sha256"],
+        source_backend_decision["protocol_config_sha256"] == protocol["config_sha256"],
         "source decision belongs to another protocol",
     )
     boundary = source_backend_decision["information_boundary"]
@@ -705,9 +700,7 @@ def build_source_failure_attribution(
     minimum_relative_improvement = float(
         gate["minimum_pooled_chamfer_improvement_vs_persistence"]
     )
-    minimum_win_fraction = float(
-        gate["minimum_leave_one_source_win_fraction"]
-    )
+    minimum_win_fraction = float(gate["minimum_leave_one_source_win_fraction"])
     decision_by_object = {
         str(record["object_id"]): record
         for record in source_backend_decision["object_results"]
@@ -735,7 +728,9 @@ def build_source_failure_attribution(
                 "stratum": stratum,
                 "object_count": len(selected),
                 "classification_counts": dict(
-                    sorted(Counter(record["classification"] for record in selected).items())
+                    sorted(
+                        Counter(record["classification"] for record in selected).items()
+                    )
                 ),
                 "quality_episode_oracle_gate_pass_count": sum(
                     bool(record.get("quality_episode_oracle_gate", {}).get("passed"))
@@ -856,9 +851,7 @@ def validate_source_failure_attribution(payload: Mapping[str, Any]) -> dict[str,
     return {
         "passed": True,
         "object_count": len(objects),
-        "classification_counts": payload["cohort_summary"][
-            "classification_counts"
-        ],
+        "classification_counts": payload["cohort_summary"]["classification_counts"],
         "result_sha256": payload["result_sha256"],
     }
 
@@ -877,7 +870,9 @@ def _verify_milestone_manifest(milestone_root: Path) -> dict[str, Any]:
         except ValueError as error:
             raise ValueError("artifact manifest path escapes the repository") from error
         _require(source.is_file(), f"artifact manifest file is missing: {source}")
-        _require(source.stat().st_size == int(entry["bytes"]), "artifact byte count changed")
+        _require(
+            source.stat().st_size == int(entry["bytes"]), "artifact byte count changed"
+        )
         _require(_sha256_file(source) == entry["sha256"], "artifact checksum changed")
     return {
         "artifact_manifest_sha256": _sha256_file(manifest_path),
