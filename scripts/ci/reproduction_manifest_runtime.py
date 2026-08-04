@@ -108,9 +108,7 @@ def capture_runtime_identity() -> dict[str, Any]:
             "numpy": _module_configuration("numpy"),
             "scipy": _module_configuration("scipy"),
         },
-        "environment": {
-            key: os.environ.get(key) for key in _RUNTIME_ENVIRONMENT_KEYS
-        },
+        "environment": {key: os.environ.get(key) for key in _RUNTIME_ENVIRONMENT_KEYS},
     }
 
 
