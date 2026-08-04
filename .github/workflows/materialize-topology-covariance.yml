@@ -107,10 +107,15 @@ jobs:
           python -m pip install -e ".[dev]"
           python -m pip check
 
-      - name: Validate materialized implementation
+      - name: Format and validate materialized implementation
         shell: bash
         run: |
           set -euo pipefail
+          python -m ruff format \
+            src/causal4d/contact_topology_covariance_diagnostic.py \
+            scripts/ci/run_contact_topology_covariance_diagnostic.py \
+            tests/test_contact_topology_covariance_diagnostic.py \
+            tests/test_contact_topology_covariance_workflow_policy.py
           python -m ruff check \
             src/causal4d/contact_topology_covariance_diagnostic.py \
             scripts/ci/run_contact_topology_covariance_diagnostic.py \
