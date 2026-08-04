@@ -27,135 +27,146 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          def replace_once(path: Path, old: str, new: str) -> None:
-              content = path.read_text(encoding="utf-8")
-              if content.count(old) != 1:
+          def replace_once(text: str, old: str, new: str, *, label: str) -> str:
+              if text.count(old) != 1:
                   raise SystemExit(
-                      f"expected exactly one occurrence in {path}: {old!r}"
+                      f"expected exactly one {label} occurrence, found {text.count(old)}"
                   )
-              path.write_text(content.replace(old, new), encoding="utf-8")
+              return text.replace(old, new)
 
-          workflow = Path(
+          workflow_path = Path(
               ".github/workflows/bayesian-phystwin-provider-compatibility.yml"
           )
-          replace_once(
-              workflow,
-              """  credential-gate:
-              name: Require private-repository read access
-              if: >-
-                github.event_name != 'pull_request' ||
-                github.event.pull_request.head.repo.full_name == github.repository
-              runs-on: ubuntu-latest
-              timeout-minutes: 5
-              env:
-                PRIVATE_REPOSITORY_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
-              steps:
-              """,
-              """  credential-gate:
-              name: Require private-repository read access
-              if: >-
-                github.event_name != 'pull_request' ||
-                github.event.pull_request.head.repo.full_name == github.repository
-              runs-on: ubuntu-latest
-              timeout-minutes: 5
-              env:
-                PRIVATE_REPOSITORY_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
-                BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}
-              steps:
-              """,
+          workflow = workflow_path.read_text(encoding="utf-8")
+          prefix, marker, remainder = workflow.partition("  credential-gate:\n")
+          credential, next_marker, suffix = remainder.partition(
+              "\n  external-pull-request:\n"
           )
-          replace_once(
-              workflow,
+          if not marker or not next_marker:
+              raise SystemExit("credential-gate boundaries were not found")
+          credential = replace_once(
+              credential,
+              "      PRIVATE_REPOSITORY_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}\n",
+              "      PRIVATE_REPOSITORY_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}\n"
+              "      BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}\n",
+              label="credential environment",
+          )
+          credential = replace_once(
+              credential,
               '          if [[ -z "${PRIVATE_REPOSITORY_READ_TOKEN}" ]]; then\n',
-              '          if [[ -z "${PRIVATE_REPOSITORY_READ_TOKEN}" || -z "${BPT_READ_SSH_KEY}" ]]; then\n',
+              '          if [[ -z "${PRIVATE_REPOSITORY_READ_TOKEN}" || '
+              '-z "${BPT_READ_SSH_KEY}" ]]; then\n',
+              label="credential condition",
           )
-          replace_once(
-              workflow,
-              '            echo "::error::BPT_READ_TOKEN is not configured; the required three-repository golden path cannot run."\n',
-              '            echo "::error::BPT_READ_TOKEN and BPT_READ_SSH_KEY must both be configured; the required three-repository golden path cannot run."\n',
+          credential = replace_once(
+              credential,
+              '            echo "::error::BPT_READ_TOKEN is not configured; '
+              'the required three-repository golden path cannot run."\n',
+              '            echo "::error::BPT_READ_TOKEN and BPT_READ_SSH_KEY '
+              'must both be configured; the required three-repository golden '
+              'path cannot run."\n',
+              label="credential error",
           )
-          replace_once(
-              workflow,
-              '              echo "**Failed:** the repository secret \\`BPT_READ_TOKEN\\` is absent."\n',
-              '              echo "**Failed:** one or both required private-repository credentials are absent."\n',
+          credential = replace_once(
+              credential,
+              '              echo "**Failed:** the repository secret '
+              '\\`BPT_READ_TOKEN\\` is absent."\n',
+              '              echo "**Failed:** one or both required '
+              'private-repository credentials are absent."\n',
+              label="credential summary",
           )
-          replace_once(
-              workflow,
-              '              echo "Configure a least-privilege token with read access to:"\n',
-              '              echo "Configure least-privilege credentials with read access:"\n',
+          credential = replace_once(
+              credential,
+              '              echo "Configure a least-privilege token with read '
+              'access to:"\n',
+              '              echo "Configure least-privilege credentials with '
+              'read access:"\n',
+              label="credential instruction",
           )
-          replace_once(
-              workflow,
-              '              echo "- \\`IPS-Stuttgart/BayesianPhysTwin\\`;"\n              echo "- \\`IPS-Stuttgart/Prob4D\\`."\n',
-              '              echo "- \\`BPT_READ_SSH_KEY\\` for \\`IPS-Stuttgart/BayesianPhysTwin\\`;"\n              echo "- \\`BPT_READ_TOKEN\\` for \\`IPS-Stuttgart/Prob4D\\`."\n',
+          credential = replace_once(
+              credential,
+              '              echo "- \\`IPS-Stuttgart/BayesianPhysTwin\\`;"\n'
+              '              echo "- \\`IPS-Stuttgart/Prob4D\\`."\n',
+              '              echo "- \\`BPT_READ_SSH_KEY\\` for '
+              '\\`IPS-Stuttgart/BayesianPhysTwin\\`;"\n'
+              '              echo "- \\`BPT_READ_TOKEN\\` for '
+              '\\`IPS-Stuttgart/Prob4D\\`."\n',
+              label="credential repositories",
           )
-          replace_once(
-              workflow,
+          credential = replace_once(
+              credential,
               '          echo "Private-repository credential is configured."\n',
               '          echo "Private-repository credentials are configured."\n',
+              label="credential success",
           )
-          replace_once(
+          workflow = (
+              prefix
+              + marker
+              + credential
+              + next_marker
+              + suffix
+          )
+          workflow = replace_once(
               workflow,
-              """          repository: IPS-Stuttgart/BayesianPhysTwin
-                        ref: ${{ inputs.bpt_ref || 'main' }}
-                        token: ${{ secrets.BPT_READ_TOKEN }}
-                        path: bayesian-phystwin
-              """,
-              """          repository: IPS-Stuttgart/BayesianPhysTwin
-                        ref: ${{ inputs.bpt_ref || 'main' }}
-                        ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}
-                        path: bayesian-phystwin
-              """,
+              "          repository: IPS-Stuttgart/BayesianPhysTwin\n"
+              "          ref: ${{ inputs.bpt_ref || 'main' }}\n"
+              "          token: ${{ secrets.BPT_READ_TOKEN }}\n"
+              "          path: bayesian-phystwin\n",
+              "          repository: IPS-Stuttgart/BayesianPhysTwin\n"
+              "          ref: ${{ inputs.bpt_ref || 'main' }}\n"
+              "          ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}\n"
+              "          path: bayesian-phystwin\n",
+              label="BayesianPhysTwin checkout",
           )
+          workflow_path.write_text(workflow, encoding="utf-8")
 
-          docs = Path("docs/ci.md")
-          replace_once(
+          docs_path = Path("docs/ci.md")
+          docs = docs_path.read_text(encoding="utf-8")
+          docs = replace_once(
               docs,
-              """Configure the least-privilege repository secret `BPT_READ_TOKEN` with read
-              access to both private repositories:
-
-              - `IPS-Stuttgart/BayesianPhysTwin`;
-              - `IPS-Stuttgart/Prob4D`.
-
-              The historical secret name is retained so existing repository configuration
-              does not need to change. Trusted same-repository pull requests, pushes,
-              """,
-              """Configure two least-privilege repository credentials:
-
-              - `BPT_READ_SSH_KEY`, a read-only deploy key for
-                `IPS-Stuttgart/BayesianPhysTwin`;
-              - `BPT_READ_TOKEN`, a token with read access to
-                `IPS-Stuttgart/Prob4D`.
-
-              The historical token name is retained for Prob4D, while BayesianPhysTwin uses
-              the repository's working deploy-key path after the organization transfer.
-              Trusted same-repository pull requests, pushes,
-              """,
+              "Configure the least-privilege repository secret `BPT_READ_TOKEN` with read\n"
+              "access to both private repositories:\n\n"
+              "- `IPS-Stuttgart/BayesianPhysTwin`;\n"
+              "- `IPS-Stuttgart/Prob4D`.\n\n"
+              "The historical secret name is retained so existing repository configuration\n"
+              "does not need to change. Trusted same-repository pull requests, pushes,\n",
+              "Configure two least-privilege repository credentials:\n\n"
+              "- `BPT_READ_SSH_KEY`, a read-only deploy key for\n"
+              "  `IPS-Stuttgart/BayesianPhysTwin`;\n"
+              "- `BPT_READ_TOKEN`, a token with read access to\n"
+              "  `IPS-Stuttgart/Prob4D`.\n\n"
+              "The historical token name is retained for Prob4D, while BayesianPhysTwin uses\n"
+              "the repository's working deploy-key path after the organization transfer.\n"
+              "Trusted same-repository pull requests, pushes,\n",
+              label="private-access documentation",
           )
-          replace_once(
+          docs = replace_once(
               docs,
-              """The workflow begins with a separate credential gate. For trusted events, a
-              missing `BPT_READ_TOKEN` is a hard configuration failure and prevents a false
-              green result. Only an external-fork pull request can use the explicitly labelled
-              unavailable path, because GitHub withholds repository secrets by design.
-              """,
-              """The workflow begins with a separate credential gate. For trusted events, a
-              missing `BPT_READ_TOKEN` or `BPT_READ_SSH_KEY` is a hard configuration failure
-              and prevents a false green result. Only an external-fork pull request can use
-              the explicitly labelled unavailable path, because GitHub withholds repository
-              secrets by design.
-              """,
+              "The workflow begins with a separate credential gate. For trusted events, a\n"
+              "missing `BPT_READ_TOKEN` is a hard configuration failure and prevents a false\n"
+              "green result. Only an external-fork pull request can use the explicitly labelled\n"
+              "unavailable path, because GitHub withholds repository secrets by design.\n",
+              "The workflow begins with a separate credential gate. For trusted events, a\n"
+              "missing `BPT_READ_TOKEN` or `BPT_READ_SSH_KEY` is a hard configuration failure\n"
+              "and prevents a false green result. Only an external-fork pull request can use\n"
+              "the explicitly labelled unavailable path, because GitHub withholds repository\n"
+              "secrets by design.\n",
+              label="credential-gate documentation",
           )
+          docs_path.write_text(docs, encoding="utf-8")
 
-          policy = Path("tests/test_three_repository_workflow_policy.py")
-          replace_once(
+          policy_path = Path("tests/test_three_repository_workflow_policy.py")
+          policy = policy_path.read_text(encoding="utf-8")
+          policy = replace_once(
               policy,
               '    assert "the required three-repository golden path cannot run" in text\n',
               '    assert "the required three-repository golden path cannot run" in text\n'
               '    assert "BPT_READ_SSH_KEY" in text\n'
               '    assert "ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}" in text\n'
               '    assert "token: ${{ secrets.BPT_READ_TOKEN }}" in text\n',
+              label="workflow-policy assertions",
           )
+          policy_path.write_text(policy, encoding="utf-8")
           PY
           git diff --check
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
