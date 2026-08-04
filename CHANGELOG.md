@@ -20,6 +20,10 @@
   explicit no-overwrite support, and legacy archive loading.
 - Add a stable rollout-bank identity over hypothesis metadata, priors, physical
   parameter support, trajectories, variance floor, and confidence level.
+- Add explicit dense factual-abduction likelihood semantics. `legacy_v1` remains
+  the registered identity-preserving default, while opt-in `normalized_v2`
+  retains particle-specific scale normalization, includes the
+  endpoint-to-first-response increment, and models adjacent-frame correlation.
 
 This control plane advances pre-acquisition operations without creating physical
 evidence. Source-panel executions remain source-only and cannot increment the
@@ -36,10 +40,14 @@ evidence. Source-panel executions remain source-only and cannot increment the
   nested mutation cannot change intervention semantics after bank construction.
 - Route rollout-producing and rollout-consuming commands through one strict
   archive implementation, while retaining exact support for legacy banks.
+- Reject non-finite factual-abduction controls, correlation outside `(-1, 1)`,
+  legacy requests that specify a correlation model, and contradictory requests
+  for normalized dense and grouped full-covariance likelihoods.
 
-These changes harden diagnostic accounting, artifact integrity, and validation
-only. They do not change registered protocols, likelihoods, posteriors,
-thresholds, frozen evidence, or target identities.
+These changes harden diagnostic accounting, artifact integrity, and validation.
+The registered `legacy_v1` likelihood and posterior remain unchanged, and
+`normalized_v2` is not admitted into the frozen estimator, protocol, thresholds,
+evidence, or target identities.
 
 ## 0.5.0
 

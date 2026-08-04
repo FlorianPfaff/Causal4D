@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Literal
 
 import numpy as np
 
@@ -14,25 +14,77 @@ from causal4d.grouped_likelihood import (
 )
 from causal4d.identifiability import InterventionIdentifiabilityResult
 from causal4d.observation_evidence import GroupedObservationEvidence
+from causal4d.prefix_likelihood import (
+    PrefixLikelihoodConfig,
+    update_joint_weights_from_prefix,
+)
 from causal4d.rollout_bank import JointRolloutBank
+
+
+DenseLikelihoodSemantics = Literal["legacy_v1", "normalized_v2"]
 
 
 @dataclass(frozen=True)
 class FactualAbductionConfig:
-    """Robust likelihood settings for factual intervention inference."""
+    """Robust likelihood settings for factual intervention inference.
+
+    ``legacy_v1`` preserves the registered dense score exactly. ``normalized_v2``
+    is an opt-in development path that uses the endpoint-inclusive, scale-normalized
+    prefix likelihood. The legacy defaults remain unchanged.
+    """
 
     observation_scale_m: float = 0.01
     likelihood_power: float = 12.0
     dynamic_likelihood_weight: float = 0.25
     degrees_of_freedom: float = 4.0
+    likelihood_semantics: DenseLikelihoodSemantics = "legacy_v1"
+    difference_correlation: float = 0.0
 
     def __post_init__(self) -> None:
-        if self.observation_scale_m <= 0.0 or self.likelihood_power <= 0.0:
-            raise ValueError("observation scale and likelihood power must be positive")
-        if self.dynamic_likelihood_weight < 0.0:
-            raise ValueError("dynamic_likelihood_weight must be nonnegative")
-        if self.degrees_of_freedom <= 0.0:
-            raise ValueError("degrees_of_freedom must be positive")
+        positive = (
+            self.observation_scale_m,
+            self.likelihood_power,
+            self.degrees_of_freedom,
+        )
+        if any(not np.isfinite(value) or value <= 0.0 for value in positive):
+            raise ValueError(
+                "observation scale, likelihood power, and dof must be finite and "
+                "positive"
+            )
+        if (
+            not np.isfinite(self.dynamic_likelihood_weight)
+            or self.dynamic_likelihood_weight < 0.0
+        ):
+            raise ValueError(
+                "dynamic_likelihood_weight must be finite and nonnegative"
+            )
+        if self.likelihood_semantics not in {"legacy_v1", "normalized_v2"}:
+            raise ValueError("unsupported dense likelihood semantics")
+        if not np.isfinite(self.difference_correlation) or not (
+            -1.0 < self.difference_correlation < 1.0
+        ):
+            raise ValueError("difference_correlation must lie in (-1, 1)")
+        if (
+            self.likelihood_semantics == "legacy_v1"
+            and self.difference_correlation != 0.0
+        ):
+            raise ValueError(
+                "difference_correlation is available only with normalized_v2"
+            )
+
+    def artifact_metadata(self) -> dict[str, float | str]:
+        """Return metadata while preserving the legacy-v1 artifact identity."""
+
+        result: dict[str, float | str] = {
+            "observation_scale_m": self.observation_scale_m,
+            "likelihood_power": self.likelihood_power,
+            "dynamic_likelihood_weight": self.dynamic_likelihood_weight,
+            "degrees_of_freedom": self.degrees_of_freedom,
+        }
+        if self.likelihood_semantics != "legacy_v1":
+            result["likelihood_semantics"] = self.likelihood_semantics
+            result["difference_correlation"] = self.difference_correlation
+        return result
 
 
 def _belief_readout(
@@ -98,10 +150,17 @@ def _update_joint_weights(
     base_weights: np.ndarray | None = None,
     grouped_evidence: GroupedObservationEvidence | None = None,
 ) -> tuple[np.ndarray, GroupLikelihoodDiagnostics | None]:
+    if (
+        grouped_evidence is not None
+        and settings.likelihood_semantics != "legacy_v1"
+    ):
+        raise ValueError(
+            "normalized_v2 cannot be combined with grouped observation evidence"
+        )
     discrepancy, discrepancy_variance = _belief_readout(bank, belief)
     if grouped_evidence is None:
-        return (
-            bank.update_from_observations(
+        if settings.likelihood_semantics == "legacy_v1":
+            joint_weights = bank.update_from_observations(
                 observations_from_endpoint_m,
                 prefix_frame_count=prefix_frame_count,
                 scale_m=settings.observation_scale_m,
@@ -112,9 +171,26 @@ def _update_joint_weights(
                 base_weights=base_weights,
                 particle_discrepancy_m=discrepancy,
                 particle_discrepancy_variance_m2=discrepancy_variance,
-            ),
-            None,
-        )
+            )
+        else:
+            joint_weights = update_joint_weights_from_prefix(
+                bank,
+                observations_from_endpoint_m,
+                prefix_frame_count=prefix_frame_count,
+                config=PrefixLikelihoodConfig(
+                    observation_scale_m=settings.observation_scale_m,
+                    likelihood_power=settings.likelihood_power,
+                    position_likelihood_weight=1.0,
+                    dynamic_likelihood_weight=settings.dynamic_likelihood_weight,
+                    degrees_of_freedom=settings.degrees_of_freedom,
+                    difference_correlation=settings.difference_correlation,
+                ),
+                mask=observation_mask,
+                base_weights=base_weights,
+                particle_discrepancy_m=discrepancy,
+                particle_discrepancy_variance_m2=discrepancy_variance,
+            )
+        return joint_weights, None
     components = physical_readout_components(bank, belief)
     component_variance = np.broadcast_to(
         discrepancy_variance[None, :, None], components.shape
@@ -209,7 +285,7 @@ def abduct_factual_intervention(
             hypothesis_indices.append(hypothesis_index)
             particle_indices.append(particle_index)
     metadata: dict[str, Any] = {
-        "abduction_likelihood": asdict(settings),
+        "abduction_likelihood": settings.artifact_metadata(),
         "observation_prefix_frame_count_including_endpoint": prefix_frame_count,
         "o_plus_frames_used": prefix_frame_count - 1,
         "future_frames_read_by_abduction": 0,
@@ -367,7 +443,13 @@ def evaluate_factual_abduction(
         "abduction_prefix_frame_count_including_endpoint": prefix_frame_count,
         "held_out_rollout_interval": [prefix_frame_count, bank.frame_count],
         "evidence_model": (
-            "grouped_robust_composite" if grouped_evidence is not None else "legacy_dense"
+            "grouped_robust_composite"
+            if grouped_evidence is not None
+            else (
+                "legacy_dense"
+                if settings.likelihood_semantics == "legacy_v1"
+                else "normalized_dense_v2"
+            )
         ),
         "bpt_without_z": nominal_metrics,
         "bpt_plus_causal4d_z": z_metrics,
