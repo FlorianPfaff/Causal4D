@@ -1,0 +1,183 @@
+name: Fix private provider authentication once
+
+on:
+  push:
+    branches:
+      - agent/single-cli-surface
+    paths:
+      - .github/workflows/fix-private-provider-auth-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    name: Split BPT and Prob4D credentials
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Apply exact authentication and policy edits
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str) -> None:
+              content = path.read_text(encoding="utf-8")
+              if content.count(old) != 1:
+                  raise SystemExit(
+                      f"expected exactly one occurrence in {path}: {old!r}"
+                  )
+              path.write_text(content.replace(old, new), encoding="utf-8")
+
+          workflow = Path(
+              ".github/workflows/bayesian-phystwin-provider-compatibility.yml"
+          )
+          replace_once(
+              workflow,
+              """  credential-gate:
+              name: Require private-repository read access
+              if: >-
+                github.event_name != 'pull_request' ||
+                github.event.pull_request.head.repo.full_name == github.repository
+              runs-on: ubuntu-latest
+              timeout-minutes: 5
+              env:
+                PRIVATE_REPOSITORY_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
+              steps:
+              """,
+              """  credential-gate:
+              name: Require private-repository read access
+              if: >-
+                github.event_name != 'pull_request' ||
+                github.event.pull_request.head.repo.full_name == github.repository
+              runs-on: ubuntu-latest
+              timeout-minutes: 5
+              env:
+                PRIVATE_REPOSITORY_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
+                BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}
+              steps:
+              """,
+          )
+          replace_once(
+              workflow,
+              '          if [[ -z "${PRIVATE_REPOSITORY_READ_TOKEN}" ]]; then\n',
+              '          if [[ -z "${PRIVATE_REPOSITORY_READ_TOKEN}" || -z "${BPT_READ_SSH_KEY}" ]]; then\n',
+          )
+          replace_once(
+              workflow,
+              '            echo "::error::BPT_READ_TOKEN is not configured; the required three-repository golden path cannot run."\n',
+              '            echo "::error::BPT_READ_TOKEN and BPT_READ_SSH_KEY must both be configured; the required three-repository golden path cannot run."\n',
+          )
+          replace_once(
+              workflow,
+              '              echo "**Failed:** the repository secret \\`BPT_READ_TOKEN\\` is absent."\n',
+              '              echo "**Failed:** one or both required private-repository credentials are absent."\n',
+          )
+          replace_once(
+              workflow,
+              '              echo "Configure a least-privilege token with read access to:"\n',
+              '              echo "Configure least-privilege credentials with read access:"\n',
+          )
+          replace_once(
+              workflow,
+              '              echo "- \\`IPS-Stuttgart/BayesianPhysTwin\\`;"\n              echo "- \\`IPS-Stuttgart/Prob4D\\`."\n',
+              '              echo "- \\`BPT_READ_SSH_KEY\\` for \\`IPS-Stuttgart/BayesianPhysTwin\\`;"\n              echo "- \\`BPT_READ_TOKEN\\` for \\`IPS-Stuttgart/Prob4D\\`."\n',
+          )
+          replace_once(
+              workflow,
+              '          echo "Private-repository credential is configured."\n',
+              '          echo "Private-repository credentials are configured."\n',
+          )
+          replace_once(
+              workflow,
+              """          repository: IPS-Stuttgart/BayesianPhysTwin
+                        ref: ${{ inputs.bpt_ref || 'main' }}
+                        token: ${{ secrets.BPT_READ_TOKEN }}
+                        path: bayesian-phystwin
+              """,
+              """          repository: IPS-Stuttgart/BayesianPhysTwin
+                        ref: ${{ inputs.bpt_ref || 'main' }}
+                        ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}
+                        path: bayesian-phystwin
+              """,
+          )
+
+          docs = Path("docs/ci.md")
+          replace_once(
+              docs,
+              """Configure the least-privilege repository secret `BPT_READ_TOKEN` with read
+              access to both private repositories:
+
+              - `IPS-Stuttgart/BayesianPhysTwin`;
+              - `IPS-Stuttgart/Prob4D`.
+
+              The historical secret name is retained so existing repository configuration
+              does not need to change. Trusted same-repository pull requests, pushes,
+              """,
+              """Configure two least-privilege repository credentials:
+
+              - `BPT_READ_SSH_KEY`, a read-only deploy key for
+                `IPS-Stuttgart/BayesianPhysTwin`;
+              - `BPT_READ_TOKEN`, a token with read access to
+                `IPS-Stuttgart/Prob4D`.
+
+              The historical token name is retained for Prob4D, while BayesianPhysTwin uses
+              the repository's working deploy-key path after the organization transfer.
+              Trusted same-repository pull requests, pushes,
+              """,
+          )
+          replace_once(
+              docs,
+              """The workflow begins with a separate credential gate. For trusted events, a
+              missing `BPT_READ_TOKEN` is a hard configuration failure and prevents a false
+              green result. Only an external-fork pull request can use the explicitly labelled
+              unavailable path, because GitHub withholds repository secrets by design.
+              """,
+              """The workflow begins with a separate credential gate. For trusted events, a
+              missing `BPT_READ_TOKEN` or `BPT_READ_SSH_KEY` is a hard configuration failure
+              and prevents a false green result. Only an external-fork pull request can use
+              the explicitly labelled unavailable path, because GitHub withholds repository
+              secrets by design.
+              """,
+          )
+
+          policy = Path("tests/test_three_repository_workflow_policy.py")
+          replace_once(
+              policy,
+              '    assert "the required three-repository golden path cannot run" in text\n',
+              '    assert "the required three-repository golden path cannot run" in text\n'
+              '    assert "BPT_READ_SSH_KEY" in text\n'
+              '    assert "ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}" in text\n'
+              '    assert "token: ${{ secrets.BPT_READ_TOKEN }}" in text\n',
+          )
+          PY
+          git diff --check
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Validate workflow policy
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m ruff check tests/test_three_repository_workflow_policy.py
+          python -m ruff format --check tests/test_three_repository_workflow_policy.py
+          python -m pytest -q tests/test_three_repository_workflow_policy.py
+      - name: Commit authentication repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            .github/workflows/bayesian-phystwin-provider-compatibility.yml \
+            docs/ci.md \
+            tests/test_three_repository_workflow_policy.py
+          git commit -m 'Use deploy key for BayesianPhysTwin compatibility'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
