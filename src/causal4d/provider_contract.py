@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 import hashlib
 import json
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
@@ -38,6 +39,88 @@ BAYESIAN_PHYSTWIN_ARTIFACT_SCHEMA_VERSIONS = {
     "GraphBelief": 1,
     "TwinBelief": 1,
 }
+_PROVIDER_DESCRIPTOR_REQUIRED_FIELDS = frozenset(
+    {
+        "provider_name",
+        "provider_version",
+        "provider_revision",
+        "schema_version",
+        "capabilities",
+        "artifact_schema_versions",
+    }
+)
+_PROVIDER_DESCRIPTOR_OPTIONAL_FIELDS = frozenset({"metadata"})
+
+
+def _require_nonempty_string(value: Any, *, name: str) -> str:
+    if type(value) is not str or not value:
+        raise ValueError(f"{name} must be a nonempty string")
+    return value
+
+
+def _require_positive_integer(value: Any, *, name: str) -> int:
+    if type(value) is not int or value < 1:
+        raise ValueError(f"{name} must be a positive integer")
+    return value
+
+
+def _validated_capabilities(
+    values: Any,
+    *,
+    name: str,
+    allow_empty: bool = False,
+) -> tuple[str, ...]:
+    if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
+        raise ValueError(f"{name} must be a sequence of strings")
+    capabilities = tuple(
+        sorted(
+            _require_nonempty_string(value, name=f"{name}[{index}]")
+            for index, value in enumerate(values)
+        )
+    )
+    if not capabilities and not allow_empty:
+        raise ValueError(f"{name} must be nonempty")
+    if len(set(capabilities)) != len(capabilities):
+        raise ValueError(f"{name} must contain unique names")
+    return capabilities
+
+
+def _validated_artifact_versions(
+    values: Any,
+    *,
+    name: str,
+    allow_empty: bool = False,
+) -> dict[str, int]:
+    if not isinstance(values, Mapping):
+        raise ValueError(f"{name} must be a mapping")
+    artifact_versions: dict[str, int] = {}
+    for raw_artifact, raw_version in values.items():
+        artifact = _require_nonempty_string(raw_artifact, name=f"{name} key")
+        if artifact in artifact_versions:
+            raise ValueError(f"{name} must contain unique artifact names")
+        artifact_versions[artifact] = _require_positive_integer(
+            raw_version,
+            name=f"{name}[{artifact!r}]",
+        )
+    if not artifact_versions and not allow_empty:
+        raise ValueError(f"{name} must be nonempty")
+    return artifact_versions
+
+
+def _require_exact_provider_descriptor_fields(values: Mapping[Any, Any]) -> None:
+    if any(type(key) is not str for key in values):
+        raise ValueError("provider descriptor keys must be strings")
+    actual = set(values)
+    allowed = (
+        _PROVIDER_DESCRIPTOR_REQUIRED_FIELDS | _PROVIDER_DESCRIPTOR_OPTIONAL_FIELDS
+    )
+    missing = sorted(_PROVIDER_DESCRIPTOR_REQUIRED_FIELDS - actual)
+    unexpected = sorted(actual - allowed)
+    if missing or unexpected:
+        raise ValueError(
+            "provider descriptor fields do not match schema; "
+            f"missing={missing}, unexpected={unexpected}"
+        )
 
 
 @dataclass(frozen=True)
@@ -53,27 +136,36 @@ class PhysicalBeliefProviderManifest:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if (
-            not self.provider_name
-            or not self.provider_version
-            or not self.provider_revision
-        ):
-            raise ValueError("provider identity fields must be nonempty")
-        if self.schema_version < 1:
-            raise ValueError("schema_version must be positive")
-        capabilities = tuple(sorted(map(str, self.capabilities)))
-        if not capabilities or any(not value for value in capabilities):
-            raise ValueError("capabilities must contain nonempty names")
-        if len(set(capabilities)) != len(capabilities):
-            raise ValueError("capabilities must be unique")
-        artifact_versions = {
-            str(name): int(version)
-            for name, version in dict(self.artifact_schema_versions).items()
-        }
-        if not artifact_versions or any(
-            not name or version < 1 for name, version in artifact_versions.items()
-        ):
-            raise ValueError("artifact schema versions must be positive and named")
+        provider_name = _require_nonempty_string(
+            self.provider_name,
+            name="provider_name",
+        )
+        provider_version = _require_nonempty_string(
+            self.provider_version,
+            name="provider_version",
+        )
+        provider_revision = _require_nonempty_string(
+            self.provider_revision,
+            name="provider_revision",
+        )
+        schema_version = _require_positive_integer(
+            self.schema_version,
+            name="schema_version",
+        )
+        capabilities = _validated_capabilities(
+            self.capabilities,
+            name="capabilities",
+        )
+        artifact_versions = _validated_artifact_versions(
+            self.artifact_schema_versions,
+            name="artifact_schema_versions",
+        )
+        if not isinstance(self.metadata, Mapping):
+            raise ValueError("metadata must be a mapping")
+        object.__setattr__(self, "provider_name", provider_name)
+        object.__setattr__(self, "provider_version", provider_version)
+        object.__setattr__(self, "provider_revision", provider_revision)
+        object.__setattr__(self, "schema_version", schema_version)
         object.__setattr__(self, "capabilities", capabilities)
         object.__setattr__(
             self,
@@ -90,6 +182,29 @@ class PhysicalBeliefProviderManifest:
                 self.metadata,
                 error_message="metadata must contain finite JSON values",
             ),
+        )
+
+    @classmethod
+    def from_provider_descriptor(
+        cls,
+        values: Mapping[Any, Any],
+    ) -> PhysicalBeliefProviderManifest:
+        """Construct a manifest from the exact provider-v1 descriptor schema."""
+
+        if not isinstance(values, Mapping):
+            raise ValueError("provider descriptor must be a mapping")
+        _require_exact_provider_descriptor_fields(values)
+        metadata = values.get("metadata", {})
+        if not isinstance(metadata, Mapping):
+            raise ValueError("provider descriptor metadata must be a mapping")
+        return cls(
+            provider_name=values["provider_name"],
+            provider_version=values["provider_version"],
+            provider_revision=values["provider_revision"],
+            schema_version=values["schema_version"],
+            capabilities=values["capabilities"],
+            artifact_schema_versions=values["artifact_schema_versions"],
+            metadata=metadata,
         )
 
     @property
@@ -161,12 +276,24 @@ def validate_provider_compatibility(
 ) -> ProviderCompatibilityResult:
     """Validate a provider without relying on a hard-coded implementation pin."""
 
-    required = tuple(sorted(map(str, required_capabilities)))
-    if any(not value for value in required) or len(set(required)) != len(required):
-        raise ValueError("required_capabilities must contain unique names")
-    supported = tuple(int(value) for value in supported_schema_versions)
-    if not supported or any(value < 1 for value in supported):
-        raise ValueError("supported_schema_versions must be positive")
+    required = _validated_capabilities(
+        required_capabilities,
+        name="required_capabilities",
+        allow_empty=True,
+    )
+    if isinstance(supported_schema_versions, (str, bytes)) or not isinstance(
+        supported_schema_versions,
+        Sequence,
+    ):
+        raise ValueError("supported_schema_versions must be a sequence of integers")
+    supported = tuple(
+        _require_positive_integer(value, name=f"supported_schema_versions[{index}]")
+        for index, value in enumerate(supported_schema_versions)
+    )
+    if not supported:
+        raise ValueError("supported_schema_versions must be nonempty")
+    if len(set(supported)) != len(supported):
+        raise ValueError("supported_schema_versions must be unique")
     missing = tuple(
         value for value in required if value not in set(manifest.capabilities)
     )
@@ -177,7 +304,9 @@ def validate_provider_compatibility(
     unsupported_provider_version = None
     normalized_version_range = None
     if supported_provider_versions is not None:
-        normalized_version_range = str(supported_provider_versions).strip()
+        if type(supported_provider_versions) is not str:
+            raise ValueError("supported_provider_versions must be a string")
+        normalized_version_range = supported_provider_versions.strip()
         if not normalized_version_range:
             raise ValueError("supported_provider_versions must be nonempty")
         try:
@@ -192,11 +321,16 @@ def validate_provider_compatibility(
             if provider_version not in version_range:
                 unsupported_provider_version = manifest.provider_version
 
+    required_versions = _validated_artifact_versions(
+        ({} if required_artifact_versions is None else required_artifact_versions),
+        name="required_artifact_versions",
+        allow_empty=True,
+    )
     mismatches = []
-    for name, expected in dict(required_artifact_versions or {}).items():
-        actual = manifest.artifact_schema_versions.get(str(name))
-        if actual != int(expected):
-            mismatches.append(f"{name}:expected={int(expected)}:actual={actual}")
+    for name, expected in required_versions.items():
+        actual = manifest.artifact_schema_versions.get(name)
+        if actual != expected:
+            mismatches.append(f"{name}:expected={expected}:actual={actual}")
     return ProviderCompatibilityResult(
         compatible=(
             not missing
@@ -219,18 +353,12 @@ def load_bayesian_phystwin_provider_manifest(
 ) -> PhysicalBeliefProviderManifest:
     """Load BPT's public Causal4D provider descriptor without importing internals."""
 
+    if provider_revision is not None:
+        _require_nonempty_string(provider_revision, name="provider_revision")
     from bayesian_phystwin.causal4d_provider_v1 import causal4d_provider_manifest
 
     values = causal4d_provider_manifest(provider_revision=provider_revision)
-    return PhysicalBeliefProviderManifest(
-        provider_name=str(values["provider_name"]),
-        provider_version=str(values["provider_version"]),
-        provider_revision=str(values["provider_revision"]),
-        schema_version=int(values["schema_version"]),
-        capabilities=tuple(map(str, values["capabilities"])),
-        artifact_schema_versions=dict(values["artifact_schema_versions"]),
-        metadata=dict(values.get("metadata", {})),
-    )
+    return PhysicalBeliefProviderManifest.from_provider_descriptor(values)
 
 
 def validate_bayesian_phystwin_provider(

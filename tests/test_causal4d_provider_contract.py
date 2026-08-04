@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 
 import causal4d.provider_contract as provider_contract
@@ -8,6 +10,7 @@ from causal4d.provider_contract import (
     BAYESIAN_PHYSTWIN_PROVIDER_CAPABILITIES,
     PHYSICAL_BELIEF_PROVIDER_SCHEMA_VERSION,
     PhysicalBeliefProviderManifest,
+    load_bayesian_phystwin_provider_manifest,
     require_bayesian_phystwin_provider,
     validate_bayesian_phystwin_provider,
     validate_provider_compatibility,
@@ -25,6 +28,23 @@ def _manifest(**overrides):
     }
     values.update(overrides)
     return PhysicalBeliefProviderManifest(**values)
+
+
+def _descriptor(**overrides: Any) -> dict[Any, Any]:
+    values: dict[Any, Any] = {
+        "provider_name": "bayesian-phystwin",
+        "provider_version": "0.4.0",
+        "provider_revision": "c7ad36aad7e592ce8a391c9ca2d4db7389dee3ac",
+        "schema_version": PHYSICAL_BELIEF_PROVIDER_SCHEMA_VERSION,
+        "capabilities": list(BAYESIAN_PHYSTWIN_PROVIDER_CAPABILITIES),
+        "artifact_schema_versions": {"TwinBelief": 1, "GraphBelief": 1},
+        "metadata": {
+            "provider_api": "bayesian_phystwin.causal4d_provider_v1",
+            "provider_api_version": 1,
+        },
+    }
+    values.update(overrides)
+    return values
 
 
 def test_compatible_provider_passes_explicit_contract() -> None:
@@ -154,3 +174,105 @@ def test_manifest_content_address_cannot_be_changed_by_nested_mutation() -> None
         manifest.artifact_schema_versions["TwinBelief"] = 2
     with pytest.raises(TypeError, match="immutable"):
         manifest.metadata["nested"]["items"].append("mutated")
+
+
+def test_exact_provider_descriptor_constructs_the_same_manifest() -> None:
+    from_descriptor = PhysicalBeliefProviderManifest.from_provider_descriptor(
+        _descriptor()
+    )
+    direct = _manifest(
+        capabilities=BAYESIAN_PHYSTWIN_PROVIDER_CAPABILITIES,
+        metadata=_descriptor()["metadata"],
+    )
+
+    assert from_descriptor.manifest_id == direct.manifest_id
+    assert from_descriptor.capabilities == tuple(
+        sorted(BAYESIAN_PHYSTWIN_PROVIDER_CAPABILITIES)
+    )
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    (
+        ({"provider_name": None}, "provider_name must be a nonempty string"),
+        ({"schema_version": True}, "schema_version must be a positive integer"),
+        ({"capabilities": ("valid", 3)}, "capabilities\[1\]"),
+        (
+            {"artifact_schema_versions": {1: 1}},
+            "artifact_schema_versions key must be a nonempty string",
+        ),
+        (
+            {"artifact_schema_versions": {"TwinBelief": True}},
+            "must be a positive integer",
+        ),
+        ({"metadata": []}, "metadata must be a mapping"),
+    ),
+)
+def test_manifest_constructor_rejects_coercible_fields(
+    overrides: dict[str, Any],
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        _manifest(**overrides)
+
+
+def test_provider_descriptor_rejects_schema_and_type_drift() -> None:
+    valid = _descriptor()
+    assert PhysicalBeliefProviderManifest.from_provider_descriptor(valid)
+
+    malformed: list[tuple[dict[Any, Any], str]] = []
+
+    missing = _descriptor()
+    del missing["provider_name"]
+    malformed.append((missing, "fields do not match schema"))
+
+    unknown = _descriptor(unregistered="value")
+    malformed.append((unknown, "unexpected=\['unregistered'\]"))
+
+    non_string_key = _descriptor()
+    non_string_key[1] = "value"
+    malformed.append((non_string_key, "keys must be strings"))
+
+    boolean_schema = _descriptor(schema_version=True)
+    malformed.append((boolean_schema, "schema_version must be a positive integer"))
+
+    string_capabilities = _descriptor(capabilities="artifact_checksums")
+    malformed.append((string_capabilities, "must be a sequence of strings"))
+
+    fractional_artifact = _descriptor(artifact_schema_versions={"TwinBelief": 1.5})
+    malformed.append((fractional_artifact, "must be a positive integer"))
+
+    malformed_metadata = _descriptor(metadata=[])
+    malformed.append((malformed_metadata, "metadata must be a mapping"))
+
+    for descriptor, message in malformed:
+        with pytest.raises(ValueError, match=message):
+            PhysicalBeliefProviderManifest.from_provider_descriptor(descriptor)
+
+
+def test_compatibility_requirements_reject_coercible_values() -> None:
+    manifest = _manifest()
+
+    with pytest.raises(ValueError, match="required_capabilities\[0\]"):
+        validate_provider_compatibility(manifest, required_capabilities=(1,))
+    with pytest.raises(ValueError, match="supported_schema_versions\[0\]"):
+        validate_provider_compatibility(manifest, supported_schema_versions=(True,))
+    with pytest.raises(
+        ValueError, match="supported_provider_versions must be a string"
+    ):
+        validate_provider_compatibility(manifest, supported_provider_versions=1)
+    with pytest.raises(ValueError, match="required_artifact_versions key"):
+        validate_provider_compatibility(
+            manifest,
+            required_artifact_versions={1: 1},
+        )
+    with pytest.raises(ValueError, match="must be a positive integer"):
+        validate_provider_compatibility(
+            manifest,
+            required_artifact_versions={"TwinBelief": 1.5},
+        )
+
+
+def test_loader_rejects_coercible_revision_before_import() -> None:
+    with pytest.raises(ValueError, match="provider_revision must be a nonempty string"):
+        load_bayesian_phystwin_provider_manifest(provider_revision=1)
