@@ -195,9 +195,7 @@ def test_rehashed_unpaired_trajectory_case_is_rejected(tmp_path: Path) -> None:
     path = bundle / "interventions.csv"
     lines = path.read_text(encoding="utf-8").splitlines()
     retained = [
-        line
-        for line in lines
-        if not ("cloth" in line and "latent_contact" in line)
+        line for line in lines if not ("cloth" in line and "latent_contact" in line)
     ]
     path.write_text("\n".join(retained) + "\n", encoding="utf-8")
     _write_manifest(bundle)
