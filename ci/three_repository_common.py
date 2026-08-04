@@ -11,6 +11,10 @@ from pathlib import Path
 
 import numpy as np
 
+CAUSAL4D_REPOSITORY = "IPS-Stuttgart/Causal4D"
+BAYESIAN_PHYSTWIN_REPOSITORY = "IPS-Stuttgart/BayesianPhysTwin"
+PROB4D_REPOSITORY = "IPS-Stuttgart/Prob4D"
+
 EXPECTED_OBSERVATION_ARTIFACT_ID = (
     "2a1f24acd2dd741155eb5333c92a37f615e1f0578b7f55cb9df0d34c52af8640"
 )
