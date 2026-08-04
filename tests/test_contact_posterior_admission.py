@@ -53,7 +53,7 @@ def _analysis_result() -> dict[str, object]:
     }
 
 
-def test_admission_verifies_before_analysis_and_removes_host_path(
+def test_admission_verifies_before_and_after_analysis_and_removes_host_path(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -95,7 +95,7 @@ def test_admission_verifies_before_analysis_and_removes_host_path(
         config=config,
     )
 
-    assert calls == ["embedded", "source", "analyze"]
+    assert calls == ["embedded", "source", "analyze", "embedded", "source"]
     source_bundle = result["source_bundle"]
     assert isinstance(source_bundle, dict)
     assert "directory" not in source_bundle
@@ -114,6 +114,7 @@ def test_admission_verifies_before_analysis_and_removes_host_path(
         "byte_identity_verified": True,
         "domain_row_contracts_verified": True,
         "low_level_analyzer_verified_before_use": True,
+        "source_stable_through_analysis": True,
         "bundle_name": "bundle",
     }
 
@@ -156,6 +157,36 @@ def test_verifier_manifest_disagreement_is_rejected(
     )
 
     with pytest.raises(ValueError, match="verifiers disagree"):
+        admission.analyze_admitted_contact_posterior_bundle(tmp_path)
+
+
+def test_source_change_during_analysis_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    embedded_calls = 0
+
+    def verify_embedded(_: str | Path) -> dict[str, object]:
+        nonlocal embedded_calls
+        embedded_calls += 1
+        report = _embedded_report()
+        if embedded_calls == 2:
+            report["artifact_count"] = 7
+        return report
+
+    monkeypatch.setattr(admission, "verify_embedded_result_bundle", verify_embedded)
+    monkeypatch.setattr(
+        admission,
+        "verify_contact_posterior_source_bundle",
+        lambda _: _source_report(),
+    )
+    monkeypatch.setattr(
+        admission,
+        "analyze_contact_posterior_bundle",
+        lambda *args, **kwargs: _analysis_result(),
+    )
+
+    with pytest.raises(ValueError, match="changed during"):
         admission.analyze_admitted_contact_posterior_bundle(tmp_path)
 
 
