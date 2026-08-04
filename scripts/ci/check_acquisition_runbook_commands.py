@@ -39,7 +39,35 @@ SHELL_FENCE_LANGUAGES = frozenset({"bash", "console", "sh", "shell", "zsh"})
 COMMAND_MANAGEMENT_ROUTES = frozenset({"describe", "list", "migrate", "validate"})
 LEGACY_EXECUTABLE_PATTERN = re.compile(r"^causal4d-[A-Za-z0-9][A-Za-z0-9_-]*$")
 SHELL_ASSIGNMENT_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
-SHELL_WRAPPERS = frozenset({"command", "env", "sudo", "time"})
+SHELL_CONTROL_PATTERN = re.compile(r"^[;&|()]+$")
+SHELL_PREFIX_KEYWORDS = frozenset(
+    {"!", "{", "do", "elif", "else", "if", "then", "until", "while"}
+)
+
+_ENV_OPTIONS_WITH_VALUES = frozenset(
+    {"-C", "--chdir", "-S", "--split-string", "-u", "--unset"}
+)
+_SUDO_OPTIONS_WITH_VALUES = frozenset(
+    {
+        "-C",
+        "--close-from",
+        "-g",
+        "--group",
+        "-h",
+        "--host",
+        "-p",
+        "--prompt",
+        "-r",
+        "--role",
+        "-t",
+        "--type",
+        "-T",
+        "--command-timeout",
+        "-u",
+        "--user",
+    }
+)
+_TIME_OPTIONS_WITH_VALUES = frozenset({"-f", "--format", "-o", "--output"})
 
 
 @dataclass(frozen=True)
@@ -131,37 +159,95 @@ def _logical_shell_commands(
             yield command_start, command
 
 
-def _command_tokens(command: str) -> tuple[str, ...]:
+def _simple_shell_commands(command: str) -> tuple[tuple[str, ...], ...]:
+    """Split one logical line at unquoted shell control operators."""
+
     try:
-        tokens = list(shlex.split(command, comments=True, posix=True))
+        lexer = shlex.shlex(
+            command,
+            posix=True,
+            punctuation_chars=";&|()",
+        )
+        lexer.whitespace_split = True
+        lexer.commenters = "#"
+        tokens = list(lexer)
     except ValueError:
         return ()
 
-    while tokens:
-        first = tokens[0]
-        if SHELL_ASSIGNMENT_PATTERN.fullmatch(first):
-            tokens.pop(0)
+    commands: list[tuple[str, ...]] = []
+    current: list[str] = []
+    for token in tokens:
+        if SHELL_CONTROL_PATTERN.fullmatch(token):
+            if current:
+                commands.append(tuple(current))
+                current = []
             continue
-        if first in SHELL_WRAPPERS:
+        current.append(token)
+    if current:
+        commands.append(tuple(current))
+    return tuple(commands)
+
+
+def _consume_options(
+    tokens: list[str],
+    options_with_values: frozenset[str],
+) -> None:
+    while tokens and tokens[0].startswith("-"):
+        option = tokens.pop(0)
+        if option == "--":
+            return
+        name, separator, _ = option.partition("=")
+        if not separator and name in options_with_values and tokens:
             tokens.pop(0)
-            if first == "env":
-                while tokens and SHELL_ASSIGNMENT_PATTERN.fullmatch(tokens[0]):
-                    tokens.pop(0)
+
+
+def _command_tokens(tokens: Sequence[str]) -> tuple[str, ...]:
+    """Remove shell prefixes and wrappers from one simple command."""
+
+    values = list(tokens)
+    while values:
+        first = values[0]
+        if SHELL_ASSIGNMENT_PATTERN.fullmatch(first) or first in SHELL_PREFIX_KEYWORDS:
+            values.pop(0)
+            continue
+        if first == "env":
+            values.pop(0)
+            _consume_options(values, _ENV_OPTIONS_WITH_VALUES)
+            while values and SHELL_ASSIGNMENT_PATTERN.fullmatch(values[0]):
+                values.pop(0)
+            continue
+        if first == "sudo":
+            values.pop(0)
+            _consume_options(values, _SUDO_OPTIONS_WITH_VALUES)
+            while values and SHELL_ASSIGNMENT_PATTERN.fullmatch(values[0]):
+                values.pop(0)
+            continue
+        if first == "time":
+            values.pop(0)
+            _consume_options(values, _TIME_OPTIONS_WITH_VALUES)
+            continue
+        if first == "command":
+            values.pop(0)
+            if values and values[0] in {"-v", "-V"}:
+                return ()
+            while values and values[0] in {"-p", "--"}:
+                values.pop(0)
             continue
         break
-    return tuple(tokens)
+    return tuple(values)
 
 
-def _validate_causal4d_command(
+def _validate_causal4d_tokens(
     path: Path,
     line: int,
     command: str,
+    tokens: Sequence[str],
 ) -> RunbookCommandIssue | None:
-    tokens = _command_tokens(command)
-    if not tokens:
+    normalized = _command_tokens(tokens)
+    if not normalized:
         return None
 
-    executable = tokens[0]
+    executable = normalized[0]
     if LEGACY_EXECUTABLE_PATTERN.fullmatch(executable):
         return RunbookCommandIssue(
             path=path,
@@ -172,7 +258,7 @@ def _validate_causal4d_command(
     if executable != PRIMARY_EXECUTABLE:
         return None
 
-    arguments = tokens[1:]
+    arguments = normalized[1:]
     if not arguments:
         return RunbookCommandIssue(
             path=path,
@@ -208,6 +294,19 @@ def _validate_causal4d_command(
     )
 
 
+def _validate_causal4d_command(
+    path: Path,
+    line: int,
+    command: str,
+) -> tuple[RunbookCommandIssue, ...]:
+    issues: list[RunbookCommandIssue] = []
+    for tokens in _simple_shell_commands(command):
+        issue = _validate_causal4d_tokens(path, line, command, tokens)
+        if issue is not None:
+            issues.append(issue)
+    return tuple(issues)
+
+
 def validate_markdown(
     path: Path,
     text: str,
@@ -217,9 +316,7 @@ def validate_markdown(
     issues: list[RunbookCommandIssue] = []
     for block_start, lines in _shell_fenced_blocks(text):
         for line, command in _logical_shell_commands(block_start, lines):
-            issue = _validate_causal4d_command(path, line, command)
-            if issue is not None:
-                issues.append(issue)
+            issues.extend(_validate_causal4d_command(path, line, command))
     return tuple(issues)
 
 
