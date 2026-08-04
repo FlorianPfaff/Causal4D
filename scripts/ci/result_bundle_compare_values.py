@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import math
 import re
-from typing import Any
+from typing import Any, TypeGuard
 
 
 _SUCCESS_GATE_THRESHOLD_PATH = re.compile(
@@ -94,7 +94,7 @@ def _is_direction_angle_path(path: str) -> bool:
     )
 
 
-def _is_number(value: Any) -> bool:
+def _is_number(value: Any) -> TypeGuard[int | float]:
     return type(value) in {int, float}
 
 
