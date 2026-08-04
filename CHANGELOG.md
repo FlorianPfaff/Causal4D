@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Added
+
+- Add a fail-closed source-panel status that validates the exact registered
+  12-execution prefix, reports the next physical execution with its complete
+  command profile, distinguishes invalid evidence from valid incompleteness, and
+  requires hash verification before completion.
+- Add exactly-once source-manifest publication. The publisher admits only the
+  next registered execution, recursively rejects target-outcome fields, verifies
+  every referenced artifact digest and byte count, validates the temporary
+  manifest, and never overwrites a final evidence path.
+- Add the physical source-panel operator runbook and adversarial coverage for
+  out-of-order completion, modified templates, stale artifact hashes, incomplete
+  status, and repeated publication.
+
+This control plane advances pre-acquisition operations without creating physical
+evidence. Source-panel executions remain source-only and cannot increment the
+`0/36` confirmatory evidence count.
+
 ### Fixed
 
 - Preserve the initial prior mass removed by contact-path pruning, including

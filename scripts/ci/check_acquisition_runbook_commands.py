@@ -31,6 +31,7 @@ from causal4d.cli.command_registry import (  # noqa: E402
 ACQUISITION_RUNBOOKS = (
     Path("README.md"),
     Path("docs/causal4d_preacquisition_readiness.md"),
+    Path("docs/causal4d_source_panel_acquisition.md"),
     Path("docs/causal4d_real_experiment_milestone.md"),
     Path("docs/causal4d_real_evidence_status.md"),
 )
