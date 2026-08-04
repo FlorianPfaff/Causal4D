@@ -6,9 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from causal4d.result_bundle_verification import (
-    verify_embedded_result_bundle,
-)
+from causal4d.result_bundle_verification import verify_embedded_result_bundle
 
 
 def _sha256(path: Path) -> str:
