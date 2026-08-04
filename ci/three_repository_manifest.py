@@ -7,7 +7,12 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable
 
-from three_repository_common import require
+from three_repository_common import (
+    BAYESIAN_PHYSTWIN_REPOSITORY,
+    CAUSAL4D_REPOSITORY,
+    PROB4D_REPOSITORY,
+    require,
+)
 
 
 def _expect_failure(label: str, operation: Callable[[], Any]) -> dict[str, str]:
@@ -71,18 +76,18 @@ def run_evidence_manifest_checks(
 
     manifest = RunManifestV2(
         run_id="three-repository-installed-wheel-golden-path",
-        repository="FlorianPfaff/Causal4D",
+        repository=CAUSAL4D_REPOSITORY,
         revision=revisions["causal4d"],
         dirty=False,
         related_repositories=(
             RepositoryState(
-                repository="FlorianPfaff/Prob4D",
+                repository=PROB4D_REPOSITORY,
                 revision=revisions["prob4d"],
                 dirty=False,
                 role="observation",
             ),
             RepositoryState(
-                repository="FlorianPfaff/Bayesian-PhysTwin",
+                repository=BAYESIAN_PHYSTWIN_REPOSITORY,
                 revision=revisions["bayesian-phystwin"],
                 dirty=False,
                 role="upstream",
