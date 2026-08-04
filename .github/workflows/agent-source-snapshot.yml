@@ -1,0 +1,25 @@
+name: Agent source snapshot
+
+on:
+  push:
+    branches:
+      - agent/causal4d-source-audit-20260805
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Create source archive
+        run: git archive --format=tar.gz --output=causal4d-source.tar.gz HEAD
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: causal4d-source-${{ github.sha }}
+          path: causal4d-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
