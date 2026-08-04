@@ -190,6 +190,7 @@ jobs:
               1,
           )
           text = text.replace("permissions:\n  contents: write\n", "permissions:\n  contents: read\n", 1)
+          text = text.replace("          ref: ${{ github.ref_name }}\n", "", 1)
           text = text.replace(
               "    if: >-\n"
               "      github.event_name == 'push' ||\n"
@@ -206,8 +207,9 @@ jobs:
           path.write_text(prefix + "\n", encoding="utf-8")
           PY
           metrics="$({
-            .contact-diagnostic-venv/bin/python - <<'PY'
+            python - <<'PY'
           import json
+          import os
           from pathlib import Path
 
           path = Path(
@@ -216,7 +218,7 @@ jobs:
           )
           result = json.loads(path.read_text(encoding="utf-8"))
           overall = result["overall"]
-          print(f"workflow_run_id={__import__('os').environ['GITHUB_RUN_ID']}")
+          print(f"workflow_run_id={os.environ['GITHUB_RUN_ID']}")
           print(f"recomputation_parity={result['recomputation_parity']['passed']}")
           print(f"exact_node_accuracy={overall['exact_node_accuracy']:.17g}")
           print(f"one_hop_patch_accuracy={overall['one_hop_patch_accuracy']:.17g}")
