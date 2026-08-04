@@ -34,8 +34,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     raw_bundle_directory = arguments.bundle_directory
     if raw_bundle_directory.is_symlink():
         raise ValueError(
-            f"result bundle directory must not be a symlink: "
-            f"{raw_bundle_directory}"
+            f"result bundle directory must not be a symlink: {raw_bundle_directory}"
         )
     bundle_directory = raw_bundle_directory.absolute()
     bundle = verify_result_manifest(
