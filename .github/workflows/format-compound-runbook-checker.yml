@@ -14,7 +14,7 @@ permissions:
 jobs:
   format:
     if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
     timeout-minutes: 10
     steps:
       - name: Check out source branch
@@ -22,6 +22,7 @@ jobs:
         with:
           ref: agent/harden-acquisition-runbook-compound
           persist-credentials: true
+          clean: true
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -32,14 +33,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install -e ".[dev]"
-          python -m ruff format \
+          python -m venv .runbook-checker-venv
+          .runbook-checker-venv/bin/python -m pip install -e ".[dev]"
+          .runbook-checker-venv/bin/python -m ruff format \
             scripts/ci/check_acquisition_runbook_commands.py \
             tests/test_acquisition_runbook_commands.py
-          python -m ruff check \
+          .runbook-checker-venv/bin/python -m ruff check \
             scripts/ci/check_acquisition_runbook_commands.py \
             tests/test_acquisition_runbook_commands.py
-          python -m pytest -q tests/test_acquisition_runbook_commands.py
+          .runbook-checker-venv/bin/python -m pytest -q \
+            tests/test_acquisition_runbook_commands.py
+          git diff --check
 
       - name: Commit formatting
         shell: bash
@@ -56,3 +60,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "Format compound runbook checker"
           git push origin HEAD:agent/harden-acquisition-runbook-compound
+
+      - name: Remove isolated environment
+        if: always()
+        run: rm -rf .runbook-checker-venv
