@@ -719,6 +719,9 @@ def posterior_predictive_for_state(
 ) -> PredictiveDistribution:
     """Return a fixed-contact predictive, optionally updating theta from a prefix."""
 
+    if not np.isfinite(posterior_temperature) or posterior_temperature <= 0.0:
+        raise ValueError("posterior_temperature must be finite and positive")
+
     trajectories = simulate_particles(
         graph_object,
         state.action(action),
