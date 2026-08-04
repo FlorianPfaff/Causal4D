@@ -1,0 +1,178 @@
+name: Contact-posterior diagnostics
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/contact-posterior-diagnostics.yml"
+      - "docs/contact_posterior_admission.md"
+      - "docs/contact_posterior_diagnostics.md"
+      - "scripts/ci/analyze_contact_posterior.py"
+      - "src/causal4d/contact_posterior_admission.py"
+      - "src/causal4d/contact_posterior_diagnostics.py"
+      - "src/causal4d/contact_posterior_source_integrity.py"
+      - "src/causal4d/result_bundle_verification.py"
+      - "tests/test_contact_posterior_admission.py"
+      - "tests/test_contact_posterior_bundle_verification.py"
+      - "tests/test_contact_posterior_diagnostics.py"
+      - "tests/test_contact_posterior_source_integrity.py"
+      - "tests/test_contact_posterior_workflow_policy.py"
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: Independent diagnostic seed range
+        required: false
+        default: "100:120"
+        type: string
+      diffusion_strength:
+        description: Graph-diffusion proxy strength
+        required: false
+        default: "1.0"
+        type: string
+      force_field_equivalence_threshold:
+        description: Diagnostic graph-diffusion cosine threshold
+        required: false
+        default: "0.90"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contact-posterior-diagnostics-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUNBUFFERED: "1"
+  DIAGNOSTIC_SEEDS: ${{ inputs.seeds || '100:120' }}
+  DIFFUSION_STRENGTH: ${{ inputs.diffusion_strength || '1.0' }}
+  FORCE_FIELD_THRESHOLD: >-
+    ${{ inputs.force_field_equivalence_threshold || '0.90' }}
+
+jobs:
+  diagnose:
+    name: Independent-seed topology diagnostics
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 180
+    steps:
+      - name: Check out Causal4D
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install isolated diagnostic environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv .contact-diagnostic-venv
+          .contact-diagnostic-venv/bin/python -m pip install --upgrade pip
+          .contact-diagnostic-venv/bin/python -m pip install -e ".[dev]"
+          .contact-diagnostic-venv/bin/python -m pip check
+          mkdir -p outputs/contact-posterior
+          .contact-diagnostic-venv/bin/python -m pip freeze --all \
+            > outputs/contact-posterior/pip-freeze.txt
+          {
+            echo "runner_name=${RUNNER_NAME}"
+            echo "runner_os=${RUNNER_OS}"
+            echo "runner_arch=${RUNNER_ARCH}"
+            echo "git_commit=${GITHUB_SHA}"
+            echo "workflow_run_id=${GITHUB_RUN_ID}"
+            echo "seeds=${DIAGNOSTIC_SEEDS}"
+            echo "diffusion_strength=${DIFFUSION_STRENGTH}"
+            echo "force_field_threshold=${FORCE_FIELD_THRESHOLD}"
+            uname -a
+          } > outputs/contact-posterior/environment.txt
+
+      - name: Produce independent-seed controlled bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          .contact-diagnostic-venv/bin/causal4d benchmark latent-contact \
+            --output-dir outputs/contact-posterior/independent-seeds \
+            --seeds "${DIAGNOSTIC_SEEDS}" \
+            --frames 56 \
+            --training-repeats 2 \
+            --parameter-grid-count 5 \
+            --contact-parameter-particles 12 \
+            --observation-fraction 0.20 \
+            --observation-noise-mm 1.5 \
+            | tee outputs/contact-posterior/benchmark-console.json
+          .contact-diagnostic-venv/bin/python \
+            scripts/ci/verify_result_bundle.py \
+            outputs/contact-posterior/independent-seeds/manifest.json
+
+      - name: Recompute and analyze contact posterior
+        shell: bash
+        run: |
+          set -euo pipefail
+          .contact-diagnostic-venv/bin/python \
+            scripts/ci/analyze_contact_posterior.py \
+            outputs/contact-posterior/independent-seeds \
+            --output-dir outputs/contact-posterior/diagnostics \
+            --diffusion-strength "${DIFFUSION_STRENGTH}" \
+            --force-field-equivalence-threshold \
+              "${FORCE_FIELD_THRESHOLD}" \
+            | tee outputs/contact-posterior/diagnostic-console.json
+
+      - name: Publish diagnostic summary
+        shell: bash
+        run: |
+          {
+            echo "### Causal4D contact-posterior diagnostics"
+            echo
+            echo "- Runner: \`${RUNNER_NAME}\`"
+            echo "- Seeds: \`${DIAGNOSTIC_SEEDS}\`"
+            .contact-diagnostic-venv/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path(
+              "outputs/contact-posterior/diagnostics/"
+              "contact-posterior-diagnostics.json"
+          )
+          result = json.loads(path.read_text(encoding="utf-8"))
+          overall = result["overall"]
+          print(
+              "- Source admission: "
+              f"`{result['admission_boundary']['passed']}`"
+          )
+          print(
+              "- Recomputation parity: "
+              f"`{result['recomputation_parity']['passed']}`"
+          )
+          print(
+              "- Exact-node accuracy: "
+              f"`{overall['exact_node_accuracy']:.2%}`"
+          )
+          print(
+              "- One-hop-patch accuracy: "
+              f"`{overall['one_hop_patch_accuracy']:.2%}`"
+          )
+          print(
+              "- Incorrect-MAP trajectory-improved fraction: "
+              f"`{overall['trajectory_incorrect_map']['improved_fraction']}`"
+          )
+          PY
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload diagnostic evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: contact-posterior-diagnostics
+          path: outputs/contact-posterior/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove isolated environment
+        if: always()
+        run: rm -rf .contact-diagnostic-venv
