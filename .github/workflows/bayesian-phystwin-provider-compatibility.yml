@@ -95,25 +95,26 @@ jobs:
     timeout-minutes: 5
     env:
       PRIVATE_REPOSITORY_READ_TOKEN: ${{ secrets.BPT_READ_TOKEN }}
+      BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}
     steps:
-      - name: Enforce private-repository credential
+      - name: Enforce private-repository credentials
         run: |
-          if [[ -z "${PRIVATE_REPOSITORY_READ_TOKEN}" ]]; then
-            echo "::error::BPT_READ_TOKEN is not configured; the required three-repository golden path cannot run."
+          if [[ -z "${PRIVATE_REPOSITORY_READ_TOKEN}" || -z "${BPT_READ_SSH_KEY}" ]]; then
+            echo "::error::BPT_READ_TOKEN and BPT_READ_SSH_KEY must both be configured; the required three-repository golden path cannot run."
             {
               echo "### Three-repository installed-wheel compatibility"
               echo
-              echo "**Failed:** the repository secret \`BPT_READ_TOKEN\` is absent."
+              echo "**Failed:** one or both required private-repository credentials are absent."
               echo
               echo "This check is not allowed to pass by skipping its private repositories."
-              echo "Configure a least-privilege token with read access to:"
+              echo "Configure least-privilege credentials with read access:"
               echo
-              echo "- \`IPS-Stuttgart/BayesianPhysTwin\`;"
-              echo "- \`IPS-Stuttgart/Prob4D\`."
+              echo "- \`BPT_READ_SSH_KEY\` for \`IPS-Stuttgart/BayesianPhysTwin\`;"
+              echo "- \`BPT_READ_TOKEN\` for \`IPS-Stuttgart/Prob4D\`."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
-          echo "Private-repository credential is configured."
+          echo "Private-repository credentials are configured."
 
   external-pull-request:
     name: External PR cannot access private providers
@@ -154,7 +155,7 @@ jobs:
         with:
           repository: IPS-Stuttgart/BayesianPhysTwin
           ref: ${{ inputs.bpt_ref || 'main' }}
-          token: ${{ secrets.BPT_READ_TOKEN }}
+          ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}
           path: bayesian-phystwin
           persist-credentials: false
 
