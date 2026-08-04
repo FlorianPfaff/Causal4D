@@ -185,8 +185,7 @@ def verify_result_manifest(
             )
         if actual_hash != expected_hash:
             raise ValueError(
-                f"artifact {name!r} checksum changed: "
-                f"{actual_hash} != {expected_hash}"
+                f"artifact {name!r} checksum changed: {actual_hash} != {expected_hash}"
             )
         records.append(
             ArtifactRecord(
