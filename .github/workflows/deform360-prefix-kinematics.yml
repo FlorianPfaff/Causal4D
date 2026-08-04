@@ -1,0 +1,170 @@
+name: Deform360 source prefix kinematics
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/deform360-prefix-kinematics.yml"
+      - "configs/causal4d_public/deform360_prefix_kinematics_v1.json"
+      - "docs/causal4d_deform360_prefix_kinematics.md"
+      - "scripts/remote/find_deform360_replication_root.py"
+      - "scripts/remote/run_deform360_prefix_kinematics.py"
+      - "scripts/remote/run_deform360_prefix_kinematics_workflow.sh"
+      - "src/causal4d_public/deform360_prefix_kinematics.py"
+      - "src/causal4d_public/deform360_prefix_kinematics_diagnostic.py"
+      - "tests/test_deform360_prefix_kinematics.py"
+      - "tests/test_deform360_prefix_kinematics_diagnostic.py"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/deform360-prefix-kinematics.yml"
+      - "configs/causal4d_public/deform360_prefix_kinematics_v1.json"
+      - "scripts/remote/find_deform360_replication_root.py"
+      - "scripts/remote/run_deform360_prefix_kinematics.py"
+      - "scripts/remote/run_deform360_prefix_kinematics_workflow.sh"
+      - "src/causal4d_public/deform360_prefix_kinematics.py"
+      - "src/causal4d_public/deform360_prefix_kinematics_diagnostic.py"
+      - "tests/test_deform360_prefix_kinematics.py"
+      - "tests/test_deform360_prefix_kinematics_diagnostic.py"
+  workflow_dispatch:
+    inputs:
+      data_root:
+        description: Optional exact derived Deform360 replication root
+        required: false
+        type: string
+      run_source_diagnostic:
+        description: Run the locked source-only GPU diagnostic
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deform360-prefix-kinematics-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Lock, causal boundary, formatting, and tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install development environment
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m pip check
+
+      - name: Check the diagnostic surface
+        run: |
+          files=(
+            scripts/remote/find_deform360_replication_root.py
+            scripts/remote/run_deform360_prefix_kinematics.py
+            src/causal4d_public/deform360_prefix_kinematics.py
+            src/causal4d_public/deform360_prefix_kinematics_diagnostic.py
+            tests/test_deform360_prefix_kinematics.py
+            tests/test_deform360_prefix_kinematics_diagnostic.py
+          )
+          python -m ruff check "${files[@]}"
+          python -m ruff format --check "${files[@]}"
+          python -m mypy \
+            src/causal4d_public/deform360_prefix_kinematics.py \
+            src/causal4d_public/deform360_prefix_kinematics_diagnostic.py \
+            scripts/remote/find_deform360_replication_root.py \
+            scripts/remote/run_deform360_prefix_kinematics.py
+          bash -n scripts/remote/run_deform360_prefix_kinematics_workflow.sh
+
+      - name: Exercise the lock and causal boundary
+        run: |
+          python -m pytest -q \
+            tests/test_deform360_prefix_kinematics.py \
+            tests/test_deform360_prefix_kinematics_diagnostic.py \
+            tests/test_deform360_replication_case.py \
+            tests/test_deform360_source_failure_attribution.py
+
+  source-diagnostic:
+    name: Locked source-only GPU diagnostic
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.run_source_diagnostic
+    needs: contract
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 360
+    env:
+      DEFORM360_REPLICATION_ROOT: ${{ inputs.data_root }}
+    steps:
+      - name: Require BayesianPhysTwin read access
+        env:
+          BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}
+        run: test -n "${BPT_READ_SSH_KEY}"
+
+      - name: Check out Causal4D
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          clean: true
+
+      - name: Read exact BayesianPhysTwin pin
+        id: bpt-pin
+        run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out pinned BayesianPhysTwin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/BayesianPhysTwin
+          ref: ${{ steps.bpt-pin.outputs.sha }}
+          ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}
+          path: _bpt
+          persist-credentials: false
+          clean: true
+
+      - name: Check out pinned Deform360 code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: lhy0807/deform360
+          ref: 7fea8e20231a47641d1d2bc8791920ec4e62ec5e
+          path: _deform360
+          persist-credentials: false
+          clean: true
+
+      - name: Check out pinned official PhysTwin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Jianghanxiao/PhysTwin
+          ref: 2b6630528141b9cba5a7677c8b88b2129b4a8390
+          path: _official_phystwin
+          persist-credentials: false
+          clean: true
+
+      - name: Run locked source diagnostic
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p deform360-prefix-kinematics
+          bash scripts/remote/run_deform360_prefix_kinematics_workflow.sh \
+            "$PWD" \
+            "$PWD/_bpt" \
+            "$PWD/_deform360" \
+            "$PWD/_official_phystwin" \
+            "$PWD/deform360-prefix-kinematics" \
+            2>&1 | tee deform360-prefix-kinematics/run.log
+
+      - name: Upload source evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: deform360-prefix-kinematics-${{ github.sha }}
+          path: deform360-prefix-kinematics/
+          if-no-files-found: error
+          retention-days: 30
