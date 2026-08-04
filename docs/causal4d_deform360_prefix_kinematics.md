@@ -129,4 +129,6 @@ python scripts/remote/run_deform360_prefix_kinematics.py \
 ```
 
 The `Deform360 source prefix kinematics` workflow provides the same locked
-execution and uploads the result, runtime sidecar, log, and checksums.
+execution and uploads the result, runtime sidecar, log, and checksums. Pull
+requests run only its contract job; the GPU source diagnostic requires explicit
+manual dispatch so ordinary review cannot accidentally create new evidence.
