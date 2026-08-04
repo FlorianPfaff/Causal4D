@@ -1,0 +1,26 @@
+# Contact-posterior diagnostic admission
+
+Evidence-bearing contact-posterior analysis enters through
+`analyze_admitted_contact_posterior_bundle`. The topology-aware numerical analyzer
+remains a reusable lower-level kernel, but the command-line workflow and published
+diagnostic artifacts use the admission boundary.
+
+The boundary performs two independent checks before recomputation:
+
+1. `verify_embedded_result_bundle` verifies the flat result-manifest schema, exact
+   payload inventory, byte counts, SHA-256 identities, and ordinary-file/symlink
+   constraints.
+2. `verify_contact_posterior_source_bundle` verifies the Causal4D-specific bundle
+   schema, unique seeds and row identities, canonical scalar encodings, source
+   topology exclusions, observation fractions, paired trajectory methods, and
+   agreement between summary and gate artifacts.
+
+The two verifiers must report the same source-manifest SHA-256. The low-level
+analyzer must then retain that exact manifest identity. A disagreement at any of
+those three stages stops publication.
+
+Published source provenance contains the portable bundle name, manifest digest,
+verified artifact identities, and both integrity reports. Runner-local absolute
+paths are removed. This admission step is diagnostic-only: it does not alter the
+frozen estimator, posterior, thresholds, exact-node gate, registered experiment,
+or result values.
