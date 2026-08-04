@@ -5,7 +5,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = (
-    ROOT / ".github" / "workflows" / "bayesian-phystwin-provider-compatibility.yml"
+    ROOT
+    / ".github"
+    / "workflows"
+    / "bayesian-phystwin-provider-compatibility.yml"
 )
 COMMON = ROOT / "ci" / "three_repository_common.py"
 MANIFEST = ROOT / "ci" / "three_repository_manifest.py"
