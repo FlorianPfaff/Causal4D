@@ -8,9 +8,6 @@ on:
       - "scripts/ci/analyze_contact_posterior.py"
       - "src/causal4d/contact_posterior_diagnostics.py"
       - "tests/test_contact_posterior_diagnostics.py"
-  push:
-    branches:
-      - agent/reproducibility-contact-diagnostics
   workflow_dispatch:
     inputs:
       seeds:
@@ -30,7 +27,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: contact-posterior-diagnostics-${{ github.ref }}
@@ -48,15 +45,14 @@ jobs:
   diagnose:
     name: Independent-seed topology diagnostics
     if: >-
-      github.event_name == 'push' ||
-      github.event_name == 'workflow_dispatch'
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, nvidia-smi]
     timeout-minutes: 180
     steps:
       - name: Check out Causal4D
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.ref_name }}
           fetch-depth: 0
           persist-credentials: false
           clean: true
@@ -169,72 +165,3 @@ jobs:
       - name: Remove isolated environment
         if: always()
         run: rm -rf .contact-diagnostic-venv
-
-      - name: Restore final read-only workflow and record evidence
-        if: github.event_name == 'push'
-        env:
-          PUSH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path(".github/workflows/contact-posterior-diagnostics.yml")
-          text = path.read_text(encoding="utf-8")
-          text = text.replace(
-              "  push:\n"
-              "    branches:\n"
-              "      - agent/reproducibility-contact-diagnostics\n",
-              "",
-              1,
-          )
-          text = text.replace("permissions:\n  contents: write\n", "permissions:\n  contents: read\n", 1)
-          text = text.replace("          ref: ${{ github.ref_name }}\n", "", 1)
-          text = text.replace(
-              "    if: >-\n"
-              "      github.event_name == 'push' ||\n"
-              "      github.event_name == 'workflow_dispatch'\n",
-              "    if: >-\n"
-              "      github.event_name == 'workflow_dispatch' ||\n"
-              "      github.event.pull_request.head.repo.full_name == github.repository\n",
-              1,
-          )
-          marker = "\n      - name: Restore final read-only workflow and record evidence\n"
-          prefix, found, _ = text.partition(marker)
-          if not found:
-              raise RuntimeError("cleanup step marker is missing")
-          path.write_text(prefix + "\n", encoding="utf-8")
-          PY
-          metrics="$({
-            python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          path = Path(
-              "outputs/contact-posterior/diagnostics/"
-              "contact-posterior-diagnostics.json"
-          )
-          result = json.loads(path.read_text(encoding="utf-8"))
-          overall = result["overall"]
-          print(f"workflow_run_id={os.environ['GITHUB_RUN_ID']}")
-          print(f"recomputation_parity={result['recomputation_parity']['passed']}")
-          print(f"exact_node_accuracy={overall['exact_node_accuracy']:.17g}")
-          print(f"one_hop_patch_accuracy={overall['one_hop_patch_accuracy']:.17g}")
-          print(
-              "incorrect_map_trajectory_improved_fraction="
-              f"{overall['trajectory_incorrect_map']['improved_fraction']}"
-          )
-          PY
-          } | tr '\n' ';')"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/workflows/contact-posterior-diagnostics.yml
-          git commit \
-            -m "Record workstation2 contact diagnostic validation" \
-            -m "${metrics}"
-          basic_auth="$(printf 'x-access-token:%s' "${PUSH_TOKEN}" | base64 -w0)"
-          git -c \
-            http.https://github.com/.extraheader="AUTHORIZATION: basic ${basic_auth}" \
-            push origin HEAD:agent/reproducibility-contact-diagnostics
