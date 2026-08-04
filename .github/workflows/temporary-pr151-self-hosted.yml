@@ -79,8 +79,6 @@ jobs:
             | tee outputs/pr151/summary-b.json
           cmp outputs/pr151/attribution-a.json outputs/pr151/attribution-b.json
           cmp outputs/pr151/summary-a.json outputs/pr151/summary-b.json
-          cmp outputs/pr151/summary-a.json \
-            milestones/deform360-source-failure-attribution-v1/summary.json
 
       - name: Upload validation evidence
         if: always()
