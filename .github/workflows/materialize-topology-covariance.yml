@@ -20,7 +20,16 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.head.ref ==
       'agent/topology-conditioned-contact-covariance-v2'
-    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    name: materialize (${{ matrix.lane }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: hosted
+            runs_on: '"ubuntu-latest"'
+          - lane: workstation2
+            runs_on: '["self-hosted","Linux","X64","nvidia-smi"]'
+    runs-on: ${{ fromJSON(matrix.runs_on) }}
     timeout-minutes: 30
     steps:
       - name: Check out transport branch
@@ -30,7 +39,16 @@ jobs:
           fetch-depth: 0
           clean: true
 
+      - name: Set up Python 3.12 with hosted cache
+        if: matrix.lane == 'hosted'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
       - name: Set up Python 3.12 without Actions cache
+        if: matrix.lane == 'workstation2'
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
@@ -121,9 +139,22 @@ jobs:
       - name: Publish clean implementation commit
         shell: bash
         env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
           HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
+          git fetch --no-tags origin "${HEAD_BRANCH}"
+          remote_head="$(git rev-parse FETCH_HEAD)"
+          if git cat-file -e \
+            "${remote_head}:src/causal4d/contact_topology_covariance_diagnostic.py" \
+            2>/dev/null; then
+            echo "A parallel validation lane already published the clean source."
+            exit 0
+          fi
+          if [[ "${remote_head}" != "${EXPECTED_HEAD}" ]]; then
+            echo "Transport branch changed unexpectedly: ${remote_head}" >&2
+            exit 1
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
