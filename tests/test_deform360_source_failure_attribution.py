@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
 import json
 from pathlib import Path
 
@@ -20,8 +21,15 @@ SUMMARY = (
     REPOSITORY_ROOT
     / "milestones/deform360-source-failure-attribution-v1/summary.json"
 )
+DEPENDENCY_LOCK = (
+    REPOSITORY_ROOT
+    / "requirements/diagnostics/deform360-source-failure-py312.txt"
+)
 EXPECTED_RESULT_SHA256 = (
     "8da1a6112a7afb959a6bf81c3f870a8135d8414b599db98d67656ba40e98c9eb"
+)
+EXPECTED_DEPENDENCY_LOCK_SHA256 = (
+    "e8258eeae724e775651af0449d3e0708dae2fd4d04d2316f109792aad2862895"
 )
 EXPECTED_CLASSIFICATION_COUNTS = {
     "episode_level_backend_competence_failure": 4,
@@ -184,8 +192,22 @@ def test_frozen_source_attribution_is_locked_and_target_closed() -> None:
 def test_compact_milestone_summary_matches_the_full_attribution() -> None:
     full = analyze_source_failure_milestone(PROTOCOL, MILESTONE)
     compact = json.loads(SUMMARY.read_text(encoding="utf-8"))
+    dependency_lock_bytes = DEPENDENCY_LOCK.read_bytes()
 
     assert compact["full_attribution_result_sha256"] == EXPECTED_RESULT_SHA256
+    assert compact["environment"]["python"] == "3.12"
+    assert compact["environment"]["dependency_lock_path"] == (
+        "requirements/diagnostics/deform360-source-failure-py312.txt"
+    )
+    assert compact["environment"]["dependency_lock_sha256"] == (
+        EXPECTED_DEPENDENCY_LOCK_SHA256
+    )
+    assert compact["environment"]["dependency_lock_bytes"] == len(
+        dependency_lock_bytes
+    )
+    assert hashlib.sha256(dependency_lock_bytes).hexdigest() == (
+        EXPECTED_DEPENDENCY_LOCK_SHA256
+    )
     assert compact["cohort"]["classification_counts"] == (
         EXPECTED_CLASSIFICATION_COUNTS
     )
