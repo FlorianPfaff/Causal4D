@@ -16,6 +16,8 @@ target prefix, target future geometry, or target tactile stream.
   `594107433cda1be386210df85e150796240255f91e25436e43d21c0911e9ffa2`.
 - Full attribution result SHA-256:
   `8da1a6112a7afb959a6bf81c3f870a8135d8414b599db98d67656ba40e98c9eb`.
+- Python 3.12 diagnostic dependency lock:
+  `requirements/diagnostics/deform360-source-failure-py312.txt`.
 
 All 51 files listed by the frozen source milestone manifest were rehashed before
 analysis. The diagnostic validated all 30 candidate grids and reproduced the
@@ -69,17 +71,25 @@ require a new source-only ablation with its own lock.
 
 ## Reproduction
 
-From the repository root:
+Use Python 3.12 from the repository root:
 
 ```bash
-python -m pip install -e ".[dev]"
-python scripts/ci/analyze_deform360_source_failure.py \
+python -m venv /tmp/causal4d-deform360-attribution
+/tmp/causal4d-deform360-attribution/bin/python -m pip install \
+  --upgrade "pip==26.2"
+/tmp/causal4d-deform360-attribution/bin/python -m pip install \
+  -r requirements/diagnostics/deform360-source-failure-py312.txt
+/tmp/causal4d-deform360-attribution/bin/python -m pip install \
+  --no-deps -e .
+/tmp/causal4d-deform360-attribution/bin/python \
+  scripts/ci/analyze_deform360_source_failure.py \
   --output /tmp/deform360-source-failure-attribution.json
 ```
 
 The command verifies the frozen source milestone before computing the result.
-The dedicated `Deform360 source failure attribution` workflow runs the analysis
-twice and requires byte-identical attribution artifacts and summaries.
+The dedicated `Deform360 source failure attribution` workflow verifies the exact
+locked dependency versions, runs the analysis twice, and requires byte-identical
+attribution artifacts and summaries.
 
 ## Claim and information boundary
 
