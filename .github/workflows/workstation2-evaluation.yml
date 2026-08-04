@@ -7,7 +7,12 @@ on:
       - ".github/workflows/workstation2-evaluation.yml"
       - ".github/workflows/optional-integrations.yml"
       - "scripts/ci/compare_result_bundles.py"
+      - "scripts/ci/reproduction_manifest_runtime.py"
+      - "scripts/ci/reproduction_manifest_validation.py"
+      - "scripts/ci/result_bundle_identity.py"
+      - "scripts/ci/write_reproduction_manifest.py"
       - "scripts/ci/workstation2_gpu_qualification.py"
+      - "tests/test_workstation2_cache_policy.py"
   workflow_dispatch:
     inputs:
       cuda_visible_devices:
@@ -66,6 +71,7 @@ jobs:
             echo "runner_arch=${RUNNER_ARCH}"
             echo "cuda_visible_devices=${CUDA_VISIBLE_DEVICES}"
             echo "git_commit=${GITHUB_SHA}"
+            echo "workflow_run_id=${GITHUB_RUN_ID}"
             uname -a
           } | tee outputs/workstation2/runner.txt
           nvidia-smi -L | tee outputs/workstation2/nvidia-smi-L.txt
@@ -96,7 +102,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          .workstation2-venv/bin/causal4d-latent-contact-benchmark \
+          .workstation2-venv/bin/causal4d benchmark latent-contact \
             --output-dir outputs/workstation2/frozen-controlled \
             --seeds 0:5 \
             --frames 56 \
@@ -109,16 +115,28 @@ jobs:
             | tee outputs/workstation2/frozen-controlled-console.json
           .workstation2-venv/bin/python scripts/ci/verify_result_bundle.py \
             outputs/workstation2/frozen-controlled/manifest.json
+          .workstation2-venv/bin/python \
+            scripts/ci/write_reproduction_manifest.py \
+            outputs/workstation2/frozen-controlled \
+            --output \
+              outputs/workstation2/frozen-controlled.reproduction.json \
+            --repository "${GITHUB_REPOSITORY}" \
+            --commit-sha "${GITHUB_SHA}" \
+            --workflow-run-id "${GITHUB_RUN_ID}" \
+            --runner-name "${RUNNER_NAME}"
           .workstation2-venv/bin/python scripts/ci/compare_result_bundles.py \
             milestones/v0.3.0-causal4d-aip/results/controlled \
             outputs/workstation2/frozen-controlled \
+            --actual-reproduction-manifest \
+              outputs/workstation2/frozen-controlled.reproduction.json \
+            --require-actual-reproduction-manifest \
             --output outputs/workstation2/frozen-bundle-comparison.json
 
       - name: Run independent-seed controlled replication
         shell: bash
         run: |
           set -euo pipefail
-          .workstation2-venv/bin/causal4d-latent-contact-benchmark \
+          .workstation2-venv/bin/causal4d benchmark latent-contact \
             --output-dir outputs/workstation2/independent-seeds \
             --seeds "${EXTENDED_SEEDS}" \
             --frames 56 \
@@ -130,6 +148,15 @@ jobs:
             | tee outputs/workstation2/independent-seeds-console.json
           .workstation2-venv/bin/python scripts/ci/verify_result_bundle.py \
             outputs/workstation2/independent-seeds/manifest.json
+          .workstation2-venv/bin/python \
+            scripts/ci/write_reproduction_manifest.py \
+            outputs/workstation2/independent-seeds \
+            --output \
+              outputs/workstation2/independent-seeds.reproduction.json \
+            --repository "${GITHUB_REPOSITORY}" \
+            --commit-sha "${GITHUB_SHA}" \
+            --workflow-run-id "${GITHUB_RUN_ID}" \
+            --runner-name "${RUNNER_NAME}"
 
       - name: Summarize evaluation evidence
         shell: bash
@@ -157,12 +184,16 @@ jobs:
               "artifact_kind": "Causal4DWorkstation2EvaluationSummary",
               "repository": os.environ["GITHUB_REPOSITORY"],
               "commit": os.environ["GITHUB_SHA"],
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
               "runner_name": os.environ.get("RUNNER_NAME"),
               "independent_seed_specification": os.environ["EXTENDED_SEEDS"],
               "gpu_qualification_passed": qualification["passed"],
               "gpu": qualification["gpu"],
               "frozen_payload_bytes_match": comparison["all_payload_bytes_match"],
               "frozen_semantic_match": comparison["semantic_match"],
+              "frozen_reproduction_manifest_sha256": comparison[
+                  "reproduction_manifests"
+              ]["actual"]["sha256"],
               "frozen_maximum_absolute_difference": comparison[
                   "maximum_absolute_difference"
               ],
