@@ -1,6 +1,13 @@
 name: Contact-posterior diagnostics
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/contact-posterior-diagnostics.yml"
+      - "docs/contact_posterior_diagnostics.md"
+      - "scripts/ci/analyze_contact_posterior.py"
+      - "src/causal4d/contact_posterior_diagnostics.py"
+      - "tests/test_contact_posterior_diagnostics.py"
   workflow_dispatch:
     inputs:
       seeds:
@@ -37,6 +44,9 @@ env:
 jobs:
   diagnose:
     name: Independent-seed topology diagnostics
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, nvidia-smi]
     timeout-minutes: 180
     steps:
