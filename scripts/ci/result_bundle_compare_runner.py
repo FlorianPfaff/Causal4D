@@ -17,6 +17,7 @@ from result_bundle_identity import (
     verify_result_manifest,
 )
 
+
 def _load_bundle(
     directory: Path,
     *,
@@ -248,5 +249,3 @@ def compare_result_bundles(
         ),
     }
     return report
-
-
