@@ -16,6 +16,7 @@ from causal4d.contact_posterior_diagnostics import (
 from causal4d.contact_posterior_source_integrity import (
     verify_contact_posterior_source_bundle,
 )
+from causal4d.result_bundle_verification import verify_embedded_result_bundle
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -37,7 +38,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         diffusion_strength=args.diffusion_strength,
         force_field_equivalence_threshold=(args.force_field_equivalence_threshold),
     )
+    embedded_integrity = verify_embedded_result_bundle(args.bundle_dir)
     source_integrity = verify_contact_posterior_source_bundle(args.bundle_dir)
+    if source_integrity["manifest_sha256"] != embedded_integrity["manifest_sha256"]:
+        raise ValueError("source-integrity verifiers disagree on manifest identity")
+    source_integrity["embedded_bundle"] = embedded_integrity
+
     result = analyze_contact_posterior_bundle(
         args.bundle_dir,
         config=config,
@@ -45,7 +51,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     source_bundle = result.get("source_bundle")
     if not isinstance(source_bundle, dict):
         raise ValueError("diagnostic result is missing source-bundle provenance")
-    source_bundle["integrity_verification"] = source_integrity
+    source_bundle.pop("directory", None)
+    source_bundle.update(
+        {
+            "bundle_name": embedded_integrity["bundle_name"],
+            "manifest_sha256": embedded_integrity["manifest_sha256"],
+            "artifacts": embedded_integrity["artifacts"],
+            "integrity_verification": source_integrity,
+        }
+    )
+
     paths = write_contact_posterior_diagnostics(result, args.output_dir)
     print(
         json.dumps(
