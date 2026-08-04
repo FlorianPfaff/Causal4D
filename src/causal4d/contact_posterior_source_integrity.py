@@ -58,6 +58,7 @@ _INTERVENTION_REQUIRED_FIELDS = frozenset(
 _SETTINGS = frozenset({"pre_intervention", "online_adaptation"})
 _WORLD_CONDITIONS = frozenset({"matched_contact", "shifted_contact"})
 _REQUIRED_TRAJECTORY_METHODS = frozenset({"nominal_physics", "latent_contact"})
+_UNIT_INTERVAL_TOLERANCE = 1e-12
 
 _RowKey = tuple[int, str, str, str]
 
@@ -172,6 +173,14 @@ def _parse_finite_float(value: str, *, field: str, location: str) -> float:
     if not math.isfinite(parsed):
         raise ValueError(f"{location}/{field} must be finite")
     return parsed
+
+
+def _validate_unit_interval(value: float, *, field: str, location: str) -> None:
+    if not -_UNIT_INTERVAL_TOLERANCE <= value <= 1.0 + _UNIT_INTERVAL_TOLERANCE:
+        raise ValueError(
+            f"{location}/{field} must be in [0, 1] within "
+            f"{_UNIT_INTERVAL_TOLERANCE:g} numerical tolerance"
+        )
 
 
 def _parse_bool(value: str, *, field: str, location: str) -> bool:
@@ -392,18 +401,16 @@ def _validate_recovery_rows(
             "joint_normalized_entropy",
         ):
             value = _parse_finite_float(row[field], field=field, location=location)
-            if field in {"node_confidence", "node_truth_probability"} and not (
-                0.0 <= value <= 1.0
-            ):
-                raise ValueError(f"{location}/{field} must be in [0, 1]")
+            if field in {
+                "node_confidence",
+                "node_truth_probability",
+                "joint_normalized_entropy",
+            }:
+                _validate_unit_interval(value, field=field, location=location)
             if field == "node_brier" and value < 0.0:
                 raise ValueError(f"{location}/{field} must be nonnegative")
             if field == "joint_effective_sample_size" and value <= 0.0:
                 raise ValueError(f"{location}/{field} must be positive")
-            if field == "joint_normalized_entropy" and not (
-                0.0 <= value <= 1.0 + 1e-12
-            ):
-                raise ValueError(f"{location}/{field} must be in [0, 1]")
         if setting == "online_adaptation":
             online[key] = sources
     if observed_seeds != seed_set:
@@ -526,5 +533,6 @@ def verify_contact_posterior_source_bundle(
         "contact_recovery_row_count": recovery_row_count,
         "intervention_row_count": intervention_row_count,
         "online_case_count": len(online_recovery),
+        "unit_interval_tolerance": _UNIT_INTERVAL_TOLERANCE,
         "passed": True,
     }
