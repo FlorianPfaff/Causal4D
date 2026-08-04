@@ -31,20 +31,23 @@ Ruff-formatted without forcing unrelated historical files into the same change.
 
 ## Private repository access
 
-Configure the least-privilege repository secret `BPT_READ_TOKEN` with read
-access to both private repositories:
+Configure two least-privilege repository credentials:
 
-- `IPS-Stuttgart/BayesianPhysTwin`;
-- `IPS-Stuttgart/Prob4D`.
+- `BPT_READ_SSH_KEY`, a read-only deploy key for
+  `IPS-Stuttgart/BayesianPhysTwin`;
+- `BPT_READ_TOKEN`, a token with read access to
+  `IPS-Stuttgart/Prob4D`.
 
-The historical secret name is retained so existing repository configuration
-does not need to change. Trusted same-repository pull requests, pushes,
-scheduled runs, and manual dispatches now **fail** when the secret is absent.
-The three-repository workflow is not allowed to report success after skipping
-its checkouts, wheel builds, and compatibility tests.
+The historical token name is retained for Prob4D, while BayesianPhysTwin uses
+the repository's working deploy-key path after the organization transfer.
+Trusted same-repository pull requests, pushes, scheduled runs, and manual
+dispatches now **fail** when either required credential is absent. The
+three-repository workflow is not allowed to report success after skipping its
+checkouts, wheel builds, and compatibility tests.
 
-Tag releases also fail in the main CI workflow when the credential is absent,
-so a skipped pinned-provider job cannot authorize release publication.
+Tag releases also fail in the main CI workflow when its required private
+credential is absent, so a skipped pinned-provider job cannot authorize release
+publication.
 
 GitHub does not expose repository secrets to pull requests from external forks.
 Those events receive a dedicated `External PR cannot access private providers`
@@ -61,9 +64,10 @@ and Prob4D revisions, and runs weekly against both private repositories' `main`
 branches.
 
 The workflow begins with a separate credential gate. For trusted events, a
-missing `BPT_READ_TOKEN` is a hard configuration failure and prevents a false
-green result. Only an external-fork pull request can use the explicitly labelled
-unavailable path, because GitHub withholds repository secrets by design.
+missing `BPT_READ_TOKEN` or `BPT_READ_SSH_KEY` is a hard configuration failure
+and prevents a false green result. Only an external-fork pull request can use
+the explicitly labelled unavailable path, because GitHub withholds repository
+secrets by design.
 
 The installed-wheel job records the exact clean revision of every checkout,
 builds one wheel for each repository, records each wheel's SHA-256 identity, and
