@@ -1,0 +1,74 @@
+name: Temporary PR 150 self-hosted validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/temporary-pr150-self-hosted.yml"
+      - ".github/workflows/acquisition-journal-contract.yml"
+      - "src/causal4d/acquisition_journal_io.py"
+      - "src/causal4d/acquisition_journal_lock.py"
+      - "src/causal4d/acquisition_journal_seal.py"
+      - "tests/test_acquisition_flight_recorder.py"
+      - "tests/test_acquisition_journal_locking.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: temporary-pr150-self-hosted-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Focused journal locking validation
+    if: github.event.pull_request.number == 150
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 30
+    steps:
+      - name: Check out pull request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Create isolated environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv .pr150-venv
+          .pr150-venv/bin/python -m pip install --upgrade pip
+          .pr150-venv/bin/python -m pip install -e ".[dev]"
+          .pr150-venv/bin/python -m pip check
+
+      - name: Validate journal locking contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          .pr150-venv/bin/python -m ruff check \
+            src/causal4d/acquisition_journal_io.py \
+            src/causal4d/acquisition_journal_lock.py \
+            src/causal4d/acquisition_journal_seal.py \
+            tests/test_acquisition_journal_locking.py
+          .pr150-venv/bin/python -m ruff format --check \
+            src/causal4d/acquisition_journal_io.py \
+            src/causal4d/acquisition_journal_lock.py \
+            src/causal4d/acquisition_journal_seal.py \
+            tests/test_acquisition_journal_locking.py
+          .pr150-venv/bin/python -m mypy \
+            src/causal4d/acquisition_journal_io.py \
+            src/causal4d/acquisition_journal_lock.py \
+            src/causal4d/acquisition_journal_seal.py
+          .pr150-venv/bin/python -m pytest -q \
+            tests/test_acquisition_journal_locking.py \
+            tests/test_acquisition_flight_recorder.py
+
+      - name: Remove isolated environment
+        if: always()
+        run: rm -rf .pr150-venv
