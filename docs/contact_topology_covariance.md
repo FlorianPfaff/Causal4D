@@ -19,13 +19,16 @@ contains an exact identity/no-op candidate.
 | Role | Seeds | Outcome access |
 | --- | --- | --- |
 | Open development | `300:320` | Used for covariance estimation and nested candidate selection |
-| Untouched evaluation | `400:420` | Forbidden until the complete method, grid, workflow, metrics, and decision rule are committed |
+| Fresh target evaluation | `400:420` | Target outcomes remain sealed until the method, grid, workflow, metrics, and decision rule are committed |
 | Excluded prior panels | `0:5`, `100:120`, `200:220` | Not used for fitting or evaluation |
 
-The development and evaluation units are complete benchmark seeds. Each seed
-contains rope, cloth, and soft-block folds with matched and shifted contacts.
-No frame, node, coordinate, or individual residual is treated as an independent
-evaluation unit.
+Each seed contains rope, cloth, and soft-block folds with matched and shifted
+contacts. Within a fresh evaluation seed, the pre-existing fold protocol may use
+the two non-target topologies to fit the registered contact prior and likelihood
+calibration before scoring the held-out target topology. Those source-fold
+settings are shared unchanged by all three policies; target-topology outcomes
+remain unavailable to every selection step. No frame, node, coordinate, or
+individual residual is treated as an independent evaluation unit.
 
 ## Compared policies
 
@@ -50,8 +53,10 @@ evaluation unit.
 Every topology candidate is selected independently by leave-one-development-
 seed-out mean node Brier score, then future trajectory RMSE, then fixed candidate
 order. Correlation matrices are estimated from truth-proxy residuals only on the
-opened development panel. The evaluation panel contributes no covariance,
-shrinkage, likelihood-scale, concentration, prior, or threshold selection.
+opened development panel. Fresh target-topology outcomes contribute no
+covariance, shrinkage, candidate, or threshold selection. The registered
+per-seed source-fold calibration remains part of the baseline protocol and is
+applied identically to every policy.
 
 ## Preserved estimator boundary
 
