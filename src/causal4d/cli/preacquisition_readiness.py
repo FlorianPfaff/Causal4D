@@ -17,6 +17,11 @@ from causal4d.preacquisition_readiness import (
     seal_preacquisition_gate,
     write_preacquisition_readiness,
 )
+from causal4d.preacquisition_source_panel_control import (
+    build_source_panel_status,
+    publish_source_panel_manifest,
+    write_source_panel_status,
+)
 
 
 _VALID_BUT_INCOMPLETE = 3
@@ -59,6 +64,28 @@ def build_parser() -> argparse.ArgumentParser:
     seal.add_argument("gate_id", choices=tuple(GATE_PATHS))
     seal.add_argument("--approved-by", required=True)
     seal.add_argument("--approved-at-utc")
+
+    source_status = subparsers.add_parser(
+        "source-panel-status",
+        help="validate ordered progress through the 12 physical source executions",
+    )
+    source_status.add_argument("repository_root")
+    source_status.add_argument("dataset_root")
+    source_status.add_argument("--output-json")
+    source_status.add_argument("--verify-file-hashes", action="store_true")
+    source_status.add_argument(
+        "--require-complete",
+        action="store_true",
+        help="return exit code 3 while the valid source panel is incomplete",
+    )
+
+    source_publish = subparsers.add_parser(
+        "source-panel-publish",
+        help="hash-verify and publish exactly the next source execution manifest",
+    )
+    source_publish.add_argument("repository_root")
+    source_publish.add_argument("dataset_root")
+    source_publish.add_argument("source_json")
 
     status = subparsers.add_parser(
         "status",
@@ -105,6 +132,20 @@ def main(argv: Sequence[str] | None = None) -> int:
                 approved_by=args.approved_by,
                 approved_at_utc=args.approved_at_utc,
             )
+        elif args.command == "source-panel-status":
+            result = build_source_panel_status(
+                args.repository_root,
+                args.dataset_root,
+                verify_file_hashes=args.verify_file_hashes,
+            )
+            if args.output_json:
+                write_source_panel_status(args.output_json, result)
+        elif args.command == "source-panel-publish":
+            result = publish_source_panel_manifest(
+                args.repository_root,
+                args.dataset_root,
+                args.source_json,
+            )
         else:
             result = build_preacquisition_readiness(
                 args.repository_root,
@@ -119,6 +160,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 {
                     "valid": False,
                     "ready": False,
+                    "complete": False,
                     "passed": False,
                     "error": str(error),
                 },
@@ -129,12 +171,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     print(json.dumps(result, indent=2, sort_keys=True, allow_nan=False))
-    if args.command != "status":
-        return 0
-    if not result["valid"]:
-        return 2
-    if args.require_ready and not result["ready"]:
-        return _VALID_BUT_INCOMPLETE
+    if args.command == "status":
+        if not result["valid"]:
+            return 2
+        if args.require_ready and not result["ready"]:
+            return _VALID_BUT_INCOMPLETE
+    if args.command == "source-panel-status":
+        if not result["valid"]:
+            return 2
+        if args.require_complete and not result["complete"]:
+            return _VALID_BUT_INCOMPLETE
     return 0
 
 
