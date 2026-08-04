@@ -19,7 +19,7 @@ contains an exact identity/no-op candidate.
 | Role | Seeds | Outcome access |
 | --- | --- | --- |
 | Open development | `300:320` | Used for covariance estimation and nested candidate selection |
-| Fresh target evaluation | `400:420` | Target outcomes remain sealed until the method, grid, workflow, metrics, and decision rule are committed |
+| Fresh target evaluation | `400:420` | Target outcomes remain sealed until the method, grid, workflow, metrics, decision rule, and numerical runtime are committed |
 | Excluded prior panels | `0:5`, `100:120`, `200:220` | Not used for fitting or evaluation |
 
 Each seed contains rope, cloth, and soft-block folds with matched and shifted
@@ -110,10 +110,22 @@ Brier by at least `0.002` over the global development covariance. A pass support
 only a separately versioned method candidate. It does not revise the frozen
 five-seed result or enter the locked 36-execution physical protocol.
 
-## Execution
+## Execution and numerical reproduction
 
-The permanent workflow is read-only and uses GitHub-hosted CPU capacity. Manual
-execution is:
+The read-only workflow executes the exact same sealed command in two lanes:
+
+- `workstation2` provides the first complete execution when hosted capacity is
+  unavailable;
+- `hosted` is the independent GitHub-hosted CPU reproduction.
+
+Both lanes pin Python `3.12.13`, NumPy `2.2.6`, SciPy `1.17.1`, PyRecEst `2.4.1`,
+pytest `9.1.1`, and Ruff `0.16.1`. They verify the same five source hashes and run
+the focused and complete repository suites before opening `400:420`. Outputs are
+published under lane-specific artifact names. A numerical or decision mismatch
+between lanes blocks promotion and is reported as a reproducibility failure; it
+cannot select a preferred result.
+
+Manual execution is:
 
 ```bash
 python scripts/ci/run_contact_topology_covariance_diagnostic.py \
@@ -124,9 +136,9 @@ python scripts/ci/run_contact_topology_covariance_diagnostic.py \
   --identity-shrinkages 0.10,0.25,0.50,0.75,1.00
 ```
 
-The workflow uploads the summary, row-level evaluation, complete nested
-selection table, covariance matrices, environment record, exact `pip freeze`,
-and checksummed manifest.
+Each lane uploads the summary, row-level evaluation, complete nested selection
+table, covariance matrices, environment record, exact `pip freeze`, and
+checksummed manifest.
 
 ## Scientific boundary
 
