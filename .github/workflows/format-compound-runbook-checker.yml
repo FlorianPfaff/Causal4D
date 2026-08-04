@@ -32,7 +32,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install "ruff>=0.15.22,<0.17"
+          python -m pip install \
+            "pytest>=8" \
+            "ruff>=0.15.22,<0.17"
           python -m ruff format \
             scripts/ci/check_acquisition_runbook_commands.py \
             tests/test_acquisition_runbook_commands.py
