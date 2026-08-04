@@ -11,6 +11,14 @@ on:
       - "tests/test_contact_concentration_diagnostic.py"
   workflow_dispatch:
     inputs:
+      runner:
+        description: Runner type
+        required: true
+        default: github-hosted
+        type: choice
+        options:
+          - github-hosted
+          - self-hosted
       seeds:
         description: Fresh diagnostic seed range
         required: false
@@ -42,7 +50,12 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    runs-on: >-
+      ${{
+        inputs.runner == 'self-hosted' &&
+        fromJSON('["self-hosted","Linux","X64","nvidia-smi"]') ||
+        'ubuntu-latest'
+      }}
     timeout-minutes: 240
     steps:
       - name: Check out Causal4D
@@ -56,6 +69,8 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install isolated diagnostic environment
         shell: bash

@@ -14,4 +14,9 @@ def test_contact_diagnostic_workflow_is_read_only_and_uses_grouped_cli() -> None
     assert "\n  push:\n" not in text
     assert ".contact-diagnostic-venv/bin/causal4d benchmark latent-contact" in text
     assert "causal4d.cli.latent_contact_benchmark" not in text
-    assert "runs-on: [self-hosted, Linux, X64, nvidia-smi]" in text
+    assert "default: github-hosted" in text
+    assert "'ubuntu-latest'" in text
+    assert (
+        "fromJSON('[\"self-hosted\",\"Linux\",\"X64\",\"nvidia-smi\"]')"
+        in text
+    )

@@ -3,6 +3,14 @@ name: Controlled collaborator demo video
 on:
   workflow_dispatch:
     inputs:
+      runner:
+        description: Runner type
+        required: true
+        default: github-hosted
+        type: choice
+        options:
+          - github-hosted
+          - self-hosted
       seed:
         description: Representative controlled-case seed
         required: true
@@ -24,7 +32,12 @@ concurrency:
 jobs:
   render:
     name: Render controlled MP4, GIF, and poster
-    runs-on: [self-hosted, Linux, X64, collaborator-demo]
+    runs-on: >-
+      ${{
+        inputs.runner == 'self-hosted' &&
+        fromJSON('["self-hosted","Linux","X64","collaborator-demo"]') ||
+        'ubuntu-latest'
+      }}
     timeout-minutes: 15
     steps:
       - name: Check out Causal4D
@@ -36,6 +49,8 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install controlled-demo renderer
         run: |
