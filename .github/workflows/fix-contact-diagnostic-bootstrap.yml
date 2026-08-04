@@ -1,6 +1,8 @@
 name: Repair contact diagnostic bootstrap
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches:
       - agent/reproducibility-contact-diagnostics
@@ -10,6 +12,7 @@ permissions:
 
 jobs:
   repair:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
