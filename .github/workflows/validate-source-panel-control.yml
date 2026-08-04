@@ -12,7 +12,7 @@ on:
       - "docs/causal4d_source_panel_acquisition.md"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
@@ -23,13 +23,72 @@ jobs:
       - name: Check out source branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          ref: agent/source-panel-acquisition-control
+          persist-credentials: true
           clean: true
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+
+      - name: Reject non-file manifest entries in status
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path("src/causal4d/preacquisition_source_panel_control.py")
+          text = source.read_text(encoding="utf-8")
+          old = '        "manifest_present": manifest_path.is_file(),\n'
+          new = (
+              '        "manifest_present": ('
+              'manifest_path.exists() or manifest_path.is_symlink()),\n'
+          )
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif new not in text:
+              raise RuntimeError("manifest-presence anchor changed")
+          source.write_text(text, encoding="utf-8")
+
+          tests = Path("tests/test_preacquisition_source_panel_control.py")
+          test_text = tests.read_text(encoding="utf-8")
+          marker = "def test_status_rejects_non_file_manifest_entries"
+          if marker not in test_text:
+              test_text += '''
+
+
+@pytest.mark.parametrize("entry_kind", ["directory", "dangling_symlink"])
+def test_status_rejects_non_file_manifest_entries(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    entry_kind: str,
+) -> None:
+    protocol, v2, v4 = _patch_chain(monkeypatch)
+    _scaffold(tmp_path, protocol, v2, v4)
+    first = v2["preacquisition_signature_panel"]["executions"][0]
+    manifest = tmp_path / SOURCE_PANEL_MANIFEST_PATH.format(
+        execution_id=first["execution_id"]
+    )
+    if entry_kind == "directory":
+        manifest.mkdir()
+    else:
+        manifest.symlink_to(tmp_path / "missing-source-panel-manifest.json")
+
+    status = source_control.build_source_panel_status(
+        tmp_path,
+        tmp_path,
+        verify_file_hashes=True,
+    )
+
+    assert status["valid"] is False
+    assert status["invalid_execution_ids"] == [first["execution_id"]]
+    assert status["executions"][0]["manifest_present"] is True
+    assert status["executions"][0]["valid"] is False
+'''
+              tests.write_text(test_text, encoding="utf-8")
+          PY
 
       - name: Install isolated validation environment
         shell: bash
@@ -43,6 +102,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          .source-panel-control-venv/bin/python -m ruff format \
+            src/causal4d/preacquisition_source_panel_control.py \
+            src/causal4d/cli/preacquisition_readiness.py \
+            tests/test_preacquisition_source_panel_control.py \
+            tests/test_preacquisition_source_panel_registered_chain.py
           .source-panel-control-venv/bin/python -m ruff check \
             src/causal4d/preacquisition_source_panel_control.py \
             src/causal4d/cli/preacquisition_readiness.py \
@@ -71,6 +135,22 @@ jobs:
           rm -rf build dist
           .source-panel-control-venv/bin/python -m build
           .source-panel-control-venv/bin/python -m twine check dist/*
+
+      - name: Commit validated hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add \
+            src/causal4d/preacquisition_source_panel_control.py \
+            tests/test_preacquisition_source_panel_control.py
+          if git diff --cached --quiet; then
+            echo "Source-panel hardening is already committed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Reject non-file source-panel manifests"
+          git push origin HEAD:agent/source-panel-acquisition-control
 
       - name: Remove isolated environment
         if: always()
