@@ -97,8 +97,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          .contact-diagnostic-venv/bin/python \
-            -m causal4d.cli.root benchmark latent-contact \
+          .contact-diagnostic-venv/bin/causal4d benchmark latent-contact \
             --output-dir outputs/contact-posterior/independent-seeds \
             --seeds "${DIAGNOSTIC_SEEDS}" \
             --frames 56 \
