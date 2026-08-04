@@ -130,7 +130,7 @@ jobs:
           31d9dbcfc794843a5ff45267d47c5cb21f8804437338dcf4f38ba27de4117ccf  src/causal4d/contact_topology_covariance_diagnostic.py
           f640f9f366a770408d1d58e650fbf649acd435263125e04de1da509e056d8540  scripts/ci/run_contact_topology_covariance_diagnostic.py
           c9a11dc160193b0ad397639e2d84fdbf0f09d789f97dfdcacec4270c77b6b5bd  tests/test_contact_topology_covariance_diagnostic.py
-          cf6f74d2dbda8e5c459a725f34daeb9799fc2017f1fec18e636a4c12344d5bab  tests/test_contact_topology_covariance_workflow_policy.py
+          66cc1443b8f99563f99744c46584df13b1b52b5e0828c3b99cab5c96028f2e66  tests/test_contact_topology_covariance_workflow_policy.py
           ac491668ab4e43fd3e3f0aa0a580cafab52829604ed47cc25c7cd73ff9a0a979  docs/contact_topology_covariance.md
           EOF
           python -m ruff check \
