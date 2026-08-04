@@ -75,7 +75,9 @@ def verify_embedded_result_bundle(
         )
     bundle = supplied.resolve()
     manifest_path = bundle / "manifest.json"
-    if manifest_path.is_symlink() or not manifest_path.is_file():
+    if manifest_path.is_symlink():
+        raise ValueError("bundle manifest must not be a symlink")
+    if not manifest_path.is_file():
         raise FileNotFoundError(
             "bundle must contain an ordinary manifest.json file"
         )
@@ -132,7 +134,9 @@ def verify_embedded_result_bundle(
         ):
             raise ValueError(f"artifact {name!r} has an invalid byte count")
         path = bundle / name
-        if path.is_symlink() or not path.is_file():
+        if path.is_symlink():
+            raise ValueError(f"bundle artifact must not be a symlink: {name}")
+        if not path.is_file():
             raise FileNotFoundError(
                 f"bundle artifact must be an ordinary file: {name}"
             )
