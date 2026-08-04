@@ -3,12 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 
+ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = (
-    Path(__file__).resolve().parents[1]
-    / ".github"
-    / "workflows"
-    / "bayesian-phystwin-provider-compatibility.yml"
+    ROOT / ".github" / "workflows" / "bayesian-phystwin-provider-compatibility.yml"
 )
+COMMON = ROOT / "ci" / "three_repository_common.py"
+MANIFEST = ROOT / "ci" / "three_repository_manifest.py"
+GOLDEN_PATH = ROOT / "ci" / "three_repository_golden_path.py"
 
 
 def test_trusted_events_cannot_pass_by_skipping_private_repositories() -> None:
@@ -29,6 +30,28 @@ def test_external_fork_limitation_is_separate_and_explicit() -> None:
     assert "External PR cannot access private providers" in text
     assert "github.event.pull_request.head.repo.full_name != github.repository" in text
     assert "maintainers must run the installed-wheel golden path" in text
+
+
+def test_transferred_repository_locations_are_used_consistently() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    common = COMMON.read_text(encoding="utf-8")
+    manifest = MANIFEST.read_text(encoding="utf-8")
+    golden_path = GOLDEN_PATH.read_text(encoding="utf-8")
+
+    current_repositories = (
+        "IPS-Stuttgart/Causal4D",
+        "IPS-Stuttgart/BayesianPhysTwin",
+        "IPS-Stuttgart/Prob4D",
+    )
+    for repository in current_repositories:
+        assert repository in common
+
+    assert "repository: IPS-Stuttgart/BayesianPhysTwin" in workflow
+    assert "repository: IPS-Stuttgart/Prob4D" in workflow
+    assert "FlorianPfaff/Bayesian-PhysTwin" not in workflow
+    assert "FlorianPfaff/Prob4D" not in workflow
+    assert "FlorianPfaff/Causal4D" not in manifest
+    assert "FlorianPfaff/" not in golden_path
 
 
 def test_strict_claim_bearing_path_is_mandatory_and_fail_closed() -> None:
