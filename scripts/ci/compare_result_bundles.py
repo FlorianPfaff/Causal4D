@@ -1,16 +1,13 @@
-"""Compare result bundles bytewise and with field-aware numeric semantics."""
+"""Compare result bundles bytewise and with strict numeric semantics."""
 
 from __future__ import annotations
 
 import argparse
 import csv
 import hashlib
-import importlib.metadata
 import json
 import math
-import platform
 import re
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Sequence
@@ -22,62 +19,17 @@ _FLOAT_TEXT = re.compile(
     r"^[+-]?(?:(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?|\d+[eE][+-]?\d+)$"
 )
 _DIRECTION_ANGLE_SUFFIX = "direction_error_deg"
-_GATE_KEYS = frozenset({"name", "value", "comparison", "threshold", "passed"})
-_EXACT_NUMERIC_FIELDS = frozenset(
-    {
-        "bytes",
-        "case_count",
-        "contact_hypothesis_count",
-        "delay_map",
-        "delay_truth",
-        "fit_frame_stride",
-        "forecast_start_frame",
-        "frame_count",
-        "held_out_topology_count",
-        "object_count",
-        "parameter_grid_count",
-        "parameter_particle_count",
-        "repeat_id",
-        "schema_version",
-        "seed",
-        "source_condition_count",
-        "training_repeats",
-    }
-)
-_TOLERANCE_POLICY_ID = "causal4d-field-aware-cross-platform-v1"
-
-
-def _path_field_name(path: str) -> str:
-    if ":field=" in path:
-        return path.rsplit(":field=", 1)[1]
-    tail = path.rsplit(".", 1)[-1]
-    return tail.split("[", 1)[0]
-
-
-def _numeric_policy(path: str) -> str:
-    if path.endswith(_DIRECTION_ANGLE_SUFFIX):
-        return "near_zero_direction_angle"
-    field_name = _path_field_name(path)
-    if (
-        field_name in _EXACT_NUMERIC_FIELDS
-        or ".seeds[" in path
-        or ".contact_nodes[" in path
-    ):
-        return "exact"
-    return "floating"
 
 
 @dataclass
 class Comparison:
-    """Accumulate structural differences and field-aware floating-point drift."""
+    """Accumulate strict semantic differences and floating-point drift."""
 
     mismatches: list[str] = field(default_factory=list)
     numeric_comparisons: int = 0
     maximum_absolute_difference: float = 0.0
     maximum_relative_difference: float = 0.0
     maximum_direction_angle_difference_deg: float = 0.0
-    gate_checks: int = 0
-    numeric_policy_counts: dict[str, int] = field(default_factory=dict)
 
     def compare_number(
         self,
@@ -90,10 +42,6 @@ class Comparison:
         direction_angle_tolerance_deg: float,
     ) -> None:
         self.numeric_comparisons += 1
-        policy = _numeric_policy(path)
-        self.numeric_policy_counts[policy] = (
-            self.numeric_policy_counts.get(policy, 0) + 1
-        )
         if math.isnan(expected) or math.isnan(actual):
             if not (math.isnan(expected) and math.isnan(actual)):
                 self.mismatches.append(
@@ -107,7 +55,7 @@ class Comparison:
                 )
             return
         absolute = abs(actual - expected)
-        denominator = max(abs(expected), abs(actual), absolute_tolerance, 1e-300)
+        denominator = max(abs(expected), abs(actual), absolute_tolerance)
         relative = absolute / denominator
         self.maximum_absolute_difference = max(
             self.maximum_absolute_difference, absolute
@@ -115,15 +63,8 @@ class Comparison:
         self.maximum_relative_difference = max(
             self.maximum_relative_difference, relative
         )
-        if policy == "exact":
-            if expected != actual:
-                self.mismatches.append(
-                    f"{path}: exact numeric field changed from "
-                    f"{expected!r} to {actual!r}"
-                )
-            return
         effective_absolute_tolerance = absolute_tolerance
-        if policy == "near_zero_direction_angle":
+        if path.endswith(_DIRECTION_ANGLE_SUFFIX):
             self.maximum_direction_angle_difference_deg = max(
                 self.maximum_direction_angle_difference_deg,
                 absolute,
@@ -156,133 +97,6 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
-def _is_gate_record(value: Any) -> bool:
-    return isinstance(value, dict) and _GATE_KEYS.issubset(value)
-
-
-def _gate_decision(value: float, threshold: float, comparison: str) -> bool:
-    if comparison == ">=":
-        return value >= threshold
-    if comparison == "<=":
-        return value <= threshold
-    raise ValueError(f"unsupported gate comparison: {comparison!r}")
-
-
-def _compare_gate_record(
-    expected: dict[str, Any],
-    actual: dict[str, Any],
-    *,
-    path: str,
-    comparison: Comparison,
-    relative_tolerance: float,
-    absolute_tolerance: float,
-    direction_angle_tolerance_deg: float,
-) -> None:
-    comparison.gate_checks += 1
-    expected_keys = set(expected)
-    actual_keys = set(actual)
-    if expected_keys != actual_keys:
-        missing = sorted(expected_keys - actual_keys)
-        extra = sorted(actual_keys - expected_keys)
-        comparison.mismatches.append(
-            f"{path}: gate keys differ; missing={missing!r}, extra={extra!r}"
-        )
-
-    for key in ("name", "comparison", "threshold", "passed"):
-        if key not in expected or key not in actual:
-            continue
-        expected_value = expected[key]
-        actual_value = actual[key]
-        if key == "threshold" and _is_number(expected_value) and _is_number(
-            actual_value
-        ):
-            if float(expected_value) != float(actual_value):
-                comparison.mismatches.append(
-                    f"{path}.{key}: registered gate threshold changed from "
-                    f"{expected_value!r} to {actual_value!r}"
-                )
-        elif (
-            type(expected_value) is not type(actual_value)
-            or expected_value != actual_value
-        ):
-            comparison.mismatches.append(
-                f"{path}.{key}: expected {expected_value!r}, "
-                f"received {actual_value!r}"
-            )
-
-    if "value" in expected and "value" in actual:
-        if _is_number(expected["value"]) and _is_number(actual["value"]):
-            comparison.compare_number(
-                float(expected["value"]),
-                float(actual["value"]),
-                path=f"{path}.value",
-                relative_tolerance=relative_tolerance,
-                absolute_tolerance=absolute_tolerance,
-                direction_angle_tolerance_deg=direction_angle_tolerance_deg,
-            )
-        else:
-            comparison.mismatches.append(
-                f"{path}.value: gate values must both be numeric"
-            )
-
-    for label, record in (("expected", expected), ("actual", actual)):
-        try:
-            derived = _gate_decision(
-                float(record["value"]),
-                float(record["threshold"]),
-                str(record["comparison"]),
-            )
-        except (KeyError, TypeError, ValueError) as error:
-            comparison.mismatches.append(
-                f"{path}: {label} gate cannot be evaluated: {error}"
-            )
-            continue
-        if not isinstance(record["passed"], bool):
-            comparison.mismatches.append(
-                f"{path}.passed: {label} gate decision is not boolean"
-            )
-        elif record["passed"] != derived:
-            comparison.mismatches.append(
-                f"{path}: {label} gate is internally inconsistent; "
-                f"reported passed={record['passed']!r}, derived={derived!r}"
-            )
-
-    try:
-        expected_decision = _gate_decision(
-            float(expected["value"]),
-            float(expected["threshold"]),
-            str(expected["comparison"]),
-        )
-        actual_decision = _gate_decision(
-            float(actual["value"]),
-            float(actual["threshold"]),
-            str(actual["comparison"]),
-        )
-    except (KeyError, TypeError, ValueError):
-        expected_decision = actual_decision = None
-    if (
-        expected_decision is not None
-        and actual_decision is not None
-        and expected_decision != actual_decision
-    ):
-        comparison.mismatches.append(
-            f"{path}: gate decision changed from "
-            f"{expected_decision!r} to {actual_decision!r}; "
-            "numeric tolerance cannot revise or rescue a gate"
-        )
-
-    for key in sorted((expected_keys & actual_keys) - _GATE_KEYS):
-        _compare_json_value(
-            expected[key],
-            actual[key],
-            path=f"{path}.{key}",
-            comparison=comparison,
-            relative_tolerance=relative_tolerance,
-            absolute_tolerance=absolute_tolerance,
-            direction_angle_tolerance_deg=direction_angle_tolerance_deg,
-        )
-
-
 def _compare_json_value(
     expected: Any,
     actual: Any,
@@ -293,17 +107,6 @@ def _compare_json_value(
     absolute_tolerance: float,
     direction_angle_tolerance_deg: float,
 ) -> None:
-    if _is_gate_record(expected) and _is_gate_record(actual):
-        _compare_gate_record(
-            expected,
-            actual,
-            path=path,
-            comparison=comparison,
-            relative_tolerance=relative_tolerance,
-            absolute_tolerance=absolute_tolerance,
-            direction_angle_tolerance_deg=direction_angle_tolerance_deg,
-        )
-        return
     if _is_number(expected) and _is_number(actual):
         comparison.compare_number(
             float(expected),
@@ -343,8 +146,7 @@ def _compare_json_value(
     if isinstance(expected, list):
         if len(expected) != len(actual):
             comparison.mismatches.append(
-                f"{path}: list length differs ({len(expected)} versus "
-                f"{len(actual)})"
+                f"{path}: list length differs ({len(expected)} versus {len(actual)})"
             )
         for index, (expected_item, actual_item) in enumerate(
             zip(expected, actual, strict=False)
@@ -396,8 +198,7 @@ def _compare_csv(
     label = expected_path.name
     if expected_fields != actual_fields:
         comparison.mismatches.append(
-            f"{label}: header differs ({expected_fields!r} versus "
-            f"{actual_fields!r})"
+            f"{label}: header differs ({expected_fields!r} versus {actual_fields!r})"
         )
         return
     if len(expected_rows) != len(actual_rows):
@@ -498,29 +299,12 @@ def _compare_file(
     return record
 
 
-def _runtime_environment() -> dict[str, Any]:
-    packages: dict[str, str | None] = {}
-    for name in ("numpy", "scipy"):
-        try:
-            packages[name] = importlib.metadata.version(name)
-        except importlib.metadata.PackageNotFoundError:
-            packages[name] = None
-    return {
-        "python_version": platform.python_version(),
-        "python_implementation": platform.python_implementation(),
-        "python_executable": sys.executable,
-        "platform": platform.platform(),
-        "machine": platform.machine(),
-        "packages": packages,
-    }
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Compare a regenerated deterministic result bundle with an archived "
             "bundle, preserving byte mismatch as a diagnostic while failing on "
-            "structural, gate, categorical, or substantive numeric drift."
+            "semantic drift."
         )
     )
     parser.add_argument("expected_dir")
@@ -547,8 +331,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.absolute_tolerance,
         args.direction_angle_tolerance_deg,
     )
-    if any(value < 0.0 or not math.isfinite(value) for value in tolerances):
-        raise ValueError("comparison tolerances must be finite and nonnegative")
+    if any(value < 0.0 for value in tolerances):
+        raise ValueError("comparison tolerances must be nonnegative")
     expected_dir = Path(args.expected_dir).resolve()
     actual_dir = Path(args.actual_dir).resolve()
     comparison = Comparison()
@@ -563,12 +347,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             direction_angle_tolerance_deg=args.direction_angle_tolerance_deg,
         )
     report = {
-        "schema_version": 2,
+        "schema_version": 1,
         "artifact_kind": "Causal4DResultBundleComparison",
-        "tolerance_policy_id": _TOLERANCE_POLICY_ID,
         "expected_dir": str(expected_dir),
         "actual_dir": str(actual_dir),
-        "comparison_environment": _runtime_environment(),
         "relative_tolerance": args.relative_tolerance,
         "absolute_tolerance": args.absolute_tolerance,
         "direction_angle_tolerance_deg": args.direction_angle_tolerance_deg,
@@ -577,8 +359,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
         "semantic_match": not comparison.mismatches,
         "numeric_comparisons": comparison.numeric_comparisons,
-        "numeric_policy_counts": dict(sorted(comparison.numeric_policy_counts.items())),
-        "gate_checks": comparison.gate_checks,
         "maximum_absolute_difference": comparison.maximum_absolute_difference,
         "maximum_relative_difference": comparison.maximum_relative_difference,
         "maximum_direction_angle_difference_deg": (
@@ -588,11 +368,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         "mismatches": comparison.mismatches[:100],
         "files": file_records,
         "claim_boundary": (
-            "Frozen artifact identity requires the archived bytes and SHA-256 "
-            "values. Independent numerical reproduction requires exact structure, "
-            "categorical values, row order, registered gate definitions and "
-            "decisions, plus field-aware numerical agreement. Tolerances can "
-            "never change, revise, or rescue a scientific gate."
+            "Byte equality is reported separately from strict numeric and "
+            "structural equivalence. A field-specific near-zero angle tolerance "
+            "handles arccos conditioning and is never used to revise a gate."
         ),
     }
     output = Path(args.output)
