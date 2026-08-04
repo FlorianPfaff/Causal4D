@@ -15,6 +15,11 @@
 - Add the physical source-panel operator runbook and adversarial coverage for
   out-of-order completion, modified templates, stale artifact hashes, incomplete
   status, and repeated publication.
+- Add content-addressed rollout-bank archives with exact member inventories,
+  strict finite-JSON manifests, atomic validation-before-replace publication,
+  explicit no-overwrite support, and legacy archive loading.
+- Add a stable rollout-bank identity over hypothesis metadata, priors, physical
+  parameter support, trajectories, variance floor, and confidence level.
 
 This control plane advances pre-acquisition operations without creating physical
 evidence. Source-panel executions remain source-only and cannot increment the
@@ -27,9 +32,14 @@ evidence. Source-panel executions remain source-only and cannot increment the
   contact regime.
 - Reject non-finite, zero, or negative fixed-contact posterior temperatures
   before simulation instead of allowing invalid posterior weights to propagate.
+- Normalize and recursively freeze rollout-hypothesis metadata so external or
+  nested mutation cannot change intervention semantics after bank construction.
+- Route rollout-producing and rollout-consuming commands through one strict
+  archive implementation, while retaining exact support for legacy banks.
 
-These changes harden diagnostic accounting and validation only. They do not
-change registered protocols, thresholds, frozen evidence, or target identities.
+These changes harden diagnostic accounting, artifact integrity, and validation
+only. They do not change registered protocols, likelihoods, posteriors,
+thresholds, frozen evidence, or target identities.
 
 ## 0.5.0
 
