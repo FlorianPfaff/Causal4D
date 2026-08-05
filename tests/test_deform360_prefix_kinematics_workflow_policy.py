@@ -64,6 +64,9 @@ def test_prefix_kinematics_workflow_archives_exact_runtime_evidence() -> None:
     ).read_text(encoding="utf-8")
     assert "--bayesian-phystwin-repo" in shell
     assert "--deform360-repo" in shell
+    assert 'protocol["deform360_code_commit"]' in shell
+    assert 'deform360_root: expected["dataset_revision"]' not in shell
+    assert '"dataset_revision": expected["dataset_revision"]' in shell
     runner = (
         ROOT / "scripts" / "remote" / "run_deform360_prefix_kinematics.py"
     ).read_text(encoding="utf-8")
