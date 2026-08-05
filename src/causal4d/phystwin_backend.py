@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pickle
 from dataclasses import asdict, dataclass
 from itertools import product
 from pathlib import Path
@@ -57,11 +56,7 @@ from causal4d.rollout_bank_io import (
     load_rollout_bank as load_rollout_bank,
     save_rollout_bank as save_rollout_bank,
 )
-
-
-def _load_pickle(path: str | Path) -> Any:
-    with Path(path).open("rb") as handle:
-        return pickle.load(handle)
+from causal4d.trusted_pickle import load_trusted_pickle
 
 
 def _graph_replay_descriptor(graph: PhysTwinSpringGraph) -> dict[str, Any]:
@@ -1014,6 +1009,7 @@ class OfficialPhysTwinBackend:
         train_end_frame: int,
         parameter_particle_count: int,
         parameter_support_method: SupportMethod = "top_mass",
+        allow_unsafe_pickle: bool = False,
         config: OfficialPhysTwinBackendConfig | None = None,
     ) -> None:
         self.provider_manifest = require_bayesian_phystwin_provider()
@@ -1026,6 +1022,15 @@ class OfficialPhysTwinBackend:
         self.baseline_trajectory_path = Path(baseline_trajectory_path)
         self.profile_path = Path(profile_path)
         self.config = config or OfficialPhysTwinBackendConfig()
+        self.allow_unsafe_pickle = require_exact_bool(
+            allow_unsafe_pickle,
+            name="allow_unsafe_pickle",
+        )
+        if not self.allow_unsafe_pickle:
+            raise PermissionError(
+                "official PhysTwin pickle inputs require explicit "
+                "allow_unsafe_pickle=True consent"
+            )
         self.source_artifacts_sha256 = _source_artifact_digests(
             {
                 "final_data": self.final_data_path,
@@ -1035,10 +1040,23 @@ class OfficialPhysTwinBackend:
                 "parameter_profile": self.profile_path,
             }
         )
-        self.data = _load_pickle(self.final_data_path)
-        self.optimal = _load_pickle(self.optimal_params_path)
+        self.data = load_trusted_pickle(
+            self.final_data_path,
+            allow_unsafe_pickle=self.allow_unsafe_pickle,
+            expected_sha256=self.source_artifacts_sha256["final_data"],
+        )
+        self.optimal = load_trusted_pickle(
+            self.optimal_params_path,
+            allow_unsafe_pickle=self.allow_unsafe_pickle,
+            expected_sha256=self.source_artifacts_sha256["optimal_params"],
+        )
         self.baseline = np.asarray(
-            _load_pickle(self.baseline_trajectory_path), dtype=np.float32
+            load_trusted_pickle(
+                self.baseline_trajectory_path,
+                allow_unsafe_pickle=self.allow_unsafe_pickle,
+                expected_sha256=(self.source_artifacts_sha256["baseline_trajectory"]),
+            ),
+            dtype=np.float32,
         )
         self.object_points = np.asarray(self.data["object_points"], dtype=np.float32)
         self.visible = np.asarray(self.data["object_visibilities"], dtype=bool)
@@ -1185,6 +1203,10 @@ class OfficialPhysTwinBackend:
             "source_artifacts_sha256": dict(
                 getattr(self, "source_artifacts_sha256", {})
             ),
+            "trusted_pickle_inputs": {
+                "explicitly_allowed": bool(getattr(self, "allow_unsafe_pickle", False)),
+                "digests_verified_before_load": True,
+            },
             "source_paths": {
                 "official_repo": str(self.official_repo.resolve()),
                 "final_data": str(self.final_data_path.resolve()),

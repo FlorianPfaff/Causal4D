@@ -1,13 +1,14 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "causal4d"
-version = "0.5.0"
+dynamic = ["version"]
 description = "Bayesian intervention abduction and interventional prediction for deformable-object dynamics"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [
   { name = "Florian Pfaff" },
@@ -15,7 +16,6 @@ authors = [
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
-  "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
@@ -65,6 +65,9 @@ pyrecest = [
 
 [project.scripts]
 causal4d = "causal4d.cli.root:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "causal4d.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
