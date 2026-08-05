@@ -92,11 +92,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A -- \
-            .github/materialize/deform360-reset-mechanics.part-00 \
-            .github/materialize/deform360-reset-mechanics.part-01 \
-            .github/materialize/deform360-reset-mechanics.part-02 \
-            .github/materialize/deform360-reset-mechanics.part-03 \
-            .github/materialize/deform360-reset-mechanics.part-04 \
+            .github/materialize \
             .github/workflows/materialize-deform360-reset-mechanics.yml \
             .github/workflows/deform360-reset-mechanics.yml \
             configs/causal4d_public/deform360_reset_mechanics_v1.json \
