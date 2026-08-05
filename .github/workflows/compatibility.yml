@@ -55,7 +55,8 @@ jobs:
           echo "No runner Python with pip is available" >&2
           exit 1
       - name: Install development dependencies
-        run: "$AGENT_PYTHON" -m pip install -e ".[dev]" pyyaml
+        run: |
+          "$AGENT_PYTHON" -m pip install -e ".[dev]" pyyaml
       - name: Apply and format focused patch
         run: |
           "$AGENT_PYTHON" scripts/ci/agent_apply_public_provider_ci.py
@@ -193,9 +194,9 @@ jobs:
           }
           actual = {name: version(name) for name in expected}
           if actual != expected:
-              raise SystemExit(
-                  f"minimum-dependency environment drifted: {actual!r} != {expected!r}"
-              )
+            raise SystemExit(
+                f"minimum-dependency environment drifted: {actual!r} != {expected!r}"
+            )
           PY
       - name: Assert optional runtimes are absent
         run: |
