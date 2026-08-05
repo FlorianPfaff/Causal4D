@@ -1,4 +1,4 @@
-"""Build a separate MolmoMotion-conditioned TaskPosterior."""
+"""Build a separate forecast-conditioned ``TaskPosterior``."""
 
 from __future__ import annotations
 
@@ -15,14 +15,22 @@ def _load_runtime_dependencies() -> None:
     global PhysicalPosterior
     global load_contract
     global save_contract
+    global is_external_forecast_artifact
+    global load_external_forecast
     global load_molmo_forecasts
     global build_task_posterior
+    global external_forecast_evidence
     global molmo_task_evidence
 
     from causal4d.contracts import PhysicalPosterior, load_contract, save_contract
+    from causal4d.external_forecast import (
+        is_external_forecast_artifact,
+        load_external_forecast,
+    )
     from causal4d.molmo_adapter import load_molmo_forecasts
     from causal4d.semantic_posterior import (
         build_task_posterior,
+        external_forecast_evidence,
         molmo_task_evidence,
     )
 
@@ -30,12 +38,13 @@ def _load_runtime_dependencies() -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Score MolmoMotion only against H_Q(X) and save an intention-"
-            "conditioned posterior separate from the physical posterior."
+            "Score a sparse trajectory forecast only against H_Q(X) and save "
+            "a task posterior separate from the physical posterior. Canonical "
+            "external-forecast and legacy MolmoMotion NPZ artifacts are accepted."
         )
     )
     parser.add_argument("physical_posterior_npz")
-    parser.add_argument("molmo_forecast_npz")
+    parser.add_argument("forecast_npz")
     parser.add_argument("forecast_id")
     parser.add_argument("output_task_npz")
     parser.add_argument("--beta", type=float, default=0.0)
@@ -50,14 +59,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     artifact = load_contract(args.physical_posterior_npz)
     if not isinstance(artifact, PhysicalPosterior):
         raise TypeError("physical_posterior_npz must contain a PhysicalPosterior")
-    bundle = load_molmo_forecasts(args.molmo_forecast_npz)
-    evidence = molmo_task_evidence(
-        bundle,
-        args.forecast_id,
-        artifact,
-        scale_m=args.scale_m,
-        degrees_of_freedom=args.degrees_of_freedom,
-    )
+    if is_external_forecast_artifact(args.forecast_npz):
+        bundle = load_external_forecast(args.forecast_npz)
+        evidence = external_forecast_evidence(
+            bundle,
+            args.forecast_id,
+            artifact,
+            scale_m=args.scale_m,
+            degrees_of_freedom=args.degrees_of_freedom,
+        )
+        forecast_kind = "external"
+        forecast_artifact_id = bundle.artifact_id
+    else:
+        bundle = load_molmo_forecasts(args.forecast_npz)
+        evidence = molmo_task_evidence(
+            bundle,
+            args.forecast_id,
+            artifact,
+            scale_m=args.scale_m,
+            degrees_of_freedom=args.degrees_of_freedom,
+        )
+        forecast_kind = "molmomotion"
+        forecast_artifact_id = None
     task = build_task_posterior(artifact, evidence, beta=args.beta)
     save_contract(args.output_task_npz, task)
     positive = task.task_weights > 0.0
@@ -76,7 +99,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             {
                 "beta": task.beta,
                 "effective_components": effective_components,
+                "forecast_artifact_id": forecast_artifact_id,
                 "forecast_id": args.forecast_id,
+                "forecast_kind": forecast_kind,
                 "kl_task_from_physical": kl_from_physical,
                 "output": str(Path(args.output_task_npz).resolve()),
                 "physical_posterior_id": task.physical_posterior_id,

@@ -1,0 +1,33 @@
+{
+  "schema": "causal4d.external_forecast_import",
+  "schema_version": 1,
+  "case_id": "cloth_lift_001",
+  "source": {
+    "model": "external-trajectory-model",
+    "revision": "replace-with-checkpoint-or-git-revision",
+    "artifact_id": "replace-with-upstream-artifact-id"
+  },
+  "arrays": {
+    "node_indices": "node_indices",
+    "anchor_positions": "anchor_positions_world_m",
+    "future_positions": "future_positions_world_m",
+    "future_times_s": "future_times_s",
+    "validity_mask": "validity_mask"
+  },
+  "layout": "KPFC",
+  "coordinate_frame": "world",
+  "position_unit": "m",
+  "forecast_ids": [
+    "instruction"
+  ],
+  "anchor_physical_frame": 0,
+  "physical_fps": 30.0,
+  "forecast_metadata": {
+    "instruction": {
+      "caption": "Lift the cloth upward."
+    }
+  },
+  "metadata": {
+    "producer_environment": "replace-with-environment-id"
+  }
+}

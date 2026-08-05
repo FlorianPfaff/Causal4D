@@ -1,4 +1,4 @@
-"""MolmoMotion reweighting through the sparse physical readout H_Q."""
+"""Sparse forecast reweighting through the physical readout ``H_Q``."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from causal4d.contracts import PhysicalPosterior, TaskPosterior, array_sha256
 from causal4d.immutable_array import readonly_array
 
 if TYPE_CHECKING:
+    from causal4d.external_forecast import ExternalForecastBundle
     from causal4d.molmo_adapter import MolmoForecastBundle
 
 
@@ -30,6 +31,7 @@ class SparseSemanticEvidence:
     anchor_physical_frame: int = 0
     valid: np.ndarray | None = None
     source: str = "semantic_trajectory"
+    semantic_interface: str = "q_MM(H_Q(X) | I, language)"
 
     def __post_init__(self) -> None:
         positions = readonly_array(self.positions_m, dtype=float)
@@ -45,10 +47,24 @@ class SparseSemanticEvidence:
             )
         if np.any(nodes < 0) or not np.all(np.isfinite(frames)):
             raise ValueError("semantic node and frame indices must be valid")
-        if self.scale_m <= 0.0 or self.degrees_of_freedom <= 0.0:
-            raise ValueError("semantic scale and degrees of freedom must be positive")
-        if not self.source:
-            raise ValueError("semantic source must be nonempty")
+        if (
+            not np.isfinite(self.scale_m)
+            or not np.isfinite(self.degrees_of_freedom)
+            or self.scale_m <= 0.0
+            or self.degrees_of_freedom <= 0.0
+        ):
+            raise ValueError(
+                "semantic scale and degrees of freedom must be finite and positive"
+            )
+        if type(self.source) is not str or not self.source:
+            raise ValueError("semantic source must be a nonempty string")
+        if type(self.semantic_interface) is not str or not self.semantic_interface:
+            raise ValueError("semantic_interface must be a nonempty string")
+        if (
+            type(self.anchor_physical_frame) is not int
+            or self.anchor_physical_frame < 0
+        ):
+            raise ValueError("anchor_physical_frame must be a nonnegative integer")
         valid = np.isfinite(positions)
         if self.valid is not None:
             supplied = np.asarray(self.valid, dtype=bool)
@@ -111,6 +127,52 @@ def molmo_task_evidence(
         anchor_positions_m=bundle.query.anchor_positions_world_m,
         anchor_physical_frame=0,
         source=f"MolmoMotion:{forecast_id}:{bundle.checkpoint}",
+        semantic_interface="q_MM(H_Q(X) | I, language)",
+    )
+
+
+def external_forecast_evidence(
+    bundle: ExternalForecastBundle,
+    forecast_id: str,
+    physical: PhysicalPosterior,
+    *,
+    scale_m: float = 0.10,
+    degrees_of_freedom: float = 3.0,
+) -> SparseSemanticEvidence:
+    """Align one canonical external trajectory forecast to ``H_Q(X)``."""
+
+    if bundle.case_id != physical.context.case_id:
+        raise ValueError("external forecast and PhysicalPosterior cases differ")
+    forecast_index = bundle.forecast_index(forecast_id)
+    physical_horizon = physical.state_trajectories_m.shape[1] - 1
+    if bundle.anchor_physical_frame > physical_horizon:
+        raise ValueError("external forecast anchor exceeds the physical posterior")
+    within_horizon = bundle.physical_frame_indices <= physical_horizon
+    available = int(np.sum(within_horizon))
+    if available < 1:
+        raise ValueError(
+            "external forecast and PhysicalPosterior have no common future"
+        )
+    if not np.all(within_horizon[:available]) or np.any(within_horizon[available:]):
+        raise ValueError("external forecast frame indices must form a horizon prefix")
+    source_revision = (
+        f":{bundle.source_revision}" if bundle.source_revision is not None else ""
+    )
+    return SparseSemanticEvidence(
+        positions_m=bundle.future_positions_m[forecast_index, :available],
+        node_indices=bundle.node_indices,
+        physical_frame_indices=bundle.physical_frame_indices[:available],
+        scale_m=scale_m,
+        degrees_of_freedom=degrees_of_freedom,
+        compare_displacements=True,
+        anchor_positions_m=bundle.anchor_positions_m,
+        anchor_physical_frame=bundle.anchor_physical_frame,
+        valid=bundle.coordinate_validity[forecast_index, :available],
+        source=(
+            f"ExternalForecast:{bundle.source_model}{source_revision}:"
+            f"{forecast_id}:{bundle.artifact_id}"
+        ),
+        semantic_interface="q_external(H_Q(X) | external trajectory forecast)",
     )
 
 
@@ -211,7 +273,7 @@ def build_task_posterior(
         query_node_indices=evidence.node_indices,
         semantic_source=evidence.source,
         metadata={
-            "semantic_interface": "q_MM(H_Q(X) | I, language)",
+            "semantic_interface": evidence.semantic_interface,
             "physical_state_updated_by_semantics": False,
             "physical_parameters_updated_by_semantics": False,
             "positions_sha256": array_sha256(evidence.positions_m),
