@@ -1,0 +1,251 @@
+name: Fix PR 174 exact-byte lineage
+
+on:
+  push:
+    branches: [ci/fix-pr-174]
+    paths: [.github/workflows/fix-pr-174-exact-bytes.yml]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fix-pr-174-exact-bytes
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out the exact PR branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/schema4-factor-lineage
+          fetch-depth: 0
+          persist-credentials: true
+          clean: true
+
+      - name: Bind validation to the exact hashed bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source_path = Path("src/causal4d/observation_factor_lineage.py")
+          source = source_path.read_text(encoding="utf-8")
+
+          def replace_once(old: str, new: str, marker: str) -> None:
+              global source
+              if old not in source:
+                  if new in source:
+                      return
+                  raise SystemExit(f"missing source marker: {marker}")
+              source = source.replace(old, new, 1)
+
+          replace_once(
+              "import hashlib\nimport json\nimport math\n",
+              "import hashlib\nimport io\nimport json\nimport math\n",
+              "BytesIO import",
+          )
+
+          old_loader = '''def _load_json_object(path: Path, *, name: str) -> dict[str, Any]:
+              def object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+                  result: dict[str, Any] = {}
+                  for key, item in pairs:
+                      if key in result:
+                          raise _StrictJsonValueError(
+                              f"{name} contains duplicate JSON object key {key!r}"
+                          )
+                      result[key] = item
+                  return result
+
+              def reject_constant(token: str) -> Any:
+                  raise _StrictJsonValueError(
+                      f"{name} contains non-finite JSON number {token!r}"
+                  )
+
+              try:
+                  value = json.loads(
+                      path.read_text(encoding="utf-8"),
+                      object_pairs_hook=object_pairs,
+                      parse_constant=reject_constant,
+                  )
+              except _StrictJsonValueError:
+                  raise
+              except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+                  raise ValueError(f"{name} is not valid UTF-8 JSON") from error
+              if not isinstance(value, dict):
+                  raise ValueError(f"{name} must contain one JSON object")
+              return value
+          '''.replace("          ", "")
+          new_loader = '''def _load_json_bytes(payload: bytes, *, name: str) -> dict[str, Any]:
+              def object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+                  result: dict[str, Any] = {}
+                  for key, item in pairs:
+                      if key in result:
+                          raise _StrictJsonValueError(
+                              f"{name} contains duplicate JSON object key {key!r}"
+                          )
+                      result[key] = item
+                  return result
+
+              def reject_constant(token: str) -> Any:
+                  raise _StrictJsonValueError(
+                      f"{name} contains non-finite JSON number {token!r}"
+                  )
+
+              try:
+                  value = json.loads(
+                      payload.decode("utf-8"),
+                      object_pairs_hook=object_pairs,
+                      parse_constant=reject_constant,
+                  )
+              except _StrictJsonValueError:
+                  raise
+              except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                  raise ValueError(f"{name} is not valid UTF-8 JSON") from error
+              if not isinstance(value, dict):
+                  raise ValueError(f"{name} must contain one JSON object")
+              return value
+
+
+          def _load_json_object(path: Path, *, name: str) -> dict[str, Any]:
+              try:
+                  payload = path.read_bytes()
+              except OSError as error:
+                  raise ValueError(f"{name} is not readable") from error
+              return _load_json_bytes(payload, name=name)
+          '''.replace("          ", "")
+          replace_once(old_loader, new_loader, "strict byte JSON loader")
+
+          replace_once(
+              '''    manifest_sha = file_sha256(manifest)
+              record = _load_json_object(manifest, name="factor-bundle manifest")
+          '''.replace("          ", ""),
+              '''    try:
+                  manifest_bytes = manifest.read_bytes()
+              except OSError as error:
+                  raise ValueError("factor-bundle manifest is not readable") from error
+              manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
+              record = _load_json_bytes(
+                  manifest_bytes,
+                  name="factor-bundle manifest",
+              )
+          '''.replace("          ", ""),
+              "manifest snapshot",
+          )
+
+          replace_once(
+              '''    actual_payload_sha = file_sha256(payload)
+              if actual_payload_sha != declared_payload_sha:
+                  raise ValueError("factor-bundle payload checksum mismatch")
+          '''.replace("          ", ""),
+              '''    try:
+                  payload_bytes = payload.read_bytes()
+              except OSError as error:
+                  raise ValueError("factor-bundle payload is not readable") from error
+              actual_payload_sha = hashlib.sha256(payload_bytes).hexdigest()
+              if actual_payload_sha != declared_payload_sha:
+                  raise ValueError("factor-bundle payload checksum mismatch")
+          '''.replace("          ", ""),
+              "payload snapshot",
+          )
+
+          replace_once(
+              "        archive = np.load(payload, allow_pickle=False)\n",
+              "        archive = np.load(io.BytesIO(payload_bytes), allow_pickle=False)\n",
+              "payload BytesIO load",
+          )
+          source_path.write_text(source, encoding="utf-8")
+
+          test_path = Path("tests/test_observation_factor_lineage_v4.py")
+          tests = test_path.read_text(encoding="utf-8")
+          import_marker = "import pytest\n\nfrom causal4d.observation_factor_lineage import ("
+          import_replacement = (
+              "import pytest\n\n"
+              "import causal4d.observation_factor_lineage as lineage_module\n"
+              "from causal4d.observation_factor_lineage import ("
+          )
+          if import_marker in tests:
+              tests = tests.replace(import_marker, import_replacement, 1)
+          elif import_replacement not in tests:
+              raise SystemExit("missing lineage test import marker")
+
+          addition = '''
+
+          def test_manifest_validation_uses_the_exact_hashed_bytes(
+              tmp_path: Path,
+              monkeypatch: pytest.MonkeyPatch,
+          ) -> None:
+              manifest = _write_bundle(tmp_path)
+              expected_manifest_bytes = manifest.read_bytes()
+              real_loader = lineage_module._load_json_bytes
+
+              def replacing_loader(payload: bytes, *, name: str) -> dict[str, object]:
+                  manifest.write_text("{}\\n", encoding="utf-8")
+                  return real_loader(payload, name=name)
+
+              monkeypatch.setattr(lineage_module, "_load_json_bytes", replacing_loader)
+              lineage = load_observation_factor_lineage(manifest)
+
+              assert lineage.manifest_sha256 == hashlib.sha256(
+                  expected_manifest_bytes
+              ).hexdigest()
+
+
+          def test_payload_validation_uses_the_exact_hashed_bytes(
+              tmp_path: Path,
+              monkeypatch: pytest.MonkeyPatch,
+          ) -> None:
+              manifest = _write_bundle(tmp_path)
+              payload = tmp_path / "factors.npz"
+              expected_payload_bytes = payload.read_bytes()
+              real_load = lineage_module.np.load
+
+              def replacing_load(source: object, *args: object, **kwargs: object):
+                  payload.write_bytes(b"concurrent replacement")
+                  assert not isinstance(source, (str, Path))
+                  return real_load(source, *args, **kwargs)
+
+              monkeypatch.setattr(lineage_module.np, "load", replacing_load)
+              lineage = load_observation_factor_lineage(manifest)
+
+              assert lineage.payload_sha256 == hashlib.sha256(
+                  expected_payload_bytes
+              ).hexdigest()
+          '''.replace("          ", "")
+          if "test_payload_validation_uses_the_exact_hashed_bytes" not in tests:
+              tests = tests.rstrip() + addition + "\n"
+          test_path.write_text(tests, encoding="utf-8")
+          PY
+
+      - name: Validate the exact-byte repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e ".[dev]"
+          python -m ruff format \
+            src/causal4d/observation_factor_lineage.py \
+            tests/test_observation_factor_lineage_v4.py
+          python -m ruff check \
+            src/causal4d/observation_factor_lineage.py \
+            tests/test_observation_factor_lineage.py \
+            tests/test_observation_factor_lineage_v4.py
+          python -m mypy src/causal4d/observation_factor_lineage.py
+          python -m pytest -q \
+            tests/test_observation_factor_lineage.py \
+            tests/test_observation_factor_lineage_v4.py
+          git diff --check
+
+      - name: Commit and push the reviewed repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/causal4d/observation_factor_lineage.py \
+            tests/test_observation_factor_lineage_v4.py
+          git commit -m "Validate factor lineage from exact hashed bytes"
+          git push origin HEAD:agent/schema4-factor-lineage
