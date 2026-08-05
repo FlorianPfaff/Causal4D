@@ -1,0 +1,202 @@
+name: Apply evidence publication hardening
+
+on:
+  push:
+    branches: [agent/harden-evidence-publication]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-harden-evidence-publication
+  cancel-in-progress: true
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Overlay validated public-provider integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin \
+            refs/heads/agent/public-provider-integration:refs/remotes/origin/agent/public-provider-integration
+          git checkout refs/remotes/origin/agent/public-provider-integration -- \
+            .github/workflows/bayesian-phystwin-provider-compatibility.yml \
+            .github/workflows/ci.yml \
+            docs/ci.md \
+            tests/test_release_workflow_policy.py \
+            tests/test_three_repository_workflow_policy.py
+
+      - name: Apply hardening patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode <<'PATCH' | gzip --decompress > /tmp/apply_agent_hardening.py
+          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
+          PATCH
+          python /tmp/apply_agent_hardening.py
+
+      - name: Remove one-shot executor before validation
+        run: rm -f .github/workflows/agent-harden-evidence-publication.yml
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install development environment
+        run: python -m pip install -e ".[dev]"
+
+      - name: Format changed Python files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(git diff --name-only --diff-filter=ACMR HEAD -- '*.py')
+          printf '%s\n' "${files[@]}"
+          if (( ${#files[@]} )); then
+            python -m ruff format "${files[@]}"
+          fi
+
+      - name: Run quality checks
+        run: |
+          python -m ruff check .
+          python -m mypy \
+            scripts/ci \
+            src/causal4d/atomic_io.py \
+            src/causal4d/result_bundle_publication.py \
+            src/causal4d/trusted_pickle.py \
+            src/causal4d/immutable_array.py \
+            src/causal4d/immutable_json.py \
+            src/causal4d/provider_contract.py \
+            src/causal4d/replay_provider_contract.py
+
+      - name: Run focused regression tests
+        run: |
+          python -m pytest -q \
+            tests/test_trusted_pickle.py \
+            tests/test_trusted_pickle_cli_contract.py \
+            tests/test_result_bundle_publication.py \
+            tests/test_package_contract.py \
+            tests/test_release_workflow_policy.py \
+            tests/test_three_repository_workflow_policy.py
+
+      - name: Run core test suite
+        run: python -m pytest -q
+
+      - name: Build and validate distributions
+        run: |
+          python -m build
+          python -m twine check dist/*
+
+      - name: Commit validated patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git diff --cached --check
+          git status --short
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Harden evidence publication and provider inputs"
+          git push origin HEAD:agent/harden-evidence-publication
