@@ -23,6 +23,12 @@ from causal4d._multi_contact_prior import (
     MultiContactPathPrior,
     enumerate_multi_contact_paths,
 )
+from causal4d.scheduled_contact_replay import (
+    ScheduledContactReplayEvidence,
+    ScheduledContactReplayRejectedError,
+    ScheduledContactReplayUnavailableError,
+    replay_multi_contact_prior,
+)
 
 
 __all__ = [
@@ -34,7 +40,11 @@ __all__ = [
     "MultiContactPathBank",
     "MultiContactPathPrior",
     "MultiContactPosterior",
+    "ScheduledContactReplayEvidence",
+    "ScheduledContactReplayRejectedError",
+    "ScheduledContactReplayUnavailableError",
     "enumerate_multi_contact_paths",
     "infer_multi_contact_posterior",
     "multi_contact_conditioned_variance",
+    "replay_multi_contact_prior",
 ]

@@ -55,22 +55,11 @@ continuous simulator execution for that schedule. It must not be assembled by
 splicing independently simulated contact segments, because that would generally
 break state, velocity, and internal-stress continuity.
 
-Use `MultiContactPathBank.from_prior` after a simulator has executed every
-retained schedule:
+The low-level constructor remains available for controlled or synthetic
+providers:
 
 ```python
-from causal4d.multi_contact import (
-    MultiContactEnumerationConfig,
-    MultiContactPathBank,
-    enumerate_multi_contact_paths,
-)
-
-prior = enumerate_multi_contact_paths(
-    command_activation,             # shape (G, T)
-    contact_ids=("left", "right"),
-    transition_configs=(left_config, right_config),
-    config=MultiContactEnumerationConfig(maximum_joint_paths=128),
-)
+from causal4d.multi_contact import MultiContactPathBank
 
 bank = MultiContactPathBank.from_prior(
     prior,
@@ -81,20 +70,71 @@ bank = MultiContactPathBank.from_prior(
 )
 ```
 
+For Bayesian-PhysTwin integration, use the verified adapter instead of supplying
+an arbitrary replay identity:
+
+```python
+from causal4d.multi_contact import (
+    MultiContactEnumerationConfig,
+    enumerate_multi_contact_paths,
+    replay_multi_contact_prior,
+)
+
+prior = enumerate_multi_contact_paths(
+    command_activation,             # shape (G, T)
+    contact_ids=("left", "right"),
+    transition_configs=(left_config, right_config),
+    config=MultiContactEnumerationConfig(maximum_joint_paths=128),
+)
+
+evidence = replay_multi_contact_prior(
+    prior,
+    scheduled_provider,
+    request_id="case-17-contact-bank",
+    simulator_configuration_id=simulator_configuration_id,
+    initial_state_id=twin_endpoint_id,
+    group_log_scales=particle_log_scales,
+    controller_points_m=controller_points,
+    position_m=endpoint_position,
+    velocity_mps=endpoint_velocity,
+    frame_times_s=frame_times,
+    contact_node_indices=contact_patch_indices,
+    contact_node_weights=contact_patch_weights,
+    normal_stiffness_npm=normal_stiffness,
+    tangential_stiffness_npm=tangential_stiffness,
+    friction_coefficient=friction,
+)
+bank = evidence.bank
+```
+
+The adapter loads the additive contracts from
+`bayesian_phystwin.causal4d_provider_v2`, verifies that the runtime provider
+implements `ScheduledContactReplayProviderV1`, checks the provider configuration
+before execution, constructs a content-addressed physical request, revalidates
+the complete result, and then creates the rollout bank. Provider, request, replay,
+configuration, state, schedule, path, regime, and timebase drift fail closed.
+
 The schedule and rollout identities are deliberately separate:
 
 - `schedule_identity` binds contact names, path identifiers, complete regime
   schedules, normalized prior weights, and retained prior mass;
-- `rollout_identity` additionally binds the replay-result identity, explicit
-  timebase, trajectory bytes, and conditional-variance bytes.
+- the Bayesian-PhysTwin request identity additionally binds endpoint state,
+  controller motion, finite-area contact geometry, contact mechanics, physical
+  parameters, and explicit timebase;
+- the provider replay-result identity binds the request plus every returned
+  trajectory, conditional-variance, and provider-revision byte; and
+- Causal4D's `rollout_identity` additionally binds that verified replay identity
+  to the consumed trajectory and variance arrays.
 
 Changing a trajectory, variance tensor, replay identity, or timebase changes the
 rollout identity even when the schedule remains unchanged. Equal arrays with
-different NumPy memory layouts retain the same identity. This supplies a narrow
-content boundary for a future BayesianPhysTwin scheduled-replay provider without
-pretending that an arbitrary caller-supplied replay identifier is independently
-verified. Claim-bearing use can require both a replay-result identity and a
-strictly increasing explicit timebase.
+different NumPy memory layouts retain the same identity. Claim-bearing use can
+require both a replay-result identity and a strictly increasing explicit
+timebase.
+
+The public contract is now implemented, but the ordinary official PhysTwin/Warp
+provider does not yet advertise or implement dynamic scheduled contact. Contract
+validity must not be confused with physical replay competence.
 
 ## Prefix-only normalized likelihood
 
@@ -192,15 +232,17 @@ This implementation deliberately does not claim calibrated real-data contact
 prediction. The contact chains are independent in the prior and currently use
 the single-contact Markov transition parameterization. It does not yet provide
 source-fitted duration distributions, cross-gripper transition coupling, tactile
-label construction, contact-point migration, continuous force-transmission
-parameters, or a BayesianPhysTwin dynamic-schedule replay capability.
+label construction, contact-point migration, calibrated force-transmission
+parameters, or an official PhysTwin/Warp implementation of the scheduled replay
+protocol.
 
 The next evidence-bearing steps are therefore:
 
 1. fit transition, duration, and force-transmission parameters on source
    interactions only;
-2. add an additive BayesianPhysTwin provider capability that executes one
-   continuous rollout per schedule and returns a verified replay-result identity;
+2. implement finite-area moving contact in a Bayesian-PhysTwin provider that
+   executes one continuous rollout per schedule and returns the verified result
+   contract without silently omitting failed paths;
 3. freeze support thresholds and the exact static fallback before target access;
 4. evaluate contact onset, offset, calibration, retained support mass, and
    held-out trajectory prediction on a prospectively reserved cohort; and
