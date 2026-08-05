@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   materialize-test-and-commit:
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - name: Check out implementation branch
