@@ -13,9 +13,7 @@ TEMPORARY_WORKFLOW = (
     / "temporary-deform360-prefix-kinematics-evidence.yml"
 )
 PROTOCOL = ROOT / "configs" / "causal4d_public" / "deform360_replication_v1.json"
-SELECTOR = (
-    ROOT / "scripts" / "remote" / "select_deform360_prefix_kinematics_python.py"
-)
+SELECTOR = ROOT / "scripts" / "remote" / "select_deform360_prefix_kinematics_python.py"
 
 
 def test_prefix_kinematics_workflow_is_read_only_and_review_safe() -> None:
