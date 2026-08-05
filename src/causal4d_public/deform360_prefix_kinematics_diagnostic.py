@@ -42,9 +42,7 @@ from .deform360_replication_warp import (
 
 
 PREFIX_KINEMATICS_DIAGNOSTIC_SCHEMA_VERSION = 1
-PREFIX_KINEMATICS_DIAGNOSTIC_KIND = (
-    "Deform360SourcePrefixKinematicsDiagnostic"
-)
+PREFIX_KINEMATICS_DIAGNOSTIC_KIND = "Deform360SourcePrefixKinematicsDiagnostic"
 PREFIX_KINEMATICS_CONFIG_KIND = "Deform360SourcePrefixKinematicsConfig"
 SOURCE_MILESTONE = Path("milestones/deform360-replication-source-backend-v1")
 
@@ -76,9 +74,7 @@ def _sha256_file(path: Path) -> str:
 
 def _finite_float(value: Any, *, name: str) -> float:
     _require(
-        type(value) in {int, float}
-        and type(value) is not bool
-        and np.isfinite(value),
+        type(value) in {int, float} and type(value) is not bool and np.isfinite(value),
         f"{name} must be a finite number",
     )
     return float(value)
@@ -102,9 +98,7 @@ def _strict_nonnegative_integer(value: Any, *, name: str) -> int:
 class PrefixKinematicsDiagnosticConfig:
     """Predeclared source-only comparison and gate controls."""
 
-    kinematics: PrefixKinematicsConfig = field(
-        default_factory=PrefixKinematicsConfig
-    )
+    kinematics: PrefixKinematicsConfig = field(default_factory=PrefixKinematicsConfig)
     baseline_chamfer_tolerance_m: float = 5e-4
     baseline_strain_tolerance: float = 1e-2
     minimum_relative_improvement: float = 0.05
@@ -172,8 +166,7 @@ def load_prefix_kinematics_diagnostic_lock(
         "prefix-kinematics config kind changed",
     )
     _require(
-        payload.get("config_sha256")
-        == prefix_kinematics_config_sha256(payload),
+        payload.get("config_sha256") == prefix_kinematics_config_sha256(payload),
         "prefix-kinematics config checksum mismatch",
     )
     controls = payload.get("config")
@@ -195,8 +188,7 @@ def load_prefix_kinematics_diagnostic_lock(
     )
     _require(
         controls.get("primary_policy") == "graph_harmonic_contact_v1"
-        and controls.get("control_policy")
-        == "global_contact_translation_v1",
+        and controls.get("control_policy") == "global_contact_translation_v1",
         "prefix-kinematics policy roles changed",
     )
     boundary = payload.get("information_boundary")
@@ -210,17 +202,11 @@ def load_prefix_kinematics_diagnostic_lock(
     )
     diagnostic = PrefixKinematicsDiagnosticConfig(
         kinematics=PrefixKinematicsConfig(**dict(kinematics)),
-        baseline_chamfer_tolerance_m=controls[
-            "baseline_chamfer_tolerance_m"
-        ],
+        baseline_chamfer_tolerance_m=controls["baseline_chamfer_tolerance_m"],
         baseline_strain_tolerance=controls["baseline_strain_tolerance"],
-        minimum_relative_improvement=controls[
-            "minimum_relative_improvement"
-        ],
+        minimum_relative_improvement=controls["minimum_relative_improvement"],
         minimum_win_fraction=controls["minimum_win_fraction"],
-        minimum_common_episode_count=controls[
-            "minimum_common_episode_count"
-        ],
+        minimum_common_episode_count=controls["minimum_common_episode_count"],
     )
     return {
         "path": lock_path,
@@ -562,9 +548,7 @@ def _policy_result(
         "mean_chamfer_m": mean if np.isfinite(mean) else None,
         "late_chamfer_m": late if np.isfinite(late) else None,
         "p99_relative_edge_strain": p99 if np.isfinite(p99) else None,
-        "maximum_relative_edge_strain": (
-            maximum if np.isfinite(maximum) else None
-        ),
+        "maximum_relative_edge_strain": (maximum if np.isfinite(maximum) else None),
         "quality_valid": bool(
             np.isfinite(mean)
             and np.isfinite(p99)
@@ -631,9 +615,7 @@ def _episode_record(
     total_frame_count = len(hulls)
     available = np.asarray([len(hull) > 0 for hull in hulls], dtype=bool)
     frames = frames[available]
-    hulls = tuple(
-        hull for hull, keep in zip(hulls, available, strict=True) if keep
-    )
+    hulls = tuple(hull for hull, keep in zip(hulls, available, strict=True) if keep)
     _require(
         total_frame_count == grid["reference_geometry_total_frame_count"]
         and len(hulls) == grid["reference_geometry_available_frame_count"],
@@ -765,8 +747,7 @@ def run_source_prefix_kinematics_diagnostic(
     milestone_verification = verify_source_milestone(root)
     protocol = load_deform360_replication_protocol(protocol_file)
     cohorts = {
-        str(record["object_id"]): record
-        for record in protocol["config"]["cohort"]
+        str(record["object_id"]): record for record in protocol["config"]["cohort"]
     }
     grid_root = root / SOURCE_MILESTONE / "artifacts" / "source-grids"
     _require(grid_root.is_dir(), "source-grid milestone directory is missing")
@@ -780,8 +761,7 @@ def run_source_prefix_kinematics_diagnostic(
                 sorted(
                     path.name
                     for path in grid_root.iterdir()
-                    if path.is_dir()
-                    and any(path.glob("source_episode_*_grid.json"))
+                    if path.is_dir() and any(path.glob("source_episode_*_grid.json"))
                 )
             )
         )
@@ -795,8 +775,7 @@ def run_source_prefix_kinematics_diagnostic(
     if lock is not None:
         lock_payload = lock["payload"]
         _require(
-            lock_payload["protocol_config_sha256"]
-            == protocol["config_sha256"],
+            lock_payload["protocol_config_sha256"] == protocol["config_sha256"],
             "locked replication protocol identity changed",
         )
         _require(
@@ -805,14 +784,9 @@ def run_source_prefix_kinematics_diagnostic(
             "locked source milestone identity changed",
         )
         decision_path = (
-            root
-            / SOURCE_MILESTONE
-            / "artifacts"
-            / "source_backend_decision.json"
+            root / SOURCE_MILESTONE / "artifacts" / "source_backend_decision.json"
         )
-        source_decision = json.loads(
-            decision_path.read_text(encoding="utf-8")
-        )
+        source_decision = json.loads(decision_path.read_text(encoding="utf-8"))
         _require(
             lock_payload["source_backend_decision_result_sha256"]
             == source_decision["result_sha256"],
@@ -894,8 +868,7 @@ def validate_source_prefix_kinematics_diagnostic(
     """Validate the immutable diagnostic result and target-closed boundary."""
 
     _require(
-        payload.get("schema_version")
-        == PREFIX_KINEMATICS_DIAGNOSTIC_SCHEMA_VERSION,
+        payload.get("schema_version") == PREFIX_KINEMATICS_DIAGNOSTIC_SCHEMA_VERSION,
         "prefix-kinematics diagnostic schema changed",
     )
     _require(

@@ -91,10 +91,7 @@ def _canonical_sha256(payload: dict) -> str:
 
 def test_locked_config_loads_exact_controls() -> None:
     lock = load_prefix_kinematics_diagnostic_lock(
-        ROOT
-        / "configs"
-        / "causal4d_public"
-        / "deform360_prefix_kinematics_v1.json"
+        ROOT / "configs" / "causal4d_public" / "deform360_prefix_kinematics_v1.json"
     )
     assert lock["payload"]["config_sha256"] == (
         "18b9554b80bd6f4cd39813323267553df586403e032d711df0517c93b012bb27"
@@ -111,10 +108,7 @@ def test_locked_config_loads_exact_controls() -> None:
 
 def test_locked_config_rejects_checksum_drift(tmp_path) -> None:
     source = (
-        ROOT
-        / "configs"
-        / "causal4d_public"
-        / "deform360_prefix_kinematics_v1.json"
+        ROOT / "configs" / "causal4d_public" / "deform360_prefix_kinematics_v1.json"
     )
     payload = json.loads(source.read_text(encoding="utf-8"))
     payload["config"]["kinematics"]["lookback_frames"] = 4
@@ -179,10 +173,7 @@ def test_policy_summary_counts_rescues_and_regressions() -> None:
 
 
 def test_decision_passes_only_with_reproduced_non_degrading_gain() -> None:
-    records = [
-        _episode(f"object-{index % 2}", 0.04, 0.03)
-        for index in range(6)
-    ]
+    records = [_episode(f"object-{index % 2}", 0.04, 0.03) for index in range(6)]
     config = PrefixKinematicsDiagnosticConfig(
         minimum_common_episode_count=6,
         minimum_relative_improvement=0.05,
@@ -214,9 +205,12 @@ def test_decision_rejects_loss_of_quality_valid_episodes() -> None:
         minimum_win_fraction=0.60,
     )
     decision = build_source_decision(records, config=config)
-    assert decision["policy_summaries"]["graph_harmonic_contact_v1"][
-        "quality_valid_episode_count"
-    ] == 5
+    assert (
+        decision["policy_summaries"]["graph_harmonic_contact_v1"][
+            "quality_valid_episode_count"
+        ]
+        == 5
+    )
     assert decision["passed"] is False
 
 

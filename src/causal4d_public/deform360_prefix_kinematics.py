@@ -121,8 +121,7 @@ def recent_contact_mask(
     active = np.asarray(contact_active, dtype=bool)
     _require(active.ndim == 2 and active.shape[1] >= 1, "contact state must be (T,C)")
     _require(
-        type(prefix_endpoint_frame) is int
-        and 0 <= prefix_endpoint_frame < len(active),
+        type(prefix_endpoint_frame) is int and 0 <= prefix_endpoint_frame < len(active),
         "prefix endpoint is outside the contact schedule",
     )
     memory = _positive_integer(memory_frames, name="memory_frames")

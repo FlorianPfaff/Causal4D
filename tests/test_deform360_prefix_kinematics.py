@@ -20,9 +20,7 @@ from causal4d_public.deform360_replication_graph import Deform360SparseGraph
 
 
 def _chain_graph() -> Deform360SparseGraph:
-    positions = np.column_stack(
-        (np.linspace(0.0, 0.4, 5), np.zeros(5), np.zeros(5))
-    )
+    positions = np.column_stack((np.linspace(0.0, 0.4, 5), np.zeros(5), np.zeros(5)))
     return Deform360SparseGraph(
         positions_m=positions,
         spring_edges=np.asarray([[0, 1], [1, 2], [2, 3], [3, 4]]),
