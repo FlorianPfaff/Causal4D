@@ -12,11 +12,20 @@ output="${CAUSAL4D_OUTPUT_ROOT:-${repo_root}/runs/causal4d-abduction-v1/${case_n
 particle_count="${CAUSAL4D_PARAMETER_PARTICLES:-4}"
 contact_count="${CAUSAL4D_CONTACT_STATES:-9}"
 prefix_frames="${CAUSAL4D_O_PLUS_PREFIX_FRAMES:-6}"
+final_data_sha256="${CAUSAL4D_FINAL_DATA_SHA256:-}"
+target_source_revision="${CAUSAL4D_TARGET_SOURCE_REVISION:-legacy-final-data-v1}"
 
 case_dir="${data_root}/${case_name}"
 profile="${profile_dir}/parameter_profile.npz"
 checkpoint="${profile_dir}/refit_checkpoint.pt"
 mkdir -p "${output}"
+
+if [[ -z "${final_data_sha256}" ]]; then
+  printf '%s\n' \
+    "CAUSAL4D_FINAL_DATA_SHA256 must identify the exact trusted final_data.pkl bytes" \
+    >&2
+  exit 2
+fi
 
 run() {
   PYTHONPATH="${repo_root}/src" CUDA_VISIBLE_DEVICES="${PHYSTWIN_GPU:-0}" \
@@ -56,9 +65,17 @@ for specification in "known_action:same_grasp" "history_reverse:new_contact"; do
     --maximum-contact-states "${contact_count}"
 done
 
-run -m causal4d.cli.evaluate_physical_counterfactual \
+run -m causal4d.cli.import_physical_target \
   "${output}/known_action.physical.npz" \
   "${case_dir}/final_data.pkl" \
+  "${output}/known_action.held_out_target.npz" \
+  --allow-unsafe-pickle \
+  --expected-sha256 "${final_data_sha256}" \
+  --source-revision "${target_source_revision}"
+
+run -m causal4d.cli.evaluate_physical_counterfactual \
+  "${output}/known_action.physical.npz" \
+  "${output}/known_action.held_out_target.npz" \
   "${output}/known_action.beta0_evaluation.json" \
   --start-frame "$((prefix_frames + 1))"
 
