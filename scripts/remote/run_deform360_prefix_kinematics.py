@@ -141,14 +141,36 @@ def _load_runtime_selection(path: Path) -> dict[str, Any]:
     warp_device_count = observed.get("warp_cuda_device_count")
     if type(warp_device_count) is not int or warp_device_count < 1:
         raise ValueError("selected Warp runtime cannot see CUDA")
+
     provenance = payload["runtime_provenance"]
     if not isinstance(provenance, Mapping):
         raise ValueError("runtime selection omitted lock provenance")
+    if provenance.get("status") != "conditional-reproduction-runtime-deviation":
+        raise ValueError("runtime selection has another provenance status")
     if provenance.get("zero_baseline_reproduction_required") is not True:
         raise ValueError("runtime selection relaxed zero-baseline reproduction")
-    correction = provenance.get("correction")
-    if correction != {"numpy": {"effective": "1.26.4", "recorded": "2.5.1"}}:
-        raise ValueError("runtime selection has another provenance correction")
+    if (
+        provenance.get(
+            "interpretation_permitted_only_after_zero_baseline_reproduction"
+        )
+        is not True
+    ):
+        raise ValueError("runtime selection permits premature interpretation")
+    recorded = provenance.get("recorded_runtime")
+    candidate = provenance.get("candidate_runtime")
+    if not isinstance(recorded, Mapping) or not isinstance(candidate, Mapping):
+        raise ValueError("runtime selection omitted recorded or candidate runtime")
+    if dict(candidate) != dict(expected):
+        raise ValueError("runtime selection candidate runtime changed")
+    if recorded.get("numpy") != "2.5.1" or candidate.get("numpy") != "1.26.4":
+        raise ValueError("runtime selection has another NumPy deviation")
+    for key in _RUNTIME_KEYS:
+        if key != "numpy" and recorded.get(key) != candidate.get(key):
+            raise ValueError(f"runtime selection unexpectedly changes {key}")
+    if provenance.get("deviation") != {
+        "numpy": {"candidate": "1.26.4", "recorded": "2.5.1"}
+    }:
+        raise ValueError("runtime selection has another declared deviation")
     return payload
 
 
