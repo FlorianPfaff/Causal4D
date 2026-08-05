@@ -30,9 +30,7 @@ DESCRIPTOR_FIELDS = frozenset(
         "payload",
     }
 )
-SOURCE_FIELDS = frozenset(
-    {"kind", "revision", "content_sha256", "artifact_id"}
-)
+SOURCE_FIELDS = frozenset({"kind", "revision", "content_sha256", "artifact_id"})
 PAYLOAD_FIELDS = frozenset(
     {"node_indices_sha256", "positions_m_sha256", "validity_mask_sha256"}
 )
@@ -230,9 +228,7 @@ def validate_target_descriptor(values: Mapping[str, Any]) -> dict[str, Any]:
     )
     supplied_id = normalized.pop("artifact_id")
     validate_sha256(supplied_id, name="artifact_id")
-    expected_id = hashlib.sha256(
-        canonical_json(normalized).encode("utf-8")
-    ).hexdigest()
+    expected_id = hashlib.sha256(canonical_json(normalized).encode("utf-8")).hexdigest()
     if supplied_id != expected_id:
         raise ValueError("held-out target artifact_id does not match descriptor")
     normalized["artifact_id"] = supplied_id
