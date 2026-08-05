@@ -55,19 +55,19 @@ jobs:
           done
           echo "No runner Python with pip is available" >&2
           exit 1
-      - name: Install development dependencies
+      - name: Install isolated test tools
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$AGENT_PYTHON" == /usr/bin/python3 ]]; then
-            "$AGENT_PYTHON" -m pip install \
-              --user \
-              --break-system-packages \
-              -e ".[dev]" \
-              pyyaml
-          else
-            "$AGENT_PYTHON" -m pip install -e ".[dev]" pyyaml
-          fi
+          toolsite="$RUNNER_TEMP/causal4d-agent-site"
+          rm -rf "$toolsite"
+          mkdir -p "$toolsite"
+          "$AGENT_PYTHON" -m pip install \
+            --target "$toolsite" \
+            "pytest>=8" \
+            "ruff>=0.15.22,<0.17" \
+            pyyaml
+          echo "PYTHONPATH=$PWD/src:$toolsite" >> "$GITHUB_ENV"
       - name: Apply and format focused patch
         run: |
           "$AGENT_PYTHON" scripts/ci/agent_apply_public_provider_ci.py
