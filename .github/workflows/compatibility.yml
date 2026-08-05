@@ -25,7 +25,7 @@ jobs:
     if: >-
       github.event_name == 'pull_request' &&
       github.head_ref == 'agent/public-provider-integration'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
     timeout-minutes: 20
     steps:
       - name: Check out pull-request branch
