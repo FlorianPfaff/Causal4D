@@ -5,13 +5,13 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
+import causal4d.scheduled_contact_replay as scheduled_replay
 from causal4d.multi_contact import MultiContactPathPrior
 from causal4d.scheduled_contact_replay import (
     ScheduledContactReplayRejectedError,
     ScheduledContactReplayUnavailableError,
     replay_multi_contact_prior,
 )
-import causal4d.scheduled_contact_replay as scheduled_replay
 
 provider_api = pytest.importorskip("bayesian_phystwin.causal4d_provider_v2")
 if not hasattr(provider_api, "ScheduledContactReplayProviderV1"):
