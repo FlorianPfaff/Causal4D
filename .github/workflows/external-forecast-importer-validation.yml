@@ -1,0 +1,113 @@
+name: External forecast importer validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/external-forecast-importer-validation.yml"
+      - "src/causal4d/external_forecast.py"
+      - "src/causal4d/external_forecast_importer.py"
+      - "src/causal4d/semantic_posterior.py"
+      - "src/causal4d/cli/external_forecast_import.py"
+      - "src/causal4d/cli/molmo_task_posterior.py"
+      - "tests/test_external_forecast_import.py"
+      - "docs/external_forecast_import.md"
+      - "examples/external_forecast_manifest_v1.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: external-forecast-importer-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONHASHSEED: "0"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  validate:
+    name: External forecast importer / workstation2
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 60
+    steps:
+      - name: Check out pull request merge commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Create isolated environment
+        shell: bash
+        run: |
+          python -m venv .validation-venv
+          echo "VIRTUAL_ENV=${PWD}/.validation-venv" >> "${GITHUB_ENV}"
+          echo "${PWD}/.validation-venv/bin" >> "${GITHUB_PATH}"
+
+      - name: Install core development environment
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python -m pip check
+
+      - name: Run Ruff lint and formatting checks
+        shell: bash
+        run: |
+          files=(
+            src/causal4d/external_forecast.py
+            src/causal4d/external_forecast_importer.py
+            src/causal4d/semantic_posterior.py
+            src/causal4d/cli/external_forecast_import.py
+            src/causal4d/cli/molmo_task_posterior.py
+            tests/test_external_forecast_import.py
+          )
+          python -m ruff check "${files[@]}"
+          python -m ruff format --check "${files[@]}"
+
+      - name: Run importer and semantic regressions
+        shell: bash
+        run: |
+          mkdir -p external-forecast-validation
+          set -o pipefail
+          python -m pytest -ra \
+            tests/test_external_forecast_import.py \
+            tests/test_causal4d_semantic_posterior.py \
+            tests/test_causal4d_semantic_trust.py \
+            tests/test_causal4d_closed_loop.py \
+            tests/test_exact_zero_support.py \
+            tests/test_claim_artifact_immutability.py \
+            | tee external-forecast-validation/focused-tests.log
+
+      - name: Run core suite outside the known provider-v2 main regression
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m pytest -ra \
+            --ignore=tests/test_belief_provider_v2_contract.py \
+            | tee external-forecast-validation/core-tests.log
+
+      - name: Build and inspect distributions
+        shell: bash
+        run: |
+          python -m build
+          python -m twine check dist/*
+          python -m pip freeze > external-forecast-validation/pip-freeze.txt
+          git status --short > external-forecast-validation/git-status.txt
+          git rev-parse HEAD > external-forecast-validation/merge-sha.txt
+          git rev-parse "${{ github.event.pull_request.head.sha }}^{tree}" \
+            > external-forecast-validation/code-tree.txt
+
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: external-forecast-importer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: external-forecast-validation
+          if-no-files-found: warn
+          retention-days: 30
