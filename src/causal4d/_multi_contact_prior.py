@@ -44,10 +44,9 @@ class MultiContactEnumerationConfig:
     def __post_init__(self) -> None:
         if type(self.maximum_joint_paths) is not int or self.maximum_joint_paths < 1:
             raise ValueError("maximum_joint_paths must be a positive integer")
-        if (
-            isinstance(self.minimum_joint_probability, (bool, np.bool_))
-            or not isinstance(self.minimum_joint_probability, Real)
-        ):
+        if isinstance(
+            self.minimum_joint_probability, (bool, np.bool_)
+        ) or not isinstance(self.minimum_joint_probability, Real):
             raise ValueError("minimum_joint_probability must be a real probability")
         minimum = float(self.minimum_joint_probability)
         if not np.isfinite(minimum) or not 0.0 <= minimum < 1.0:
