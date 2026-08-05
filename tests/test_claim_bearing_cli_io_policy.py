@@ -3,6 +3,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
+
 from causal4d.cli.command_registry import find_command, grouped_commands
 
 
@@ -114,3 +116,33 @@ def test_physical_evaluator_uses_safe_target_and_atomic_publication() -> None:
         "save_physical_counterfactual_evaluation_record",
     ) in imported
     assert not direct_writes, f"direct evidence writes at lines {direct_writes}"
+
+
+def test_phystwin_abduction_uses_the_trusted_pickle_boundary() -> None:
+    repository_root = Path(__file__).resolve().parents[1]
+    source = (
+        repository_root
+        / "src"
+        / "causal4d"
+        / "cli"
+        / "abduct_phystwin_intervention.py"
+    )
+    assert not _unsafe_deserialization_calls(source)
+    tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+    imported = {
+        (node.module, alias.name)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        for alias in node.names
+    }
+    assert ("causal4d.trusted_pickle", "load_trusted_pickle") in imported
+    text = source.read_text(encoding="utf-8")
+    assert '"--allow-unsafe-pickle"' in text
+    assert '"--expected-final-data-sha256"' in text
+
+
+def test_phystwin_abduction_rejects_an_unidentified_pickle_before_imports() -> None:
+    from causal4d.cli.abduct_phystwin_intervention import main
+
+    with pytest.raises(ValueError, match="expected-final-data-sha256"):
+        main(["bank", "belief", "data", "factual", "evaluation"])
