@@ -40,7 +40,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
+          python3 - <<'PY'
           from __future__ import annotations
 
           import base64
@@ -68,13 +68,13 @@ jobs:
           )
           Path("/tmp/apply_agent_hardening.py").write_text(script, encoding="utf-8")
           PY
-          python /tmp/apply_agent_hardening.py
+          python3 /tmp/apply_agent_hardening.py
 
       - name: Complete static-analysis and metadata contracts
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
+          python3 - <<'PY'
           from pathlib import Path
 
           workflow_path = Path(".github/workflows/ci.yml")
