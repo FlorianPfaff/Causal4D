@@ -148,14 +148,21 @@ COMMANDS = (
         removed_in=REMOVED_EXECUTABLE_VERSION,
     ),
     CommandSpec(
+        route=("evidence", "physical-target", "import-legacy"),
+        target="causal4d.cli.import_physical_target:main",
+        summary="Convert a trusted legacy target into the safe target contract.",
+        lifecycle="stable",
+        extras=("phystwin",),
+        claim_bearing=True,
+        requires=("BayesianPhysTwin provider", "trusted legacy pickle"),
+    ),
+    CommandSpec(
         route=("evidence", "physical-counterfactual", "evaluate"),
         target="causal4d.cli.evaluate_physical_counterfactual:main",
         summary="Evaluate registered physical counterfactual predictions.",
         lifecycle="stable",
         historical_name="causal4d-evaluate-physical-counterfactual",
-        extras=("phystwin",),
         claim_bearing=True,
-        requires=("BayesianPhysTwin provider",),
         removed_in=REMOVED_EXECUTABLE_VERSION,
     ),
     CommandSpec(
