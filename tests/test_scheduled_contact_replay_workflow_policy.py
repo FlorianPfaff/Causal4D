@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 WORKFLOW = Path(".github/workflows/scheduled-contact-replay-integration.yml")
-BPT_CONTRACT_REVISION = "974c4e28a41ff0b22be7fe06e34c8fe1d00c6100"
+BPT_CONTRACT_REVISION = "58bf6a6f06ad27fce525060190cff787cde58fa4"
 
 
 def test_scheduled_replay_workflow_uses_exact_public_provider_revision() -> None:
