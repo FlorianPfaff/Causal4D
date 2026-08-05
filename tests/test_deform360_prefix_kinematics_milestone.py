@@ -7,9 +7,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SUMMARY = (
-    ROOT / "milestones" / "deform360-prefix-kinematics-v1" / "summary.json"
-)
+SUMMARY = ROOT / "milestones" / "deform360-prefix-kinematics-v1" / "summary.json"
 
 
 def test_completed_prefix_kinematics_milestone_is_negative_and_target_closed() -> None:
@@ -53,8 +51,9 @@ def test_completed_prefix_kinematics_milestone_is_negative_and_target_closed() -
         -0.001754550461647353
     )
     assert graph_harmonic["win_fraction_vs_zero"] == pytest.approx(0.3)
-    assert graph_harmonic["quality_valid_episode_count"] == (
-        zero["quality_valid_episode_count"]
+    assert (
+        graph_harmonic["quality_valid_episode_count"]
+        == (zero["quality_valid_episode_count"])
     )
 
     decision = payload["decision"]
