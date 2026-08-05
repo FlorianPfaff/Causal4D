@@ -98,10 +98,7 @@ def test_runtime_erratum_rejects_content_identity_drift(tmp_path: Path) -> None:
             "milestones/deform360-replication-source-backend-v1/verification/"
             "test-and-lint.txt"
         ),
-        Path(
-            "milestones/v0.3.0-causal4d-aip/environment/"
-            "bpt-gpu-pip-freeze.txt"
-        ),
+        Path("milestones/v0.3.0-causal4d-aip/environment/bpt-gpu-pip-freeze.txt"),
     ):
         source = ROOT / relative
         destination = tmp_path / relative
