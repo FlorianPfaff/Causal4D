@@ -136,6 +136,7 @@ jobs:
           f26XZWzbbs3wzNxWO/AJk8vgDsbzuPxDFlnC6KSk+RNeS8yL3TIhk8BYw3BVY3oeb0Gi7J03tB9eZc1yPX+sM+TicZKFGxP5dX0M
           W5TN7f8guOz83O+U2B3MxacRmXDT7bNPtO3c4F4D9G5U+sT1jQ/+DwaLAK15cAAA
           PATCH
+          sed -i 's|ROOT = Path(__file__).resolve().parents\[2\]|ROOT = Path.cwd()|' /tmp/apply_agent_hardening.py
           python /tmp/apply_agent_hardening.py
 
       - name: Remove one-shot executor before validation
