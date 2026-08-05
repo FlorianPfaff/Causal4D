@@ -81,7 +81,7 @@ jobs:
           )
           python -m ruff check "${files[@]}"
           python -m ruff format --check "${files[@]}"
-          python -m mypy \
+          python -m mypy --no-site-packages \
             src/causal4d_public/deform360_prefix_kinematics.py \
             src/causal4d_public/deform360_prefix_kinematics_diagnostic.py \
             scripts/remote/find_deform360_replication_root.py \
