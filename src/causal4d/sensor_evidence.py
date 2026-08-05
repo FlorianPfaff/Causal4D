@@ -10,7 +10,8 @@ from typing import Any, Mapping
 
 import numpy as np
 
-from causal4d.immutable_json import validated_json_mapping
+from causal4d.immutable_array import readonly_array
+from causal4d.immutable_json import plain_json, validated_json_mapping
 
 from causal4d.contracts import array_sha256
 
@@ -19,9 +20,7 @@ INDEPENDENT_SENSOR_SCHEMA_VERSION = 1
 
 
 def _readonly(values: np.ndarray, *, dtype: type | None = float) -> np.ndarray:
-    array = np.asarray(values, dtype=dtype).copy()
-    array.setflags(write=False)
-    return array
+    return readonly_array(values, dtype=dtype)
 
 
 def _validate_identity(
@@ -71,8 +70,7 @@ def _broadcast_variance(
         raise ValueError(f"{name} must broadcast to {shape}") from error
     if not np.all(np.isfinite(result)) or np.any(result <= 0.0):
         raise ValueError(f"{name} must be finite and strictly positive")
-    result.setflags(write=False)
-    return result
+    return readonly_array(result)
 
 
 def _broadcast_mask(
@@ -88,8 +86,7 @@ def _broadcast_mask(
             result = np.broadcast_to(supplied, shape).copy()
         except ValueError as error:
             raise ValueError(f"{name} must broadcast to {shape}") from error
-    result.setflags(write=False)
-    return result
+    return readonly_array(result)
 
 
 def _validate_times(values: np.ndarray, sample_count: int) -> np.ndarray:
@@ -111,7 +108,7 @@ def _artifact_id(
     digest.update(artifact_kind.encode("utf-8"))
     digest.update(
         json.dumps(
-            dict(scalar_payload),
+            plain_json(scalar_payload),
             sort_keys=True,
             separators=(",", ":"),
             allow_nan=False,
@@ -183,7 +180,7 @@ class ActuatorEvidence:
             scalar_payload={
                 **_identity_payload(self),
                 "evidence_frame_stop": self.evidence_frame_stop,
-                "metadata": self.metadata,
+                "metadata": plain_json(self.metadata),
                 "independent_of_object_observations": True,
             },
             arrays={
@@ -259,7 +256,7 @@ class ContactWrenchEvidence:
                 **_identity_payload(self),
                 "quantity_names": list(self.quantity_names),
                 "evidence_frame_stop": self.evidence_frame_stop,
-                "metadata": self.metadata,
+                "metadata": plain_json(self.metadata),
                 "independent_of_object_observations": True,
             },
             arrays={
@@ -283,7 +280,7 @@ def save_independent_sensor_evidence(
             "artifact_kind": "ActuatorEvidence",
             **_identity_payload(evidence),
             "evidence_frame_stop": evidence.evidence_frame_stop,
-            "metadata": evidence.metadata,
+            "metadata": plain_json(evidence.metadata),
             "artifact_id": evidence.artifact_id,
         }
         arrays = {
@@ -299,7 +296,7 @@ def save_independent_sensor_evidence(
             **_identity_payload(evidence),
             "quantity_names": list(evidence.quantity_names),
             "evidence_frame_stop": evidence.evidence_frame_stop,
-            "metadata": evidence.metadata,
+            "metadata": plain_json(evidence.metadata),
             "artifact_id": evidence.artifact_id,
         }
         arrays = {

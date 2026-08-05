@@ -1,0 +1,64 @@
+{
+  "schema": "causal4d.bayesian_phystwin_provider_registry",
+  "schema_version": 1,
+  "supported_distribution": "bayesian-phystwin>=0.4,<0.5",
+  "import_policy": "versioned_public_modules_only",
+  "modules": [
+    {
+      "module": "bayesian_phystwin.causal4d_artifacts_v1",
+      "api_version": 1,
+      "role": "released_artifact_io",
+      "lifecycle": "frozen_compatibility",
+      "local_contract_module": null
+    },
+    {
+      "module": "bayesian_phystwin.causal4d_artifacts_v2",
+      "api_version": 2,
+      "role": "released_visual_artifact_io",
+      "lifecycle": "production_additive",
+      "local_contract_module": null
+    },
+    {
+      "module": "bayesian_phystwin.causal4d_belief_provider_v1",
+      "api_version": 1,
+      "role": "fixed_anchor_endpoint_inference",
+      "lifecycle": "frozen_compatibility",
+      "local_contract_module": "causal4d.belief_provider_contract"
+    },
+    {
+      "module": "bayesian_phystwin.causal4d_belief_provider_v2",
+      "api_version": 2,
+      "role": "model_averaged_horizon_discrepancy",
+      "lifecycle": "additive_development",
+      "local_contract_module": "causal4d.belief_provider_v2_contract"
+    },
+    {
+      "module": "bayesian_phystwin.causal4d_graph_provider_v1",
+      "api_version": 1,
+      "role": "spring_graph_and_controller_grouping",
+      "lifecycle": "production",
+      "local_contract_module": "causal4d.graph_provider_contract"
+    },
+    {
+      "module": "bayesian_phystwin.causal4d_provider_v1",
+      "api_version": 1,
+      "role": "scientific_compatibility_facade",
+      "lifecycle": "frozen_compatibility",
+      "local_contract_module": "causal4d.provider_contract"
+    },
+    {
+      "module": "bayesian_phystwin.causal4d_provider_v2",
+      "api_version": 2,
+      "role": "request_complete_replay",
+      "lifecycle": "production",
+      "local_contract_module": "causal4d.replay_provider_contract"
+    },
+    {
+      "module": "bayesian_phystwin.causal4d_public_provider_v1",
+      "api_version": 1,
+      "role": "source_locked_public_diagnostics",
+      "lifecycle": "diagnostic",
+      "local_contract_module": null
+    }
+  ]
+}

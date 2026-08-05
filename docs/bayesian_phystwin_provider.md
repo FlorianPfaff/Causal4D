@@ -9,10 +9,14 @@ modules:
   replay execution through immutable request-complete contracts;
 - `bayesian_phystwin.causal4d_belief_provider_v1` for NumPy-only fixed-anchor
   endpoint inference and immutable endpoint posteriors;
+- `bayesian_phystwin.causal4d_belief_provider_v2` for additive model-averaged
+  endpoints and source-calibrated horizon discrepancy moments;
 - `bayesian_phystwin.causal4d_graph_provider_v1` for the NumPy-only spring-graph
   value type, graph construction, and released controller grouping semantics;
 - `bayesian_phystwin.causal4d_artifacts_v1` for hash-locked released pickle
   inputs and immutable raw-track correspondence;
+- `bayesian_phystwin.causal4d_artifacts_v2` for versioned released visual and
+  correspondence artifacts without importing experiment internals;
 - `bayesian_phystwin.causal4d_public_provider_v1` for source-locked public-data
   diagnostics that still reuse BPT experiment semantics.
 
@@ -24,14 +28,18 @@ provider v2. Provider v1 remains only for frozen scientific and diagnostic
 compatibility operations.
 
 Production source and scripts no longer import any unversioned
-Bayesian-PhysTwin implementation module. An AST allowlist makes new direct
-experiment imports a blocking test failure.
+Bayesian-PhysTwin implementation module. The canonical module inventory is
+[`ci/bayesian_phystwin_provider_registry.json`](../ci/bayesian_phystwin_provider_registry.json).
+The AST boundary test derives its allowlist from that registry, while a separate
+schema test checks unique roles, exact API-version suffixes, local contract
+modules, and documentation coverage. Adding a provider therefore requires one
+reviewable registry entry rather than synchronized hand-written inventories.
 
 ## Compatibility contract
 
 Normal development accepts Bayesian-PhysTwin versions in the range
 `>=0.4,<0.5`. Compatibility is not inferred from the package version alone.
-Causal4D validates four deliberately separate provider manifests:
+Causal4D validates five deliberately separate provider manifests:
 
 - scientific provider API/schema version 1 for frozen compatibility names and
   migrated diagnostics;
@@ -40,6 +48,8 @@ Causal4D validates four deliberately separate provider manifests:
   replay execution;
 - belief provider API/schema version 1 for the fixed robust discrepancy endpoint,
   immutable configuration, causal-prefix validation, and immutable posterior;
+- additive belief provider API/schema version 2 for evidence-weighted endpoint
+  model averaging and source-frozen horizon discrepancy prediction; and
 - graph provider API/schema version 1 for graph and controller grouping values.
 
 The scientific manifest requires its existing `TwinBelief` and `GraphBelief`
@@ -54,6 +64,17 @@ The belief provider is checked separately for:
 - `FixedBayesianAnchorConfig` and `RobustEndpointPosterior` schema version 1;
 - the fixed readout/model-discrepancy inference role; and
 - the supported Bayesian-PhysTwin package range.
+
+The additive belief provider is checked separately for:
+
+- the exact `bayesian_phystwin.causal4d_belief_provider_v2` API identity and
+  manifest schema version 2;
+- evidence-weighted endpoint model averaging, per-track component evidence, and
+  causal-prefix finite-residual preflight;
+- source-calibrated mean retention and horizon-dependent predictive covariance;
+- immutable endpoint, prediction, and calibration artifact schemas; and
+- an explicit boundary that keeps raw model covariance distinct from interval
+  calibration and target-side coverage claims.
 
 The graph provider is checked separately for:
 
@@ -70,8 +91,10 @@ The scientific manifest is loaded with
 `load_bayesian_phystwin_replay_provider_manifest()` and checked with
 `validate_bayesian_phystwin_replay_provider()`. The belief manifest is loaded
 with `load_bayesian_phystwin_belief_provider_manifest()` and checked with
-`validate_bayesian_phystwin_belief_provider()`. The graph manifest is loaded
-with `load_bayesian_phystwin_graph_provider_manifest()` and checked with
+`validate_bayesian_phystwin_belief_provider()`. The additive belief manifest
+is loaded with `load_bayesian_phystwin_belief_provider_v2_manifest()` and checked
+with `validate_bayesian_phystwin_belief_provider_v2()`. The graph manifest is
+loaded with `load_bayesian_phystwin_graph_provider_manifest()` and checked with
 `validate_bayesian_phystwin_graph_provider()`. A version, capability, artifact,
 provider-identity, inference-role, graph-provider, or parent-provider mismatch
 fails closed and is reported explicitly.
@@ -135,7 +158,8 @@ the extra encodes the supported `>=0.4,<0.5` range rather than one Git commit.
 The cross-repository workflows test the current development branches against
 each other's public contracts. An AST boundary test rejects every BPT import in
 production source and scripts unless its exact module is present in the
-versioned allowlist above.
+machine-readable registry. `tests/test_bpt_provider_registry.py` prevents the
+registry, local contract modules, and this document from drifting independently.
 
 ## Frozen experiments
 

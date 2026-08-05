@@ -9,15 +9,14 @@ from typing import Any
 import numpy as np
 
 from causal4d.contracts import FactualIntervention, TwinBelief, array_sha256
+from causal4d.immutable_array import readonly_array
 from causal4d.intervention_abduction import physical_readout_components
 from causal4d.rollout_bank import JointRolloutBank
 from causal4d.weighting import log_weights_from_probabilities
 
 
 def _readonly(values: np.ndarray) -> np.ndarray:
-    array = np.asarray(values, dtype=float).copy()
-    array.setflags(write=False)
-    return array
+    return readonly_array(values, dtype=float)
 
 
 def _coordinate_mask(observations: np.ndarray, mask: np.ndarray | None) -> np.ndarray:

@@ -1,5 +1,6 @@
 import copy
 import json
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Callable
 
@@ -249,8 +250,10 @@ def test_contract_metadata_is_deeply_immutable_and_artifact_id_stable(
     metadata["nested"]["items"][1]["accepted"] = False
     assert belief.metadata["nested"]["items"][1]["accepted"] is True
     assert belief.artifact_id == artifact_id
-    assert isinstance(belief.metadata, dict)
-    assert isinstance(belief.metadata["nested"]["items"], list)
+    assert isinstance(belief.metadata, Mapping)
+    assert isinstance(belief.metadata["nested"]["items"], Sequence)
+    assert not isinstance(belief.metadata, dict)
+    assert not isinstance(belief.metadata["nested"]["items"], list)
 
     with pytest.raises(TypeError, match="immutable"):
         belief.metadata["nested"]["items"][1]["accepted"] = False

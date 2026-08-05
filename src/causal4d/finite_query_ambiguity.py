@@ -6,11 +6,11 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from causal4d.immutable_array import readonly_array
+
 
 def _readonly(values: np.ndarray, *, dtype: type = float) -> np.ndarray:
-    result = np.asarray(values, dtype=dtype).copy()
-    result.setflags(write=False)
-    return result
+    return readonly_array(values, dtype=dtype)
 
 
 def _normalized_weights(values: np.ndarray) -> np.ndarray:

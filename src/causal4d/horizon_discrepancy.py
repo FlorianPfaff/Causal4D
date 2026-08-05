@@ -16,7 +16,7 @@ from causal4d.belief_provider_v2_contract import (
 )
 from causal4d.contracts import TwinBelief, array_sha256
 from causal4d.immutable_array import readonly_array
-from causal4d.immutable_json import validated_json_mapping
+from causal4d.immutable_json import plain_json, validated_json_mapping
 
 
 HORIZON_DISCREPANCY_BANK_SCHEMA_VERSION = "causal4d.horizon_discrepancy_bank.v1"
@@ -65,18 +65,17 @@ def _horizons(values: Sequence[int]) -> np.ndarray:
         raise ValueError("horizon_steps must not contain duplicates")
     result = np.asarray(sorted(raw), dtype=np.int64)
     if result[0] != 0:
-        raise ValueError("horizon_steps must include zero as an endpoint parity control")
-    result.setflags(write=False)
-    return result
+        raise ValueError(
+            "horizon_steps must include zero as an endpoint parity control"
+        )
+    return readonly_array(result)
 
 
 def _probability_vector(values: np.ndarray, *, name: str) -> np.ndarray:
     result = readonly_array(values, dtype=float)
     if result.ndim != 1 or not len(result):
         raise ValueError(f"{name} must be a nonempty vector")
-    if not np.all(np.isfinite(result)) or np.any(
-        (result < 0.0) | (result > 1.0)
-    ):
+    if not np.all(np.isfinite(result)) or np.any((result < 0.0) | (result > 1.0)):
         raise ValueError(f"{name} must contain finite probabilities")
     return result
 
@@ -139,9 +138,7 @@ def _lift_map(
     if extra_count:
         if neighbor_indices.shape[1] < 1:
             raise ValueError("untracked state nodes require at least one neighbor")
-        if np.any(neighbor_indices < 0) or np.any(
-            neighbor_indices >= tracked_count
-        ):
+        if np.any(neighbor_indices < 0) or np.any(neighbor_indices >= tracked_count):
             raise ValueError("lift_indices reference an unavailable tracked node")
         if not np.allclose(
             np.sum(neighbor_weights, axis=1),
@@ -153,9 +150,7 @@ def _lift_map(
         for row in neighbor_indices:
             if len(np.unique(row)) != len(row):
                 raise ValueError("one lift row must not repeat a tracked node")
-    neighbor_indices.setflags(write=False)
-    neighbor_weights.setflags(write=False)
-    return neighbor_indices, neighbor_weights
+    return readonly_array(neighbor_indices), readonly_array(neighbor_weights)
 
 
 def _lift_prediction(
@@ -199,9 +194,7 @@ def _lift_prediction(
             maximum_discrepancy_m / np.maximum(norms, np.finfo(float).tiny),
         )
         result_mean *= scale[:, None]
-    result_covariance = 0.5 * (
-        result_covariance + result_covariance.swapaxes(-1, -2)
-    )
+    result_covariance = 0.5 * (result_covariance + result_covariance.swapaxes(-1, -2))
     _validate_covariance(result_covariance, name="lifted covariance_m2")
     return result_mean, result_covariance
 
@@ -256,9 +249,7 @@ class HorizonDiscrepancyBankV1:
             raise ValueError("mean_retention must identify every horizon")
         additional = readonly_array(self.additional_axis_variance_m2, dtype=float)
         if additional.shape != (horizon_count, 3):
-            raise ValueError(
-                "additional_axis_variance_m2 must have shape (H, 3)"
-            )
+            raise ValueError("additional_axis_variance_m2 must have shape (H, 3)")
         if not np.all(np.isfinite(additional)) or np.any(additional < 0.0):
             raise ValueError(
                 "additional_axis_variance_m2 must be finite and nonnegative"
@@ -296,7 +287,7 @@ class HorizonDiscrepancyBankV1:
             "particle_ids": list(self.particle_ids),
             "calibration_id": self.calibration_id,
             "provider_revision": self.provider_revision,
-            "metadata": dict(self.metadata),
+            "metadata": plain_json(self.metadata),
             "arrays": {
                 "particle_weights": array_sha256(self.particle_weights),
                 "horizon_steps": array_sha256(self.horizon_steps),
@@ -369,9 +360,7 @@ def build_horizon_discrepancy_bank(
     if len(posteriors) != particle_count or not all(
         isinstance(value, ModelAveragedEndpointPosteriorV1) for value in posteriors
     ):
-        raise ValueError(
-            "endpoint_posteriors must identify every TwinBelief particle"
-        )
+        raise ValueError("endpoint_posteriors must identify every TwinBelief particle")
     horizons = _horizons(horizon_steps)
     state_count = twin_belief.endpoint_position_m.shape[1]
     tracked_counts = {len(value.mean_m) for value in posteriors}
@@ -421,7 +410,9 @@ def build_horizon_discrepancy_bank(
                 retention[horizon_index] = prediction.mean_retention
                 additional[horizon_index] = prediction.additional_axis_variance_m2
             else:
-                if prediction.mean_retention != retention[horizon_index] or not np.array_equal(
+                if prediction.mean_retention != retention[
+                    horizon_index
+                ] or not np.array_equal(
                     prediction.additional_axis_variance_m2,
                     additional[horizon_index],
                 ):

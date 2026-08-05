@@ -9,6 +9,8 @@ from typing import Sequence
 
 import numpy as np
 
+from causal4d.immutable_array import readonly_array
+
 from .deform360_phystwin_feasibility import (
     WarpRopeCandidate,
     WarpRopeFeasibilityConfig,
@@ -78,9 +80,7 @@ class Deform360WarpForecastCase:
             ("contact_rest_lengths_m", rest),
             ("initial_velocities_m_s", velocities),
         ):
-            copied = values.copy()
-            copied.setflags(write=False)
-            object.__setattr__(self, name, copied)
+            object.__setattr__(self, name, readonly_array(values))
 
 
 def symmetric_chamfer_distance_m(

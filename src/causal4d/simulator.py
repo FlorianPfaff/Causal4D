@@ -7,6 +7,8 @@ from typing import Any
 
 import numpy as np
 
+from causal4d.immutable_array import readonly_array
+
 
 PARAMETER_NAMES = ("stiffness", "damping", "contact_gain")
 
@@ -69,9 +71,9 @@ class GraphObject:
             node < 0 or node >= node_count for node in self.sensor_nodes
         ):
             raise ValueError("sensor_nodes must contain valid node indices")
-        positions = positions.copy()
-        positions.setflags(write=False)
-        object.__setattr__(self, "rest_positions", positions)
+        object.__setattr__(
+            self, "rest_positions", readonly_array(positions, dtype=float)
+        )
 
     @property
     def node_count(self) -> int:
@@ -116,9 +118,9 @@ class Action:
             )
         if forces.shape[0] == 0 or not np.all(np.isfinite(forces)):
             raise ValueError("commanded_forces must be non-empty and finite")
-        forces = forces.copy()
-        forces.setflags(write=False)
-        object.__setattr__(self, "commanded_forces", forces)
+        object.__setattr__(
+            self, "commanded_forces", readonly_array(forces, dtype=float)
+        )
 
     @property
     def frame_count(self) -> int:

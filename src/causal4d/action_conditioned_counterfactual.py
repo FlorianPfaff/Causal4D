@@ -7,6 +7,7 @@ from typing import Any, Literal, Mapping
 
 import numpy as np
 
+from causal4d.immutable_array import readonly_array
 from causal4d.immutable_json import validated_json_mapping
 
 from causal4d.action_conditioned_discrepancy import (
@@ -31,9 +32,7 @@ from causal4d.stable_discrepancy_dynamics import (
 
 
 def _readonly(values: np.ndarray, *, dtype: type | None = float) -> np.ndarray:
-    array = np.asarray(values, dtype=dtype).copy()
-    array.setflags(write=False)
-    return array
+    return readonly_array(values, dtype=dtype)
 
 
 @dataclass(frozen=True)

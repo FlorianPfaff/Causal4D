@@ -13,7 +13,7 @@ import numpy as np
 from causal4d.atomic_io import atomic_write_binary
 from causal4d.immutable_array import readonly_array as _readonly_array
 from causal4d.immutable_array import readonly_integer_array as _readonly_integer_array
-from causal4d.immutable_json import validated_json_mapping
+from causal4d.immutable_json import plain_json, validated_json_mapping
 
 
 CONTRACT_VERSION = 1
@@ -519,7 +519,7 @@ class TwinBelief(_Contract):
             "endpoint_frame": self.endpoint_frame,
             "particle_ids": list(self.particle_ids),
             "theta_names": list(self.theta_names),
-            "metadata": self.metadata,
+            "metadata": plain_json(self.metadata),
         }
 
     def _array_payload(self) -> dict[str, np.ndarray]:
@@ -620,7 +620,7 @@ class FactualIntervention(_Contract):
             "kappa_names": list(self.kappa_names),
             "evidence_frame_stop": self.evidence_frame_stop,
             "source_twin_belief_id": self.source_twin_belief_id,
-            "metadata": self.metadata,
+            "metadata": plain_json(self.metadata),
         }
 
     def _array_payload(self) -> dict[str, np.ndarray]:
@@ -706,7 +706,7 @@ class CounterfactualQuery(_Contract):
             "contact_policy": self.contact_policy,
             "language": self.language,
             "source_factual_intervention_id": self.source_factual_intervention_id,
-            "metadata": self.metadata,
+            "metadata": plain_json(self.metadata),
         }
 
     def _array_payload(self) -> dict[str, np.ndarray]:
@@ -823,7 +823,7 @@ class PhysicalPosterior(_Contract):
             "source_twin_belief_id": self.source_twin_belief_id,
             "source_factual_intervention_id": self.source_factual_intervention_id,
             "source_query_id": self.source_query_id,
-            "metadata": self.metadata,
+            "metadata": plain_json(self.metadata),
         }
 
     def _array_payload(self) -> dict[str, np.ndarray]:
@@ -906,7 +906,7 @@ class TaskPosterior(_Contract):
             "component_ids": list(self.component_ids),
             "beta": self.beta,
             "semantic_source": self.semantic_source,
-            "metadata": self.metadata,
+            "metadata": plain_json(self.metadata),
         }
 
     def _array_payload(self) -> dict[str, np.ndarray]:

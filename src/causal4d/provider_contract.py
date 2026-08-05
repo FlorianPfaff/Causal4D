@@ -11,7 +11,7 @@ from typing import Any
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
-from causal4d.immutable_json import validated_json_mapping
+from causal4d.immutable_json import plain_json, validated_json_mapping
 
 
 PHYSICAL_BELIEF_PROVIDER_SCHEMA_VERSION = 1
@@ -215,8 +215,8 @@ class PhysicalBeliefProviderManifest:
             "provider_revision": self.provider_revision,
             "schema_version": self.schema_version,
             "capabilities": list(self.capabilities),
-            "artifact_schema_versions": self.artifact_schema_versions,
-            "metadata": self.metadata,
+            "artifact_schema_versions": plain_json(self.artifact_schema_versions),
+            "metadata": plain_json(self.metadata),
         }
         return hashlib.sha256(
             json.dumps(
@@ -235,8 +235,8 @@ class PhysicalBeliefProviderManifest:
             "provider_revision": self.provider_revision,
             "schema_version": self.schema_version,
             "capabilities": list(self.capabilities),
-            "artifact_schema_versions": dict(self.artifact_schema_versions),
-            "metadata": dict(self.metadata),
+            "artifact_schema_versions": plain_json(self.artifact_schema_versions),
+            "metadata": plain_json(self.metadata),
         }
 
 

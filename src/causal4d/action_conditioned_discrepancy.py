@@ -9,6 +9,7 @@ import numpy as np
 
 from causal4d.contracts import array_sha256
 from causal4d.discrepancy_belief import GraphDiscrepancyBelief
+from causal4d.immutable_array import readonly_array
 
 
 CONTACT_POLICIES = ("same_grasp", "new_contact")
@@ -17,9 +18,7 @@ TIME_PARAMETERIZATIONS = ("per_step", "per_second")
 
 
 def _readonly(values: np.ndarray) -> np.ndarray:
-    array = np.asarray(values, dtype=float).copy()
-    array.setflags(write=False)
-    return array
+    return readonly_array(values, dtype=float)
 
 
 def _parameter_vector(
@@ -72,9 +71,7 @@ def _step_duration_array(
     elif durations.shape == (component_count, horizon):
         result = durations
     else:
-        raise ValueError(
-            "step_duration_s must be scalar or have shape (H,) or (K, H)"
-        )
+        raise ValueError("step_duration_s must be scalar or have shape (H,) or (K, H)")
     if not np.all(np.isfinite(result)) or np.any(result <= 0.0):
         raise ValueError("step durations must be finite and strictly positive")
     return np.asarray(result, dtype=float)
@@ -407,9 +404,7 @@ class ActionConditionedDiscrepancyModel:
             trace = float(np.trace(increment))
             if trace > self.maximum_increment_trace_m2:
                 increment *= self.maximum_increment_trace_m2 / trace
-        return _positive_semidefinite(
-            self.base_innovation_covariance_m2 + increment
-        )
+        return _positive_semidefinite(self.base_innovation_covariance_m2 + increment)
 
     def innovation_covariance_m2(
         self,
@@ -486,10 +481,8 @@ def forecast_action_conditioned_persistence(
                 step_duration_s=float(durations[component, step]),
             )
             for coordinate in range(3):
-                covariance[component, step + 1, coordinate] = (
-                    _positive_semidefinite(
-                        covariance[component, step, coordinate] + increment
-                    )
+                covariance[component, step + 1, coordinate] = _positive_semidefinite(
+                    covariance[component, step, coordinate] + increment
                 )
 
     readout_mean = np.einsum("nr,khrc->khnc", graph_basis, mean)

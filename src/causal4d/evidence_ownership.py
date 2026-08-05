@@ -582,7 +582,7 @@ def strict_reweight_factual_intervention_with_independent_sensors(
     if not isinstance(diagnostics, Mapping):
         raise RuntimeError("sensor update omitted its evidence diagnostics")
     summaries = diagnostics.get("factors")
-    if not isinstance(summaries, list):
+    if isinstance(summaries, (str, bytes)) or not isinstance(summaries, Sequence):
         raise RuntimeError("sensor update omitted its factor diagnostics")
     informative_ids = {
         summary.get("evidence_id")

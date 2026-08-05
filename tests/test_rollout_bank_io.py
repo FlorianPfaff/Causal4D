@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 import causal4d.rollout_bank_io as rollout_bank_io
+from causal4d.immutable_json import plain_json
 from causal4d.rollout_bank import JointRolloutBank
 from causal4d.rollout_bank_io import load_rollout_bank, save_rollout_bank
 
@@ -41,7 +42,10 @@ def _legacy_archive(path: Path, bank: JointRolloutBank, manifest: dict) -> None:
         path,
         hypothesis_ids=np.asarray(bank.hypothesis_ids),
         hypothesis_metadata_json=np.asarray(
-            [json.dumps(value, sort_keys=True) for value in bank.hypothesis_metadata]
+            [
+                json.dumps(plain_json(value), sort_keys=True)
+                for value in bank.hypothesis_metadata
+            ]
         ),
         hypothesis_prior_weights=bank.hypothesis_prior_weights,
         parameter_particles=bank.parameter_particles,

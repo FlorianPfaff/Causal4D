@@ -9,6 +9,8 @@ from typing import Mapping, Sequence
 
 import numpy as np
 
+from causal4d.immutable_array import readonly_array
+
 
 TACTILE_ROWS_USED = 12
 CONTACT_PATIENCE_FRAMES = 5
@@ -114,9 +116,7 @@ class ReplicationContactEpisode:
             all(values.shape == (len(openings),) for values in groups.values()),
             "tactile contact length differs from robot trajectory",
         )
-        copied = openings.copy()
-        copied.setflags(write=False)
-        object.__setattr__(self, "openings_m", copied)
+        object.__setattr__(self, "openings_m", readonly_array(openings))
         object.__setattr__(self, "tactile_by_group", groups)
 
 
@@ -153,7 +153,9 @@ def load_replication_contact_episode(
     _require(tactile_paths, f"tactile streams are missing: {directory}")
     for path in tactile_paths:
         values = np.load(path, mmap_mode="r", allow_pickle=False)
-        _require(values.ndim == 3 and len(values) == len(openings), "invalid tactile stream")
+        _require(
+            values.ndim == 3 and len(values) == len(openings), "invalid tactile stream"
+        )
         counts = np.count_nonzero(
             values[:, :TACTILE_ROWS_USED, :] > tactile_threshold,
             axis=(1, 2),
@@ -161,8 +163,7 @@ def load_replication_contact_episode(
         group = _gripper_group(path.parent.name)
         groups[group] = groups.get(group, np.zeros_like(counts)) + counts
     windows = {
-        group: official_contact_window(counts > 1)
-        for group, counts in groups.items()
+        group: official_contact_window(counts > 1) for group, counts in groups.items()
     }
     if not bimanual:
         selected = _mono_event_group(groups)
@@ -188,7 +189,9 @@ def _mapping_candidates(
         }
     )
     _require(len(groups) == 2, "expected two bimanual tactile groups")
-    return [dict(zip(groups, permutation)) for permutation in itertools.permutations((0, 1))]
+    return [
+        dict(zip(groups, permutation)) for permutation in itertools.permutations((0, 1))
+    ]
 
 
 def contact_state_by_robot_axis(
@@ -199,7 +202,9 @@ def contact_state_by_robot_axis(
 
     output = np.zeros_like(episode.openings_m, dtype=bool)
     if episode.bimanual:
-        _require(set(episode.tactile_by_group) == set(mapping), "tactile groups changed")
+        _require(
+            set(episode.tactile_by_group) == set(mapping), "tactile groups changed"
+        )
         for group, values in episode.tactile_by_group.items():
             output[:, int(mapping[group])] = values
     else:
