@@ -1,0 +1,452 @@
+name: Agent harden PhysTwin contracts
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/agent-harden-phystwin-contracts.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-harden-phystwin-contracts-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  patch-and-validate:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/harden-phystwin-contracts'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the pull-request branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Patch the backend
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+
+          def replace_once(text: str, old: str, new: str, *, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(
+                      f"{label}: expected one exact match, found {count}"
+                  )
+              return text.replace(old, new, 1)
+
+
+          def replace_region(
+              text: str,
+              *,
+              anchor: str,
+              start_marker: str,
+              end_marker: str,
+              replacement: str,
+              label: str,
+          ) -> str:
+              anchor_index = text.index(anchor)
+              start = text.index(start_marker, anchor_index)
+              end = text.index(end_marker, start)
+              if start >= end:
+                  raise RuntimeError(f"{label}: invalid replacement region")
+              return text[:start] + replacement + text[end:]
+
+
+          path = Path("src/causal4d/phystwin_backend.py")
+          text = path.read_text(encoding="utf-8")
+
+          text = replace_once(
+              text,
+              "import json\nimport pickle\n",
+              "import pickle\n",
+              label="remove legacy JSON import",
+          )
+          text = replace_once(
+              text,
+              "from causal4d.immutable_array import readonly_array as _readonly_array\n",
+              """from causal4d._phystwin_validation import (
+              require_controller_points,
+              require_exact_bool,
+              require_finite_real,
+              require_group_labels,
+              require_integer,
+              require_nonempty_string,
+              require_nonempty_tuple,
+          )
+          from causal4d.immutable_array import readonly_array as _readonly_array
+          """,
+              label="import PhysTwin validators",
+          )
+          text = replace_once(
+              text,
+              "from causal4d.rollout_bank import JointRolloutBank\n",
+              """from causal4d.rollout_bank import JointRolloutBank
+          from causal4d.rollout_bank_io import load_rollout_bank, save_rollout_bank
+          """,
+              label="route rollout-bank persistence",
+          )
+
+          text = replace_region(
+              text,
+              anchor="class PhysTwinActionProposal:",
+              start_marker="    def __post_init__(self) -> None:\n",
+              end_marker="    def metadata(self) -> dict[str, Any]:\n",
+              replacement="""    def __post_init__(self) -> None:
+                  proposal_id = require_nonempty_string(
+                      self.proposal_id,
+                      name="proposal_id",
+                  )
+                  provenance = require_nonempty_string(
+                      self.provenance,
+                      name="provenance",
+                  )
+                  controls = require_controller_points(self.controller_points_m)
+                  prior_weight = require_finite_real(
+                      self.prior_weight,
+                      name="prior_weight",
+                  )
+                  if prior_weight <= 0.0:
+                      raise ValueError("prior_weight must be positive")
+                  future_action_observed = require_exact_bool(
+                      self.future_action_observed,
+                      name="future_action_observed",
+                  )
+                  object.__setattr__(self, "proposal_id", proposal_id)
+                  object.__setattr__(self, "controller_points_m", controls)
+                  object.__setattr__(self, "prior_weight", prior_weight)
+                  object.__setattr__(
+                      self,
+                      "future_action_observed",
+                      future_action_observed,
+                  )
+                  object.__setattr__(self, "provenance", provenance)
+
+              """,
+              label="harden action proposal",
+          )
+
+          text = replace_region(
+              text,
+              anchor="def hidden_action_proposals(",
+              start_marker="    controls = np.asarray(controller_points_m, dtype=float)\n",
+              end_marker="    anchor = controls[start_frame - 1].copy()\n",
+              replacement="""    controls = require_controller_points(controller_points_m)
+              start_frame = require_integer(
+                  start_frame,
+                  name="start_frame",
+                  minimum=1,
+              )
+              history_frames = require_integer(
+                  history_frames,
+                  name="history_frames",
+                  minimum=2,
+              )
+              damping = require_finite_real(damping, name="damping")
+              if not 2 <= history_frames <= start_frame < len(controls):
+                  raise ValueError("hidden action history and start frame are inconsistent")
+              if not 0.0 < damping <= 1.0:
+                  raise ValueError("damping must lie in (0, 1]")
+
+              """,
+              label="harden hidden action proposals",
+          )
+
+          text = replace_region(
+              text,
+              anchor="class PhysTwinContactState:",
+              start_marker="    def __post_init__(self) -> None:\n",
+              end_marker="    @property\n",
+              replacement="""    def __post_init__(self) -> None:
+                  raw_shifts = require_nonempty_tuple(
+                      self.attachment_shifts,
+                      name="attachment_shifts",
+                  )
+                  shifts = tuple(
+                      require_integer(
+                          value,
+                          name=f"attachment_shifts[{index}]",
+                      )
+                      for index, value in enumerate(raw_shifts)
+                  )
+                  if any(value not in {-1, 0, 1} for value in shifts):
+                      raise ValueError("attachment shifts must be -1, 0, or 1 per hand")
+                  gain_multiplier = require_finite_real(
+                      self.gain_multiplier,
+                      name="gain_multiplier",
+                  )
+                  if gain_multiplier <= 0.0:
+                      raise ValueError("gain_multiplier must be positive")
+                  delay_steps = require_integer(
+                      self.delay_steps,
+                      name="delay_steps",
+                      minimum=0,
+                  )
+                  slip_fraction = require_finite_real(
+                      self.slip_fraction,
+                      name="slip_fraction",
+                  )
+                  if not 0.0 <= slip_fraction < 1.0:
+                      raise ValueError("slip_fraction must lie in [0, 1)")
+                  rotation_degrees = require_finite_real(
+                      self.rotation_degrees,
+                      name="rotation_degrees",
+                  )
+                  prior_weight = require_finite_real(
+                      self.prior_weight,
+                      name="prior_weight",
+                  )
+                  if prior_weight <= 0.0:
+                      raise ValueError("prior_weight must be positive")
+                  object.__setattr__(self, "attachment_shifts", shifts)
+                  object.__setattr__(self, "gain_multiplier", gain_multiplier)
+                  object.__setattr__(self, "delay_steps", delay_steps)
+                  object.__setattr__(self, "slip_fraction", slip_fraction)
+                  object.__setattr__(self, "rotation_degrees", rotation_degrees)
+                  object.__setattr__(self, "prior_weight", prior_weight)
+
+              """,
+              label="harden contact state",
+          )
+
+          text = replace_region(
+              text,
+              anchor="class PhysTwinHypothesisConfig:",
+              start_marker="    def __post_init__(self) -> None:\n",
+              end_marker="\n\ndef _contact_prior_score(",
+              replacement="""    def __post_init__(self) -> None:
+                  raw_shifts = require_nonempty_tuple(
+                      self.attachment_shift_values,
+                      name="attachment_shift_values",
+                  )
+                  attachment_shift_values = tuple(
+                      require_integer(
+                          value,
+                          name=f"attachment_shift_values[{index}]",
+                      )
+                      for index, value in enumerate(raw_shifts)
+                  )
+                  if (
+                      set(attachment_shift_values) - {-1, 0, 1}
+                      or 0 not in attachment_shift_values
+                  ):
+                      raise ValueError(
+                          "attachment shift values must include zero and use -1/0/1"
+                      )
+                  if len(set(attachment_shift_values)) != len(attachment_shift_values):
+                      raise ValueError("attachment shift values must be unique")
+
+                  raw_gains = require_nonempty_tuple(
+                      self.gain_values,
+                      name="gain_values",
+                  )
+                  gain_values = tuple(
+                      require_finite_real(
+                          value,
+                          name=f"gain_values[{index}]",
+                      )
+                      for index, value in enumerate(raw_gains)
+                  )
+                  if min(gain_values) <= 0.0 or 1.0 not in gain_values:
+                      raise ValueError("gain values must be positive and include 1")
+                  if len(set(gain_values)) != len(gain_values):
+                      raise ValueError("gain values must be unique")
+
+                  raw_delays = require_nonempty_tuple(
+                      self.delay_values,
+                      name="delay_values",
+                  )
+                  delay_values = tuple(
+                      require_integer(
+                          value,
+                          name=f"delay_values[{index}]",
+                          minimum=0,
+                      )
+                      for index, value in enumerate(raw_delays)
+                  )
+                  if 0 not in delay_values:
+                      raise ValueError("delay values must be nonnegative and include 0")
+                  if len(set(delay_values)) != len(delay_values):
+                      raise ValueError("delay values must be unique")
+
+                  raw_slips = require_nonempty_tuple(
+                      self.slip_values,
+                      name="slip_values",
+                  )
+                  slip_values = tuple(
+                      require_finite_real(
+                          value,
+                          name=f"slip_values[{index}]",
+                      )
+                      for index, value in enumerate(raw_slips)
+                  )
+                  if (
+                      min(slip_values) < 0.0
+                      or max(slip_values) >= 1.0
+                      or 0.0 not in slip_values
+                  ):
+                      raise ValueError("slip values must lie in [0, 1) and include 0")
+                  if len(set(slip_values)) != len(slip_values):
+                      raise ValueError("slip values must be unique")
+
+                  raw_rotations = require_nonempty_tuple(
+                      self.rotation_values_degrees,
+                      name="rotation_values_degrees",
+                  )
+                  rotation_values_degrees = tuple(
+                      require_finite_real(
+                          value,
+                          name=f"rotation_values_degrees[{index}]",
+                      )
+                      for index, value in enumerate(raw_rotations)
+                  )
+                  if 0.0 not in rotation_values_degrees:
+                      raise ValueError("rotation values must include zero")
+                  if len(set(rotation_values_degrees)) != len(
+                      rotation_values_degrees
+                  ):
+                      raise ValueError("rotation values must be unique")
+
+                  maximum_contact_states = require_integer(
+                      self.maximum_contact_states,
+                      name="maximum_contact_states",
+                      minimum=1,
+                  )
+                  object.__setattr__(
+                      self,
+                      "attachment_shift_values",
+                      attachment_shift_values,
+                  )
+                  object.__setattr__(self, "gain_values", gain_values)
+                  object.__setattr__(self, "delay_values", delay_values)
+                  object.__setattr__(self, "slip_values", slip_values)
+                  object.__setattr__(
+                      self,
+                      "rotation_values_degrees",
+                      rotation_values_degrees,
+                  )
+                  object.__setattr__(
+                      self,
+                      "maximum_contact_states",
+                      maximum_contact_states,
+                  )
+              """,
+              label="harden hypothesis config",
+          )
+
+          text = replace_region(
+              text,
+              anchor="def build_contact_states(",
+              start_marker="    cfg = config or PhysTwinHypothesisConfig()\n",
+              end_marker="    candidates: dict[",
+              replacement="""    cfg = config or PhysTwinHypothesisConfig()
+              hand_count = require_integer(
+                  hand_count,
+                  name="hand_count",
+                  minimum=1,
+              )
+              """,
+              label="harden hand count",
+          )
+
+          text = replace_region(
+              text,
+              anchor="def transform_controller_trajectory(",
+              start_marker="    controls = np.asarray(controller_points_m, dtype=float)\n",
+              end_marker="    delayed = controls.copy()\n",
+              replacement="""    controls = require_controller_points(controller_points_m)
+              labels = require_group_labels(
+                  groups,
+                  name="groups",
+                  expected_count=controls.shape[1],
+              )
+              if len(contact.attachment_shifts) != int(np.max(labels)) + 1:
+                  raise ValueError("contact hand count and controller groups differ")
+              start_frame = require_integer(
+                  start_frame,
+                  name="start_frame",
+                  minimum=1,
+              )
+              if start_frame >= len(controls):
+                  raise ValueError("start_frame must leave a future controller interval")
+              """,
+              label="harden controller transform",
+          )
+
+          text = replace_region(
+              text,
+              anchor="def shift_phystwin_attachment_graph(",
+              start_marker="    groups = np.asarray(controller_groups, dtype=int)\n",
+              end_marker="    object_count = len(graph.vertices) - len(groups)\n",
+              replacement="""    groups = require_group_labels(
+                  controller_groups,
+                  name="controller_groups",
+              )
+              shifts = tuple(attachment_shifts)
+              if any(type(value) is not int for value in shifts):
+                  raise ValueError("attachment_shifts must contain exact integers")
+              if len(shifts) != int(np.max(groups)) + 1 or any(
+                  value not in {-1, 0, 1} for value in shifts
+              ):
+                  raise ValueError("attachment_shifts must provide -1/0/1 for every group")
+              """,
+              label="harden attachment graph shift",
+          )
+
+          persistence_start = text.index("\n\ndef save_rollout_bank(")
+          text = text[:persistence_start].rstrip() + "\n"
+          path.write_text(text, encoding="utf-8")
+          Path(".github/workflows/agent-harden-phystwin-contracts.yml").unlink()
+          PY
+
+      - name: Install validation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,phystwin]"
+
+      - name: Format and lint the focused change
+        run: |
+          python -m ruff format \
+            src/causal4d/_phystwin_validation.py \
+            src/causal4d/phystwin_backend.py \
+            tests/test_phystwin_hypothesis_validation.py
+          python -m ruff check \
+            src/causal4d/_phystwin_validation.py \
+            src/causal4d/phystwin_backend.py \
+            tests/test_phystwin_hypothesis_validation.py
+          python -m ruff format --check --diff \
+            src/causal4d/_phystwin_validation.py \
+            src/causal4d/phystwin_backend.py \
+            tests/test_phystwin_hypothesis_validation.py
+
+      - name: Run focused regression tests
+        run: |
+          python -m pytest \
+            tests/test_phystwin_hypothesis_validation.py \
+            tests/test_rollout_bank_io.py \
+            tests/test_rollout_bank_io_routing.py
+
+      - name: Commit the validated patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/causal4d/phystwin_backend.py \
+            .github/workflows/agent-harden-phystwin-contracts.yml
+          git commit -m "Harden PhysTwin hypothesis contracts"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
