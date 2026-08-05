@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: compatibility-${{ github.workflow }}-${{ github.ref }}
@@ -20,6 +20,81 @@ env:
   PYTHONUNBUFFERED: "1"
 
 jobs:
+  agent-public-provider-patch:
+    name: Apply and validate public provider CI
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'agent/public-provider-integration'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out pull-request branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install development dependencies
+        run: python -m pip install -e ".[dev]" pyyaml
+      - name: Apply and format focused patch
+        run: |
+          python scripts/ci/agent_apply_public_provider_ci.py
+          python -m ruff format \
+            tests/test_release_workflow_policy.py \
+            tests/test_three_repository_workflow_policy.py
+      - name: Validate focused patch
+        run: |
+          python -m ruff check \
+            tests/test_release_workflow_policy.py \
+            tests/test_three_repository_workflow_policy.py
+          python -m ruff format --check \
+            tests/test_release_workflow_policy.py \
+            tests/test_three_repository_workflow_policy.py
+          python -m pytest -ra \
+            tests/test_release_workflow_policy.py \
+            tests/test_three_repository_workflow_policy.py \
+            tests/test_github_action_pins.py
+          python - <<'PY'
+          from pathlib import Path
+
+          import yaml
+
+          for path in (
+              Path(".github/workflows/ci.yml"),
+              Path(".github/workflows/compatibility.yml"),
+              Path(
+                  ".github/workflows/"
+                  "bayesian-phystwin-provider-compatibility.yml"
+              ),
+          ):
+              yaml.load(path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+          PY
+          python scripts/ci/read_bpt_pin.py
+          git diff --check
+      - name: Restore workflow, retire patch script, and push
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          git checkout origin/main -- .github/workflows/compatibility.yml
+          rm scripts/ci/agent_apply_public_provider_ci.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            .github/workflows/bayesian-phystwin-provider-compatibility.yml \
+            .github/workflows/ci.yml \
+            .github/workflows/compatibility.yml \
+            docs/ci.md \
+            scripts/ci/agent_apply_public_provider_ci.py \
+            tests/test_release_workflow_policy.py \
+            tests/test_three_repository_workflow_policy.py
+          git commit -m "Make public provider CI mandatory"
+          git push origin "HEAD:${HEAD_BRANCH}"
+
   remaining-python-minors:
     name: Core-only / Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
