@@ -1,6 +1,6 @@
 # Deform360 Source Prefix-Kinematics Diagnostic
 
-Status: implementation and source-only lock complete; the registered Deform360
+Status: completed negative source-only diagnostic; the registered Deform360
 replication remains terminally negative and target-closed.
 
 ## Motivation
@@ -20,9 +20,9 @@ access:
 > improve the already-selected source-episode simulation?
 
 A negative result rules out missing initial velocity as a large, general repair
-for the current sparse backend. A positive source-only result identifies a
+for the current sparse backend. A positive source-only result would identify a
 backend component worth evaluating in a separately registered replication; it
-does not reopen the frozen target split.
+would not reopen the frozen target split.
 
 ## Locked comparison
 
@@ -59,8 +59,8 @@ u_c = (p_c(t) - p_c(t-3)) / (3 * dt).
 Only robot states at or before the prefix endpoint are loaded or validated for
 `u_c`; the future robot-state suffix is ignored. A controller is considered
 recently active when its source tactile schedule is active in the three-frame
-causal tail. Controller and node speeds are radially capped at the
-locked 2 m/s bound.
+causal tail. Controller and node speeds are radially capped at the locked
+2 m/s bound.
 
 The three policies are:
 
@@ -90,7 +90,7 @@ The original source-backend milestone remains byte-for-byte unchanged. Its
 `verification/environment.json` records NumPy `2.5.1`. Separate evidence shows
 that the named `bpt-gpu` interpreter used by the archived validation command had
 NumPy `1.26.4` in an earlier captured freeze and again when workstation2 was
-probed on 5 August 2026. Those observations do not prove that the July 14
+probed on 5 August 2026. Those observations do not prove that the 14 July
 milestone record was erroneous or that the environment could not have changed
 between captures.
 
@@ -99,16 +99,14 @@ The conditional reproduction runtime is recorded in
 ../configs/causal4d_public/deform360_source_backend_reproduction_runtime_v1.json).
 It preserves `2.5.1` as the recorded value and separately declares `1.26.4` as
 the only candidate-runtime deviation. The contract binds the original
-environment file, archived command record, earlier pip freeze, and failed
+environment file, archived command record, earlier pip freeze, and fail-closed
 workstation2 selector artifact by SHA-256. It does not relabel or rewrite the
 frozen milestone.
 
 The runtime selector accepts the candidate environment only for this source-only
 diagnostic and does not install or upgrade packages. Candidate-policy results
 are interpretable only after every archived zero-velocity Chamfer and p99-strain
-value reproduces within the locked tolerances. If that parity gate fails, the
-workflow stops and retains the runtime deviation as an infrastructure finding;
-it cannot promote or rescue a scientific result.
+value reproduces within the locked tolerances.
 
 ## Decision gate
 
@@ -125,6 +123,50 @@ of the following hold:
 The rigid-translation policy is a control and cannot satisfy the primary gate.
 All episodes and failures remain in the artifact; no result-dependent object or
 execution exclusion is allowed.
+
+## Completed result
+
+Workflow run `30972643551` completed all 30 source episodes on exact Causal4D
+head `77caf44dbd749e37b34dbecf47cba03799d4289f`. The uploaded artifact is
+`8917112270`, with archive SHA-256
+`77955b80f4ef5ff1b9d796d3d816a9dde1342f471120d4d9724d1d82454ba9f4`.
+The full result content identity is
+`3f1eaa75800cd7bb24d3be82da112ec5c6ab93d2873508cb147a1e2de3a323b3`.
+
+All 30 zero-velocity reruns reproduced the archived Chamfer and p99-strain
+values. The conditional runtime deviation therefore does not block scientific
+interpretation.
+
+| Policy | Mean Chamfer | Relative change versus zero | Episode wins | Strain-valid episodes |
+| --- | ---: | ---: | ---: | ---: |
+| `zero_v1` | 58.040 mm | 0 | n/a | 28/30 |
+| `global_contact_translation_v1` | 58.307 mm | 0.459% worse | 40% | 28/30 |
+| `graph_harmonic_contact_v1` | 58.142 mm | 0.175% worse | 30% | 28/30 |
+
+Neither velocity policy rescues a strain-invalid episode or creates a new strain
+regression. Graph-harmonic velocity improves mean Chamfer only marginally on
+scarf (`0.014%`) and spider (`0.451%`); both remain below the registered 60%
+episode-win requirement. Rope, stripe rope, and blanket worsen.
+
+The primary decision is therefore:
+
+```text
+baseline_reproduction_passed=true
+common_finite_episode_count=30
+relative_improvement_vs_zero=-0.00175455
+win_fraction_vs_zero=0.30
+passed=false
+```
+
+Missing initial object velocity is not a dominant, transferable repair for this
+backend. A wider velocity model is not justified on the same opened cohort. The
+next useful work is representation, support/contact realization, within-episode
+dynamics competence, and genuinely independent public-object or physical
+execution evidence.
+
+The compact result and complete evidence identities are recorded in
+[`milestones/deform360-prefix-kinematics-v1/`](
+../milestones/deform360-prefix-kinematics-v1/).
 
 ## Information and claim boundary
 
@@ -144,7 +186,8 @@ python -m pytest -q \
   tests/test_deform360_prefix_kinematics.py \
   tests/test_deform360_prefix_kinematics_diagnostic.py \
   tests/test_deform360_prefix_kinematics_python_selector.py \
-  tests/test_deform360_prefix_kinematics_runner.py
+  tests/test_deform360_prefix_kinematics_runner.py \
+  tests/test_deform360_prefix_kinematics_milestone.py
 ```
 
 Run the source diagnostic through the wrapper so the selected interpreter,
@@ -161,6 +204,6 @@ bash scripts/remote/run_deform360_prefix_kinematics_workflow.sh \
   "$PWD/runs/deform360-prefix-kinematics"
 ```
 
-The `Deform360 source prefix kinematics` workflow provides the same locked
-execution and uploads the result, runtime-selection report, runtime sidecar,
-log, and checksums.
+The permanent `Deform360 source prefix kinematics` workflow retains the same
+manual locked execution path. The completed one-shot evidence workflow has been
+removed.
