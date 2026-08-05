@@ -4,6 +4,12 @@
 
 ### Added
 
+- Add a strict non-pickled physical evaluation target with canonical float32
+  observation identities, target/context validation, and atomic exactly-once
+  publication.
+- Add an explicit legacy importer that requires unsafe-pickle consent and an
+  independently obtained SHA-256 before opening PhysTwin `final_data.pkl`.
+
 - Add a locked, source-only Deform360 filament-support boundary that preserves
   exact registered graphs on connected resets and applies a deterministic
   component-level minimum-spanning bridge only to the frozen disconnected
@@ -53,6 +59,10 @@ evidence. Source-panel executions remain source-only and cannot increment the
 `0/36` confirmatory evidence count.
 
 ### Fixed
+
+- Remove direct pickle loading from the stable claim-bearing physical evaluator,
+  bind results to posterior, query, physical-target, and held-out-suffix IDs, and
+  publish result JSON atomically with no-overwrite behavior by default.
 
 - Reject coercible or schema-drifted Causal4D contract descriptors, archive
   inventories, support indices, and grouped-observation indices before they can
