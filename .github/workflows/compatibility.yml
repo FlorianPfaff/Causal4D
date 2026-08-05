@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: compatibility-${{ github.workflow }}-${{ github.ref }}
@@ -21,7 +21,7 @@ env:
 
 jobs:
   agent-public-provider-patch:
-    name: Apply and validate public provider CI
+    name: Export validated public provider CI
     if: >-
       github.event_name == 'pull_request' &&
       github.head_ref == 'agent/public-provider-integration'
@@ -33,7 +33,7 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
       - name: Select existing runner Python
         shell: bash
         run: |
@@ -103,24 +103,26 @@ jobs:
           PY
           "$AGENT_PYTHON" scripts/ci/read_bpt_pin.py
           git diff --check
-      - name: Restore workflow, retire patch script, and push
-        env:
-          HEAD_BRANCH: ${{ github.head_ref }}
+      - name: Stage validated patch export
         run: |
-          git checkout origin/main -- .github/workflows/compatibility.yml
-          rm scripts/ci/agent_apply_public_provider_ci.py
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            .github/workflows/bayesian-phystwin-provider-compatibility.yml \
-            .github/workflows/ci.yml \
-            .github/workflows/compatibility.yml \
-            docs/ci.md \
-            scripts/ci/agent_apply_public_provider_ci.py \
-            tests/test_release_workflow_policy.py \
-            tests/test_three_repository_workflow_policy.py
-          git commit -m "Make public provider CI mandatory"
-          git push origin "HEAD:${HEAD_BRANCH}"
+          mkdir -p "$RUNNER_TEMP/public-provider-patch/.github/workflows"
+          mkdir -p "$RUNNER_TEMP/public-provider-patch/docs"
+          mkdir -p "$RUNNER_TEMP/public-provider-patch/tests"
+          cp .github/workflows/ci.yml \
+            "$RUNNER_TEMP/public-provider-patch/.github/workflows/ci.yml"
+          cp .github/workflows/bayesian-phystwin-provider-compatibility.yml \
+            "$RUNNER_TEMP/public-provider-patch/.github/workflows/"
+          cp docs/ci.md "$RUNNER_TEMP/public-provider-patch/docs/ci.md"
+          cp tests/test_release_workflow_policy.py \
+            "$RUNNER_TEMP/public-provider-patch/tests/"
+          cp tests/test_three_repository_workflow_policy.py \
+            "$RUNNER_TEMP/public-provider-patch/tests/"
+      - name: Upload validated patch
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: public-provider-ci-patch
+          path: ${{ runner.temp }}/public-provider-patch
+          if-no-files-found: error
 
   remaining-python-minors:
     name: Core-only / Python ${{ matrix.python-version }}
