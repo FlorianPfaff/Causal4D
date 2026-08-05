@@ -4,7 +4,6 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
-
 from causal4d.contracts import TwinBelief, build_causal_context
 from causal4d.horizon_discrepancy import (
     HorizonDiscrepancyBankV1,
