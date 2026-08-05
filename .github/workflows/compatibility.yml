@@ -1,155 +1,269 @@
-name: Extended compatibility
+name: Workstation2 public-provider validation
 
 on:
-  push:
-    branches: [main]
-    tags: ["v*"]
   pull_request:
     branches: [main]
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: compatibility-${{ github.workflow }}-${{ github.ref }}
+  group: workstation2-public-provider-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  PIP_DISABLE_PIP_VERSION_CHECK: "1"
-  PYTHONUNBUFFERED: "1"
-
 jobs:
-  remaining-python-minors:
-    name: Core-only / Python ${{ matrix.python-version }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.11", "3.13"]
+  validate:
+    if: github.head_ref == 'agent/public-provider-ci-workstation2-validation'
+    name: Pinned BPT and three-repository installed wheels
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 45
     steps:
-      - name: Check out repository
+      - name: Check out Causal4D validation head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.head_ref }}
+          path: causal4d
           persist-credentials: false
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: pip
-      - name: Install core and development dependencies only
-        run: python -m pip install -e ".[dev]"
-      - name: Assert optional runtimes are absent
-        run: |
-          python - <<'PY'
-          import importlib.util
 
-          forbidden = ("bayesian_phystwin", "cv2", "torch", "warp")
-          present = [name for name in forbidden if importlib.util.find_spec(name)]
-          if present:
-              raise SystemExit(f"optional dependencies leaked into core job: {present}")
-          PY
-      - name: Run core-compatible default suite
+      - name: Select existing runner Python
+        shell: bash
         run: |
-          python -m pytest \
-            --junitxml="pytest-extended-${{ matrix.python-version }}.xml"
-      - name: Upload pytest report
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: pytest-extended-${{ matrix.python-version }}
-          path: pytest-extended-${{ matrix.python-version }}.xml
+          set -euo pipefail
+          candidates=(
+            /home/florianpfaff/.venvs/bpt-gpu/bin/python
+            /home/github-runner/.venvs/bpt-gpu/bin/python
+            /home/github-runner/.cache/venvs/bpt-gpu/bin/python
+            /home/github-runner/miniconda3/envs/bpt-gpu/bin/python
+            /usr/bin/python3
+          )
+          for candidate in "${candidates[@]}"; do
+            if [[ -x "$candidate" ]] && "$candidate" -m pip --version >/dev/null 2>&1; then
+              echo "BASE_PYTHON=$candidate" >> "$GITHUB_ENV"
+              "$candidate" --version
+              exit 0
+            fi
+          done
+          echo "No runner Python with pip is available" >&2
+          exit 1
 
-  minimum-dependencies:
-    name: Declared dependency floors / Python 3.10
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
+      - name: Read exact pinned provider revision
+        id: pin
+        run: |
+          echo "sha=$($BASE_PYTHON causal4d/scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out pinned BayesianPhysTwin
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: IPS-Stuttgart/BayesianPhysTwin
+          ref: ${{ steps.pin.outputs.sha }}
+          path: bpt-pinned
           persist-credentials: false
-      - name: Set up Python 3.10
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+
+      - name: Check out current BayesianPhysTwin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          python-version: "3.10"
-          cache: pip
-      - name: Build the package in an isolated build environment
-        run: |
-          python -m venv build-venv
-          build-venv/bin/python -m pip install build
-          build-venv/bin/python -m build --wheel --outdir dist-floor
-      - name: Install exact declared runtime floors
-        run: |
-          python -m venv floor-venv
-          floor-venv/bin/python -m pip install \
-            "numpy==1.24.0" \
-            "packaging==23.0" \
-            "scipy==1.10.0" \
-            "pytest==8.0.0"
-          artifact=$(find dist-floor -maxdepth 1 -name '*.whl' -print -quit)
-          test -n "$artifact"
-          floor-venv/bin/python -m pip install --no-deps "$artifact"
-          floor-venv/bin/python -m pip check
-      - name: Verify exact floor versions
-        run: |
-          floor-venv/bin/python - <<'PY'
-          from importlib.metadata import version
+          repository: IPS-Stuttgart/BayesianPhysTwin
+          ref: main
+          path: bayesian-phystwin
+          persist-credentials: false
 
-          expected = {
-              "numpy": "1.24.0",
-              "packaging": "23.0",
-              "scipy": "1.10.0",
-              "pytest": "8.0.0",
-          }
-          actual = {name: version(name) for name in expected}
-          if actual != expected:
-              raise SystemExit(
-                  f"minimum-dependency environment drifted: {actual!r} != {expected!r}"
-              )
-          PY
-      - name: Assert optional runtimes are absent
-        run: |
-          floor-venv/bin/python - <<'PY'
-          import importlib.util
+      - name: Check out current Prob4D
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/Prob4D
+          ref: main
+          path: prob4d
+          persist-credentials: false
 
-          forbidden = ("bayesian_phystwin", "cv2", "torch", "warp")
-          present = [name for name in forbidden if importlib.util.find_spec(name)]
-          if present:
-              raise SystemExit(f"optional dependencies leaked into floor job: {present}")
-          PY
-      - name: Run core-compatible suite at dependency floors
+      - name: Bootstrap isolated build tooling
+        shell: bash
         run: |
-          floor-venv/bin/python -m pytest \
-            --junitxml="pytest-minimum-dependencies.xml"
-      - name: Record resolved minimum environment
-        if: always()
-        run: |
-          floor-venv/bin/python -m pip freeze --all > minimum-environment.txt
-          floor-venv/bin/python - <<'PY' > minimum-platform.json
-          import json
-          import platform
+          set -euo pipefail
+          toolsite="$RUNNER_TEMP/public-provider-toolsite"
+          rm -rf "$toolsite"
+          mkdir -p "$toolsite"
+          "$BASE_PYTHON" -m pip install --target "$toolsite" virtualenv
+          PYTHONPATH="$toolsite" "$BASE_PYTHON" -m virtualenv \
+            "$RUNNER_TEMP/public-provider-build-venv"
+          build_python="$RUNNER_TEMP/public-provider-build-venv/bin/python"
+          "$build_python" - <<'PY'
+          from pathlib import Path
+          import subprocess
           import sys
+          import tomllib
 
-          print(
-              json.dumps(
-                  {
-                      "implementation": platform.python_implementation(),
-                      "machine": platform.machine(),
-                      "platform": platform.platform(),
-                      "python": platform.python_version(),
-                      "python_executable": sys.executable,
-                  },
-                  indent=2,
-                  sort_keys=True,
+          requirements = {"build>=1.2", "ruff>=0.15.22,<0.17"}
+          for root in (
+              "causal4d",
+              "bpt-pinned",
+              "bayesian-phystwin",
+              "prob4d",
+          ):
+              data = tomllib.loads(
+                  Path(root, "pyproject.toml").read_text(encoding="utf-8")
               )
+              requirements.update(data.get("build-system", {}).get("requires", ()))
+          subprocess.run(
+              [sys.executable, "-m", "pip", "install", *sorted(requirements)],
+              check=True,
           )
           PY
-      - name: Upload floor-environment evidence
+          echo "TOOLSITE=$toolsite" >> "$GITHUB_ENV"
+          echo "BUILD_PYTHON=$build_python" >> "$GITHUB_ENV"
+
+      - name: Validate golden-path script quality
+        run: |
+          "$BUILD_PYTHON" -m ruff check causal4d/ci/three_repository_*.py
+          "$BUILD_PYTHON" -m ruff format --check --diff \
+            causal4d/ci/three_repository_*.py
+
+      - name: Build and test pinned BayesianPhysTwin wheels
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheelhouse="$RUNNER_TEMP/pinned-bpt-wheelhouse"
+          rm -rf "$wheelhouse"
+          mkdir -p "$wheelhouse"
+          "$BUILD_PYTHON" -m build --wheel --no-isolation \
+            --outdir "$wheelhouse" causal4d
+          "$BUILD_PYTHON" -m build --wheel --no-isolation \
+            --outdir "$wheelhouse" bpt-pinned
+          test "$(find "$wheelhouse" -maxdepth 1 -name '*.whl' | wc -l)" -eq 2
+          PYTHONPATH="$TOOLSITE" "$BASE_PYTHON" -m virtualenv \
+            "$RUNNER_TEMP/pinned-bpt-venv"
+          pinned_python="$RUNNER_TEMP/pinned-bpt-venv/bin/python"
+          "$pinned_python" -m pip install "$wheelhouse"/*.whl pytest
+          "$pinned_python" -m pip check
+          (
+            cd causal4d
+            env -u PYTHONPATH CAUSAL4D_REQUIRE_BPT_PROVIDER=1 \
+              "$pinned_python" scripts/ci/run_bpt_integration_tests.py
+          )
+
+      - name: Build all current repository wheels
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheelhouse="$RUNNER_TEMP/three-repository-wheelhouse"
+          rm -rf "$wheelhouse"
+          mkdir -p "$wheelhouse"
+          "$BUILD_PYTHON" -m build --wheel --no-isolation \
+            --outdir "$wheelhouse" prob4d
+          "$BUILD_PYTHON" -m build --wheel --no-isolation \
+            --outdir "$wheelhouse" bayesian-phystwin
+          "$BUILD_PYTHON" -m build --wheel --no-isolation \
+            --outdir "$wheelhouse" causal4d
+          test "$(find "$wheelhouse" -maxdepth 1 -name '*.whl' | wc -l)" -eq 3
+          (
+            cd "$wheelhouse"
+            sha256sum ./*.whl | sort
+          ) | tee "$RUNNER_TEMP/three-repository-wheel-sha256.txt"
+
+      - name: Install current wheels in an isolated environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$TOOLSITE" "$BASE_PYTHON" -m virtualenv \
+            "$RUNNER_TEMP/three-repository-venv"
+          runtime_python="$RUNNER_TEMP/three-repository-venv/bin/python"
+          mapfile -t wheels < <(
+            find "$RUNNER_TEMP/three-repository-wheelhouse" \
+              -maxdepth 1 -name '*.whl' -print | sort
+          )
+          "$runtime_python" -m pip install \
+            "${wheels[@]}" \
+            pytest \
+            opencv-python-headless
+          "$runtime_python" -m pip check
+
+      - name: Record exact repository revisions
+        id: revisions
+        run: |
+          for repository in prob4d bayesian-phystwin causal4d; do
+            test -z "$(git -C "$repository" status --porcelain=v1 --untracked-files=all)"
+          done
+          echo "prob4d=$(git -C prob4d rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "bpt=$(git -C bayesian-phystwin rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "causal4d=$(git -C causal4d rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Run both three-repository attestation paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          run_dir="$RUNNER_TEMP/three-repository-run"
+          rm -rf "$run_dir"
+          mkdir -p "$run_dir"
+          cp causal4d/ci/three_repository_*.py "$run_dir/"
+          cd "$run_dir"
+          runtime_python="$RUNNER_TEMP/three-repository-venv/bin/python"
+          env -u PYTHONPATH "$runtime_python" three_repository_golden_path.py \
+            --prob4d-fixture \
+              "$GITHUB_WORKSPACE/prob4d/tests/fixtures/prob4d_joint_observation_v1.json" \
+            --prob4d-revision "${{ steps.revisions.outputs.prob4d }}" \
+            --bpt-revision "${{ steps.revisions.outputs.bpt }}" \
+            --causal4d-revision "${{ steps.revisions.outputs.causal4d }}" \
+            --checkout-root "$GITHUB_WORKSPACE/prob4d" \
+            --checkout-root "$GITHUB_WORKSPACE/bayesian-phystwin" \
+            --checkout-root "$GITHUB_WORKSPACE/causal4d" \
+            --output "$RUNNER_TEMP/three-repository-summary.json" \
+            | tee "$RUNNER_TEMP/three-repository-golden-path.log"
+          test -s "$RUNNER_TEMP/three-repository-summary.json"
+          "$runtime_python" -m json.tool \
+            "$RUNNER_TEMP/three-repository-summary.json" >/dev/null
+          env -u PYTHONPATH "$runtime_python" \
+            three_repository_provider_v2_attestation.py \
+            --prob4d-fixture \
+              "$GITHUB_WORKSPACE/prob4d/tests/fixtures/prob4d_joint_observation_v1.json" \
+            --prob4d-revision "${{ steps.revisions.outputs.prob4d }}" \
+            --output-dir "$RUNNER_TEMP/three-repository-provider-v2-work" \
+            --output "$RUNNER_TEMP/three-repository-provider-v2-summary.json" \
+            | tee "$RUNNER_TEMP/three-repository-provider-v2.log"
+          test -s "$RUNNER_TEMP/three-repository-provider-v2-summary.json"
+          "$runtime_python" -m json.tool \
+            "$RUNNER_TEMP/three-repository-provider-v2-summary.json" >/dev/null
+
+      - name: Run cross-repository contract tests against installed wheels
+        shell: bash
+        env:
+          CAUSAL4D_REQUIRE_BPT_PROVIDER: "1"
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/three-repository-run"
+          runtime_python="$RUNNER_TEMP/three-repository-venv/bin/python"
+          env -u PYTHONPATH "$runtime_python" -m pytest -q \
+            --import-mode=importlib \
+            "$GITHUB_WORKSPACE/prob4d/tests/test_claim_bearing_observation.py" \
+            "$GITHUB_WORKSPACE/prob4d/tests/test_joint_observation_contract_fixture.py" \
+            "$GITHUB_WORKSPACE/bayesian-phystwin/tests/test_causal4d_provider_v1.py" \
+            "$GITHUB_WORKSPACE/bayesian-phystwin/tests/test_causal4d_provider_v2.py" \
+            "$GITHUB_WORKSPACE/bayesian-phystwin/tests/test_causal4d_artifacts_v2.py" \
+            "$GITHUB_WORKSPACE/bayesian-phystwin/tests/test_observation_belief_gauge_adapter.py" \
+            "$GITHUB_WORKSPACE/bayesian-phystwin/tests/test_prob4d_causal_lineage.py" \
+            "$GITHUB_WORKSPACE/bayesian-phystwin/tests/test_run_manifest_v2.py" \
+            "$GITHUB_WORKSPACE/causal4d/tests/test_bpt_provider_import_boundary.py" \
+            "$GITHUB_WORKSPACE/causal4d/tests/test_bpt_provider_integration.py" \
+            "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_provider_contract.py" \
+            "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_phystwin_backend.py" \
+            "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_bpt_belief.py" \
+            "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_molmo_visual_inputs_v2.py" \
+            "$GITHUB_WORKSPACE/causal4d/tests/test_phystwin_resumable.py" \
+            "$GITHUB_WORKSPACE/causal4d/tests/test_replay_provider_contract.py" \
+            "$GITHUB_WORKSPACE/causal4d/tests/test_rollout_cache.py" \
+            "$GITHUB_WORKSPACE/causal4d/tests/test_observation_lineage.py" \
+            "$GITHUB_WORKSPACE/causal4d/tests/test_prob4d_joint_contract_fixture.py" \
+            "$GITHUB_WORKSPACE/causal4d/tests/test_prob4d_stream_contract_version.py"
+
+      - name: Upload workstation2 validation evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: minimum-dependency-evidence
+          name: workstation2-public-provider-validation
           path: |
-            minimum-environment.txt
-            minimum-platform.json
-            pytest-minimum-dependencies.xml
+            ${{ runner.temp }}/three-repository-summary.json
+            ${{ runner.temp }}/three-repository-golden-path.log
+            ${{ runner.temp }}/three-repository-provider-v2-summary.json
+            ${{ runner.temp }}/three-repository-provider-v2.log
+            ${{ runner.temp }}/three-repository-wheel-sha256.txt
+          if-no-files-found: warn
+          retention-days: 7
