@@ -42,6 +42,14 @@ def evaluate_beta_zero_physical_posterior(
 ) -> dict[str, Any]:
     """Evaluate physical prediction with the semantic factor explicitly absent."""
 
+    if type(start_frame) is not int:
+        raise ValueError("start_frame must be an integer")
+    if type(confidence_level) not in {int, float}:
+        raise ValueError("confidence_level must be a finite number in (0, 1)")
+    confidence = float(confidence_level)
+    if not np.isfinite(confidence) or not 0.0 < confidence < 1.0:
+        raise ValueError("confidence_level must be a finite number in (0, 1)")
+
     truth = np.asarray(truth_m, dtype=float)
     mean, variance = physical_posterior_moments(posterior)
     if truth.shape != mean.shape:
@@ -63,7 +71,7 @@ def evaluate_beta_zero_physical_posterior(
     residual = mean - truth
     selected_residual = residual[coordinate_valid]
     selected_variance = variance[coordinate_valid]
-    z_score = NormalDist().inv_cdf(0.5 * (1.0 + confidence_level))
+    z_score = NormalDist().inv_cdf(0.5 * (1.0 + confidence))
     standard_deviation = np.sqrt(variance)
     lower = mean - z_score * standard_deviation
     upper = mean + z_score * standard_deviation
@@ -77,6 +85,9 @@ def evaluate_beta_zero_physical_posterior(
         if np.any(final_valid)
         else None
     )
+    coverage = float(
+        np.mean((selected_truth >= selected_lower) & (selected_truth <= selected_upper))
+    )
     return {
         "physical_posterior_id": posterior.artifact_id,
         "semantic_beta": 0.0,
@@ -87,24 +98,9 @@ def evaluate_beta_zero_physical_posterior(
         "coordinate_rmse_m": float(np.sqrt(np.mean(np.square(selected_residual)))),
         "track_error_m": float(np.mean(np.linalg.norm(vectors, axis=1))),
         "fde_m": fde,
-        "coverage": float(
-            np.mean(
-                (selected_truth >= selected_lower)
-                & (selected_truth <= selected_upper)
-            )
-        ),
-        "coverage_error": float(
-            abs(
-                np.mean(
-                    (selected_truth >= selected_lower)
-                    & (selected_truth <= selected_upper)
-                )
-                - confidence_level
-            )
-        ),
-        "mean_interval_width_m": float(
-            np.mean(selected_upper - selected_lower)
-        ),
+        "coverage": coverage,
+        "coverage_error": float(abs(coverage - confidence)),
+        "mean_interval_width_m": float(np.mean(selected_upper - selected_lower)),
         "nees": float(np.mean(np.square(selected_residual) / selected_variance)),
         "gaussian_nll": float(
             np.mean(
