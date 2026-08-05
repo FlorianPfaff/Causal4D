@@ -176,9 +176,7 @@ def test_omitted_posterior_bound_is_admission_relevant() -> None:
         command_activation=activation,
         config=_config(),
     )
-    omitted_bound = float(
-        posterior.metadata["omitted_posterior_mass_upper_bound"]
-    )
+    omitted_bound = float(posterior.metadata["omitted_posterior_mass_upper_bound"])
     assert 0.5 <= omitted_bound < 0.501
     with pytest.raises(
         MultiContactInferenceRejectedError,
@@ -190,9 +188,7 @@ def test_omitted_posterior_bound_is_admission_relevant() -> None:
             prefix_frame_count=2,
             command_activation=activation,
             config=_config(),
-            policy=MultiContactInferencePolicy(
-                maximum_omitted_posterior_mass=0.5
-            ),
+            policy=MultiContactInferencePolicy(maximum_omitted_posterior_mass=0.5),
         )
 
 
