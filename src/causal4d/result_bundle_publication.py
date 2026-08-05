@@ -147,7 +147,9 @@ def publish_result_bundle(
 
         staged_verification = verify_embedded_result_bundle(staging)
         if target.exists() or target.is_symlink():
-            raise FileExistsError(f"result bundle appeared during publication: {target}")
+            raise FileExistsError(
+                f"result bundle appeared during publication: {target}"
+            )
         os.rename(staging, target)
         staging = None
         _fsync_directory(target.parent)
@@ -156,8 +158,7 @@ def publish_result_bundle(
         if (
             final_verification["manifest_sha256"]
             != staged_verification["manifest_sha256"]
-            or final_verification["artifacts"]
-            != staged_verification["artifacts"]
+            or final_verification["artifacts"] != staged_verification["artifacts"]
         ):
             raise RuntimeError("published result bundle changed during rename")
         return final_verification

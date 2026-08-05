@@ -17,9 +17,7 @@ def test_publish_result_bundle_exposes_only_verified_complete_directory(
 
     def writer(staging: Path) -> None:
         assert not target.exists()
-        (staging / "metrics.json").write_text(
-            '{"rmse": 0.012}\n', encoding="utf-8"
-        )
+        (staging / "metrics.json").write_text('{"rmse": 0.012}\n', encoding="utf-8")
         (staging / "predictions.bin").write_bytes(b"predictions")
 
     result = publish_result_bundle(

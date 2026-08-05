@@ -70,9 +70,7 @@ def load_trusted_pickle(
     payload = supplied.read_bytes()
     actual = hashlib.sha256(payload).hexdigest()
     if expected is not None and actual != expected:
-        raise ValueError(
-            f"trusted pickle SHA-256 mismatch: {actual} != {expected}"
-        )
+        raise ValueError(f"trusted pickle SHA-256 mismatch: {actual} != {expected}")
     return pickle.loads(payload)
 
 

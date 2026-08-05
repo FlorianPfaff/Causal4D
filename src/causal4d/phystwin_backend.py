@@ -1054,9 +1054,7 @@ class OfficialPhysTwinBackend:
             load_trusted_pickle(
                 self.baseline_trajectory_path,
                 allow_unsafe_pickle=self.allow_unsafe_pickle,
-                expected_sha256=(
-                    self.source_artifacts_sha256["baseline_trajectory"]
-                ),
+                expected_sha256=(self.source_artifacts_sha256["baseline_trajectory"]),
             ),
             dtype=np.float32,
         )
@@ -1206,9 +1204,7 @@ class OfficialPhysTwinBackend:
                 getattr(self, "source_artifacts_sha256", {})
             ),
             "trusted_pickle_inputs": {
-                "explicitly_allowed": bool(
-                    getattr(self, "allow_unsafe_pickle", False)
-                ),
+                "explicitly_allowed": bool(getattr(self, "allow_unsafe_pickle", False)),
                 "digests_verified_before_load": True,
             },
             "source_paths": {
