@@ -1,0 +1,55 @@
+{
+  "artifact_kind": "Deform360SourceBackendReproductionRuntimeDeviation",
+  "boundary": {
+    "interpretation_permitted_only_after_zero_baseline_reproduction": true,
+    "original_milestone_files_rewritten": false,
+    "recorded_runtime_relabelled": false,
+    "scientific_artifacts_changed": false,
+    "scores_or_decisions_changed": false,
+    "target_future_access_permitted": false,
+    "target_prefix_access_permitted": false,
+    "zero_baseline_reproduction_required": true
+  },
+  "candidate_runtime": {
+    "numpy": "1.26.4",
+    "python": "3.12.3",
+    "scipy": "1.13.1",
+    "torch": "2.4.0+cu121",
+    "torch_cuda": "12.1",
+    "warp": "1.15.0"
+  },
+  "content_sha256": "144ea36f828703a713ff3bc3afe49ff0518926d73544bf7b477bdf9eb5f17f98",
+  "evidence": [
+    {
+      "fact": "the archived source-validation command invokes /home/florianpfaff/.venvs/bpt-gpu/bin/python",
+      "path": "milestones/deform360-replication-source-backend-v1/verification/test-and-lint.txt",
+      "sha256": "6d2a87d555d843bcf91ce70e1b390ca0d75f30e6bddfb0de3baabf6790fdee5e"
+    },
+    {
+      "captured_at": "2026-07-12T08:15:05+02:00",
+      "fact": "an earlier snapshot of the same named bpt-gpu environment records numpy==1.26.4, scipy==1.13.1, torch==2.4.0+cu121, and warp-lang==1.15.0",
+      "path": "milestones/v0.3.0-causal4d-aip/environment/bpt-gpu-pip-freeze.txt",
+      "sha256": "87a32a0bfbe6797a1f9cb3816d244681ded4deb72b3f9f854e8d74509417edad"
+    },
+    {
+      "artifact_id": 8916348471,
+      "artifact_sha256": "732066a2ba668a5d6e8bb2206ea3ecedb19b992dc9b7188e02a63329e12dd90e",
+      "fact": "workstation2 observed NumPy 1.26.4 at the archived bpt-gpu interpreter on 2026-08-05 while all other locked runtime versions matched",
+      "workflow_run_id": 30970401038
+    }
+  ],
+  "recorded_runtime": {
+    "path": "milestones/deform360-replication-source-backend-v1/verification/environment.json",
+    "sha256": "2274f2a38e5b49a9e1fc5e4c49c80910d2095cf43e8b1e84928c6cc3d99b2d8c",
+    "values": {
+      "numpy": "2.5.1",
+      "python": "3.12.3",
+      "scipy": "1.13.1",
+      "torch": "2.4.0+cu121",
+      "torch_cuda": "12.1",
+      "warp": "1.15.0"
+    }
+  },
+  "schema_version": 1,
+  "status": "conditional-reproduction-runtime-deviation"
+}
