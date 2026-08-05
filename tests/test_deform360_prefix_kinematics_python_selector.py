@@ -61,7 +61,7 @@ def test_candidate_paths_prioritize_configured_interpreter(
     assert candidates.count(configured.absolute()) == 1
 
 
-def test_runtime_erratum_is_additive_and_exact() -> None:
+def test_reproduction_runtime_deviation_is_conditional_and_exact() -> None:
     selector = _load_selector()
     original_path = ROOT / selector._ENVIRONMENT_PATH
     original = json.loads(original_path.read_text(encoding="utf-8"))
@@ -77,23 +77,34 @@ def test_runtime_erratum_is_additive_and_exact() -> None:
         "torch_cuda": "12.1",
         "warp": "1.15.0",
     }
-    assert provenance["correction"] == {
-        "numpy": {"recorded": "2.5.1", "effective": "1.26.4"}
+    assert provenance["status"] == "conditional-reproduction-runtime-deviation"
+    assert provenance["recorded_runtime"]["numpy"] == "2.5.1"
+    assert provenance["candidate_runtime"]["numpy"] == "1.26.4"
+    assert provenance["deviation"] == {
+        "numpy": {"recorded": "2.5.1", "candidate": "1.26.4"}
     }
     assert provenance["zero_baseline_reproduction_required"] is True
-    assert provenance["environment_sha256"] == (
+    assert (
+        provenance[
+            "interpretation_permitted_only_after_zero_baseline_reproduction"
+        ]
+        is True
+    )
+    assert provenance["recorded_environment_sha256"] == (
         "2274f2a38e5b49a9e1fc5e4c49c80910d2095cf43e8b1e84928c6cc3d99b2d8c"
     )
-    assert provenance["erratum_sha256"] == (
-        "1bb1c8bfefc7e47caa08a2270d5eee95b4f3d82b73bd95b3aea82aca7d70b68c"
+    assert provenance["reproduction_runtime_contract_sha256"] == (
+        "144ea36f828703a713ff3bc3afe49ff0518926d73544bf7b477bdf9eb5f17f98"
     )
 
 
-def test_runtime_erratum_rejects_content_identity_drift(tmp_path: Path) -> None:
+def test_reproduction_runtime_rejects_content_identity_drift(
+    tmp_path: Path,
+) -> None:
     selector = _load_selector()
     for relative in (
         selector._ENVIRONMENT_PATH,
-        selector._ERRATUM_PATH,
+        selector._REPRODUCTION_RUNTIME_PATH,
         Path(
             "milestones/deform360-replication-source-backend-v1/verification/"
             "test-and-lint.txt"
@@ -104,11 +115,11 @@ def test_runtime_erratum_rejects_content_identity_drift(tmp_path: Path) -> None:
         destination = tmp_path / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(source.read_bytes())
-    erratum_path = tmp_path / selector._ERRATUM_PATH
-    erratum = json.loads(erratum_path.read_text(encoding="utf-8"))
-    erratum["corrections"]["numpy"]["corrected"] = "2.0.0"
-    erratum_path.write_text(
-        json.dumps(erratum, indent=2, sort_keys=True) + "\n",
+    contract_path = tmp_path / selector._REPRODUCTION_RUNTIME_PATH
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract["candidate_runtime"]["numpy"] = "2.0.0"
+    contract_path.write_text(
+        json.dumps(contract, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
 
