@@ -82,9 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--difference-correlation",
         type=float,
         default=0.0,
-        help=(
-            "Adjacent-frame observation correlation used only by normalized_v2."
-        ),
+        help=("Adjacent-frame observation correlation used only by normalized_v2."),
     )
     parser.add_argument(
         "--grouped-observation-likelihood",
@@ -152,9 +150,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.abstain_when_unidentifiable and args.identifiability_npz is None:
         raise ValueError("--abstain-when-unidentifiable requires --identifiability-npz")
     if args.expected_final_data_sha256 is None:
-        raise ValueError(
-            "--expected-final-data-sha256 is required for final_data.pkl"
-        )
+        raise ValueError("--expected-final-data-sha256 is required for final_data.pkl")
     _load_runtime_dependencies()
     bank, manifest = load_rollout_bank(args.rollout_bank_npz)
     artifact = load_contract(args.twin_belief_npz)
