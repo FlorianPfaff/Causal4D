@@ -64,9 +64,13 @@ The candidate and a constant-persistence baseline are scored after the next:
 - three available hull observations; and
 - six available hull observations.
 
-Each reset also retains full-remainder Chamfer and strain diagnostics. For every
-registered horizon, reset scores are first averaged inside one episode. The episode
-is the statistical unit; three resets are never treated as three independent
+Each reset also retains full-remainder Chamfer and strain diagnostics. Graph
+construction, simulator initialization, rollout, or scoring failures are retained
+as explicit per-reset technical-failure records with their stage and exception
+type. They are never repaired, replaced, or silently omitted. An episode contributes
+to a horizon only when all three registered resets complete with finite scores. For
+every registered horizon, reset scores are first averaged inside one episode. The
+episode is the statistical unit; three resets are never treated as three independent
 samples.
 
 The retained metrics include:
@@ -94,11 +98,14 @@ Every horizon must satisfy all of the following:
 The result is classified by the first failed boundary:
 
 1. `baseline_reproduction_failure` — no interpretation is permitted;
-2. `instantaneous_mechanics_or_contact_realization_failure` — the first horizon
-   fails despite an observed reset;
-3. `multi_step_dynamics_accumulation_failure` — shorter horizons pass but a later
-   horizon fails; or
-4. `observed_reset_mechanics_competence_supported` — all registered reset horizons
+2. `insufficient_common_episode_support` — retained technical or nonfinite reset
+   failures leave fewer than 24 complete episodes, so no mechanics conclusion is
+   permitted;
+3. `instantaneous_mechanics_or_contact_realization_failure` — the first horizon
+   fails despite an observed reset and sufficient complete-episode support;
+4. `multi_step_dynamics_accumulation_failure` — shorter horizons pass but a later
+   horizon fails with sufficient support; or
+5. `observed_reset_mechanics_competence_supported` — all registered reset horizons
    pass, redirecting the next study toward initialization, state estimation, or
    contact-state inference.
 

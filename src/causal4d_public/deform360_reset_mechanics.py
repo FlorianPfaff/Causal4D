@@ -17,6 +17,12 @@ RESET_MECHANICS_SCHEMA_VERSION = 1
 RESET_MECHANICS_KIND = "Deform360SourceResetMechanicsDiagnostic"
 RESET_MECHANICS_CONFIG_KIND = "Deform360SourceResetMechanicsConfig"
 SOURCE_MILESTONE = Path("milestones/deform360-replication-source-backend-v1")
+_RESET_TECHNICAL_EXCEPTIONS = (
+    ValueError,
+    RuntimeError,
+    FloatingPointError,
+    np.linalg.LinAlgError,
+)
 
 
 def _require(condition: bool, message: str) -> None:
@@ -279,6 +285,16 @@ def _horizon_key(horizon_observations: int) -> str:
     return f"next_{horizon_observations}_observations"
 
 
+def _episode_has_technical_failure(episode: Mapping[str, Any]) -> bool:
+    resets = episode.get("resets")
+    if not isinstance(resets, list):
+        return False
+    return any(
+        isinstance(reset, Mapping) and reset.get("status") == "technical_failure"
+        for reset in resets
+    )
+
+
 def _episode_horizon_record(
     episode: Mapping[str, Any],
     horizon_observations: int,
@@ -292,6 +308,8 @@ def _episode_horizon_record(
     quality_flags: list[bool] = []
     for raw_reset in resets:
         reset = _require_mapping(raw_reset, message="reset record is not a mapping")
+        if reset.get("status") != "completed":
+            return None
         horizons = _require_mapping(
             reset.get("horizons"),
             message="reset horizon records are missing",
@@ -348,10 +366,16 @@ def summarize_reset_horizon(
         for episode in episode_records
         if (row := _episode_horizon_record(episode, horizon)) is not None
     ]
+    technical_failure_episode_count = sum(
+        _episode_has_technical_failure(episode) for episode in episode_records
+    )
+    excluded_episode_count = len(episode_records) - len(rows)
     if not rows:
         return {
             "horizon_observations": horizon,
             "common_episode_count": 0,
+            "excluded_episode_count": excluded_episode_count,
+            "technical_failure_episode_count": technical_failure_episode_count,
             "mean_chamfer_m": None,
             "persistence_mean_chamfer_m": None,
             "relative_improvement_vs_persistence": None,
@@ -379,6 +403,8 @@ def summarize_reset_horizon(
     return {
         "horizon_observations": horizon,
         "common_episode_count": len(rows),
+        "excluded_episode_count": excluded_episode_count,
+        "technical_failure_episode_count": technical_failure_episode_count,
         "mean_chamfer_m": candidate,
         "persistence_mean_chamfer_m": persistence,
         "relative_improvement_vs_persistence": improvement,
@@ -420,13 +446,35 @@ def build_reset_mechanics_decision(
         ),
         None,
     )
+    technical_failure_episode_count = sum(
+        _episode_has_technical_failure(record) for record in episode_records
+    )
+    technical_failure_reset_count = sum(
+        1
+        for record in episode_records
+        for reset in record.get("resets", [])
+        if isinstance(reset, Mapping) and reset.get("status") == "technical_failure"
+    )
     baseline_passed = bool(reproduction and all(reproduction))
     passed = bool(baseline_passed and first_failure is None)
+    first_summary = (
+        summaries[_horizon_key(first_failure)] if first_failure is not None else None
+    )
     if not baseline_passed:
         classification = "baseline_reproduction_failure"
         interpretation = (
             "the reset diagnostic cannot be interpreted because the frozen "
             "prefix baseline did not reproduce"
+        )
+    elif (
+        first_summary is not None
+        and first_summary["common_episode_count"] < config.minimum_common_episode_count
+    ):
+        classification = "insufficient_common_episode_support"
+        interpretation = (
+            "retained technical or nonfinite reset failures leave fewer complete "
+            "episodes than the registered gate requires; no mechanics conclusion "
+            "is permitted"
         )
     elif first_failure == config.horizon_observation_counts[0]:
         classification = "instantaneous_mechanics_or_contact_realization_failure"
@@ -451,6 +499,8 @@ def build_reset_mechanics_decision(
     return {
         "baseline_reproduction_passed": baseline_passed,
         "baseline_reproduction_episode_count": len(reproduction),
+        "technical_failure_episode_count": technical_failure_episode_count,
+        "technical_failure_reset_count": technical_failure_reset_count,
         "horizon_summaries": summaries,
         "first_failed_horizon_observations": first_failure,
         "classification": classification,
@@ -604,6 +654,67 @@ def _run_reset(
     return result
 
 
+def _evaluate_registered_reset(
+    *,
+    build_observation: Any,
+    episode_dir: Path,
+    episode_id: str,
+    stratum: str,
+    frames: np.ndarray,
+    hulls: Sequence[np.ndarray],
+    schedule: Any,
+    reset_ordinal: int,
+    reset_position: int,
+    official_phystwin_repo: Path,
+    simulation_config: Any,
+    candidate: Any,
+    device: str,
+    horizons: Sequence[int],
+) -> dict[str, Any]:
+    base = {
+        "reset_ordinal": reset_ordinal,
+        "reset_hull_position": reset_position,
+        "reset_raw_frame": int(frames[reset_position]),
+        "available_future_observation_count": len(frames) - reset_position - 1,
+    }
+    stage = "build_observation"
+    try:
+        observation = build_observation(
+            episode_dir,
+            episode_id,
+            stratum,
+            frames[reset_position:],
+            hulls[reset_position:],
+            schedule,
+        )
+        stage = "rollout_and_score"
+        evaluation = _run_reset(
+            observation,
+            official_phystwin_repo,
+            simulation_config,
+            candidate,
+            device=device,
+            horizons=horizons,
+        )
+    except _RESET_TECHNICAL_EXCEPTIONS as exc:
+        _clear_optional_cuda_cache()
+        return {
+            **base,
+            "status": "technical_failure",
+            "technical_failure": {
+                "stage": stage,
+                "exception_type": type(exc).__name__,
+                "message": str(exc) or repr(exc),
+            },
+        }
+    return {
+        **base,
+        "status": "completed",
+        "contact_associations": list(observation.contact_associations),
+        **evaluation,
+    }
+
+
 def _episode_record(
     *,
     repository_root: Path,
@@ -695,38 +806,33 @@ def _episode_record(
     )
     simulation_config = WarpRopeFeasibilityConfig(**grid["config"])
     candidate = WarpRopeCandidate(**selected["parameters"])
-    resets = []
-    for reset_ordinal, reset_position in enumerate(reset_positions):
-        observation = build_replication_warp_observation(
-            episode_dir,
-            episode_id,
-            str(grid["stratum"]),
-            frames[reset_position:],
-            hulls[reset_position:],
-            schedule,
-        )
-        evaluation = _run_reset(
-            observation,
-            official_phystwin_repo,
-            simulation_config,
-            candidate,
+    resets = [
+        _evaluate_registered_reset(
+            build_observation=build_replication_warp_observation,
+            episode_dir=episode_dir,
+            episode_id=episode_id,
+            stratum=str(grid["stratum"]),
+            frames=frames,
+            hulls=hulls,
+            schedule=schedule,
+            reset_ordinal=reset_ordinal,
+            reset_position=reset_position,
+            official_phystwin_repo=official_phystwin_repo,
+            simulation_config=simulation_config,
+            candidate=candidate,
             device=device,
             horizons=config.horizon_observation_counts,
         )
-        resets.append(
-            {
-                "reset_ordinal": reset_ordinal,
-                "reset_hull_position": reset_position,
-                "reset_raw_frame": int(frames[reset_position]),
-                "available_future_observation_count": len(frames) - reset_position - 1,
-                "contact_associations": list(observation.contact_associations),
-                **evaluation,
-            }
-        )
-    prefix = resets[0]["full_remainder"]
+        for reset_ordinal, reset_position in enumerate(reset_positions)
+    ]
+    completed_reset_count = sum(reset["status"] == "completed" for reset in resets)
+    technical_failure_reset_count = len(resets) - completed_reset_count
+    prefix = (
+        resets[0].get("full_remainder") if resets[0]["status"] == "completed" else None
+    )
     mean_delta = (
         abs(float(prefix["mean_chamfer_m"]) - selected["archived_mean_chamfer_m"])
-        if prefix["mean_chamfer_m"] is not None
+        if isinstance(prefix, Mapping) and prefix["mean_chamfer_m"] is not None
         else None
     )
     strain_delta = (
@@ -734,7 +840,8 @@ def _episode_record(
             float(prefix["p99_relative_edge_strain"])
             - selected["archived_p99_relative_edge_strain"]
         )
-        if prefix["p99_relative_edge_strain"] is not None
+        if isinstance(prefix, Mapping)
+        and prefix["p99_relative_edge_strain"] is not None
         else None
     )
     reproduction_passed = bool(
@@ -753,6 +860,9 @@ def _episode_record(
         "raw_hull_frame_indices": frames.astype(int).tolist(),
         "reset_positions": list(reset_positions),
         "resets": resets,
+        "completed_reset_count": completed_reset_count,
+        "technical_failure_reset_count": technical_failure_reset_count,
+        "technically_complete": technical_failure_reset_count == 0,
         "prefix_baseline_reproduction": {
             "mean_chamfer_absolute_delta_m": mean_delta,
             "p99_strain_absolute_delta": strain_delta,
@@ -974,6 +1084,8 @@ def validate_source_reset_mechanics_diagnostic(payload: Mapping[str, Any]) -> No
             len(resets) == config.reset_count,
             "reset-mechanics episode reset count changed",
         )
+        completed_reset_count = 0
+        technical_failure_reset_count = 0
         for reset_ordinal, raw_reset in enumerate(resets):
             reset = _require_mapping(
                 raw_reset,
@@ -985,18 +1097,55 @@ def validate_source_reset_mechanics_diagnostic(payload: Mapping[str, Any]) -> No
                 == expected_positions[reset_ordinal],
                 "reset-mechanics reset ordering changed",
             )
-            horizons = _require_mapping(
-                reset.get("horizons"),
-                message="reset-mechanics reset horizons are missing",
-            )
+            status = reset.get("status")
             _require(
-                tuple(horizons)
-                == tuple(
-                    _horizon_key(horizon)
-                    for horizon in config.horizon_observation_counts
-                ),
-                "reset-mechanics horizon set or ordering changed",
+                status in {"completed", "technical_failure"},
+                "reset-mechanics reset status is invalid",
             )
+            if status == "completed":
+                completed_reset_count += 1
+                _require(
+                    "technical_failure" not in reset,
+                    "completed reset contains technical-failure metadata",
+                )
+                horizons = _require_mapping(
+                    reset.get("horizons"),
+                    message="reset-mechanics reset horizons are missing",
+                )
+                _require(
+                    tuple(horizons)
+                    == tuple(
+                        _horizon_key(horizon)
+                        for horizon in config.horizon_observation_counts
+                    ),
+                    "reset-mechanics horizon set or ordering changed",
+                )
+            else:
+                technical_failure_reset_count += 1
+                _require(
+                    "horizons" not in reset and "full_remainder" not in reset,
+                    "technical-failure reset contains scientific scores",
+                )
+                failure = _require_mapping(
+                    reset.get("technical_failure"),
+                    message="reset technical-failure metadata is missing",
+                )
+                _require(
+                    set(failure) == {"stage", "exception_type", "message"}
+                    and all(
+                        type(failure[field]) is str and failure[field]
+                        for field in ("stage", "exception_type", "message")
+                    ),
+                    "reset technical-failure metadata is invalid",
+                )
+        _require(
+            record.get("completed_reset_count") == completed_reset_count
+            and record.get("technical_failure_reset_count")
+            == technical_failure_reset_count
+            and record.get("technically_complete")
+            is (technical_failure_reset_count == 0),
+            "reset-mechanics episode technical-failure accounting changed",
+        )
         episode_boundary = _require_mapping(
             record.get("information_boundary"),
             message="reset-mechanics episode boundary is missing",

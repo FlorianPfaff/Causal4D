@@ -52,6 +52,7 @@ def _episode(
             {
                 "reset_ordinal": reset_index,
                 "reset_hull_position": reset_index * 2,
+                "status": "completed",
                 "horizons": reset_horizons,
             }
         )
@@ -76,6 +77,7 @@ def _complete_validation_episode(episode_id: str) -> dict[str, object]:
             {
                 "reset_ordinal": ordinal,
                 "reset_hull_position": position,
+                "status": "completed",
                 "horizons": {
                     "next_1_observations": {"finite": True},
                     "next_3_observations": {"finite": True},
@@ -89,6 +91,9 @@ def _complete_validation_episode(episode_id: str) -> dict[str, object]:
         "raw_hull_frame_indices": frames,
         "reset_positions": list(positions),
         "resets": resets,
+        "completed_reset_count": 3,
+        "technical_failure_reset_count": 0,
+        "technically_complete": True,
         "information_boundary": {
             "source_episode_only": True,
             "reset_selection_uses_availability_only": True,
@@ -168,6 +173,38 @@ def test_reset_scoring_uses_raw_frame_gaps_and_registered_horizons(
     assert result["next_6_observations"]["quality_valid"] is True
 
 
+def test_registered_reset_retains_graph_construction_failure() -> None:
+    def fail_to_build(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise ValueError("rope point cloud remains disconnected")
+
+    frames = np.arange(7, dtype=np.int64)
+    hulls = tuple(np.zeros((2, 3), dtype=np.float64) for _ in range(7))
+    result = mechanics._evaluate_registered_reset(
+        build_observation=fail_to_build,
+        episode_dir=Path("/tmp/episode"),
+        episode_id="rope/episode_0001",
+        stratum="filament",
+        frames=frames,
+        hulls=hulls,
+        schedule={},
+        reset_ordinal=0,
+        reset_position=0,
+        official_phystwin_repo=Path("/tmp/phystwin"),
+        simulation_config=object(),
+        candidate=object(),
+        device="cpu",
+        horizons=(1, 3, 6),
+    )
+    assert result["status"] == "technical_failure"
+    assert result["technical_failure"] == {
+        "stage": "build_observation",
+        "exception_type": "ValueError",
+        "message": "rope point cloud remains disconnected",
+    }
+    assert "horizons" not in result
+
+
 def test_reset_positions_depend_only_on_frame_availability() -> None:
     frames = [0, 2, 3, 7, 8, 9, 11, 15, 18, 20, 21]
     assert select_reset_positions(
@@ -240,6 +277,55 @@ def test_incomplete_reset_excludes_the_complete_episode_unit() -> None:
     assert summary["common_episode_count"] == 0
     assert summary["episode_records"] == []
     assert summary["passed"] is False
+
+
+def test_technical_failure_excludes_the_complete_episode_unit() -> None:
+    config = ResetMechanicsConfig(minimum_common_episode_count=1)
+    episode = _episode("rope/episode_0001")
+    episode["resets"][1] = {
+        "reset_ordinal": 1,
+        "reset_hull_position": 2,
+        "status": "technical_failure",
+        "technical_failure": {
+            "stage": "build_observation",
+            "exception_type": "ValueError",
+            "message": "disconnected graph",
+        },
+    }
+    summary = summarize_reset_horizon([episode], 3, config=config)
+    assert summary["common_episode_count"] == 0
+    assert summary["excluded_episode_count"] == 1
+    assert summary["technical_failure_episode_count"] == 1
+    assert summary["passed"] is False
+
+
+def test_decision_does_not_relabel_insufficient_support_as_mechanics_failure() -> None:
+    config = ResetMechanicsConfig(
+        minimum_common_episode_count=2,
+        minimum_relative_improvement=0.0,
+        minimum_win_fraction=0.0,
+        minimum_quality_valid_fraction=0.0,
+    )
+    failed = _episode("cloth/episode_0002")
+    failed["resets"][1] = {
+        "reset_ordinal": 1,
+        "reset_hull_position": 2,
+        "status": "technical_failure",
+        "technical_failure": {
+            "stage": "build_observation",
+            "exception_type": "ValueError",
+            "message": "disconnected graph",
+        },
+    }
+    decision = build_reset_mechanics_decision(
+        [_episode("rope/episode_0001"), failed],
+        config=config,
+    )
+    assert decision["baseline_reproduction_passed"] is True
+    assert decision["technical_failure_episode_count"] == 1
+    assert decision["technical_failure_reset_count"] == 1
+    assert decision["classification"] == "insufficient_common_episode_support"
+    assert decision["passed"] is False
 
 
 def test_decision_identifies_the_first_failed_horizon() -> None:
@@ -316,6 +402,31 @@ def test_lock_round_trip_and_target_boundary(tmp_path: Path) -> None:
     path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(ValueError, match="forbidden information"):
         load_reset_mechanics_lock(path)
+
+
+def test_result_validation_retains_well_formed_technical_failure() -> None:
+    payload = _validation_payload()
+    episode = payload["episode_records"][0]
+    episode["resets"][1] = {
+        "reset_ordinal": 1,
+        "reset_hull_position": 2,
+        "status": "technical_failure",
+        "technical_failure": {
+            "stage": "build_observation",
+            "exception_type": "ValueError",
+            "message": "rope point cloud remains disconnected",
+        },
+    }
+    episode["completed_reset_count"] = 2
+    episode["technical_failure_reset_count"] = 1
+    episode["technically_complete"] = False
+    payload["result_sha256"] = mechanics._artifact_sha256(payload)
+    validate_source_reset_mechanics_diagnostic(payload)
+
+    episode["resets"][1]["horizons"] = {}
+    payload["result_sha256"] = mechanics._artifact_sha256(payload)
+    with pytest.raises(ValueError, match="contains scientific scores"):
+        validate_source_reset_mechanics_diagnostic(payload)
 
 
 def test_result_validation_detects_tampering_and_target_access() -> None:
