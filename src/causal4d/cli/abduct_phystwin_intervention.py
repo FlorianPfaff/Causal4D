@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import pickle
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import numpy as np
@@ -25,6 +24,7 @@ def _load_runtime_dependencies() -> None:
     global evaluate_factual_abduction
     global GroupedObservationEvidence
     global load_rollout_bank
+    global load_trusted_pickle
 
     from bayesian_phystwin.causal4d_provider_v1 import target_validity
     from causal4d.contracts import TwinBelief, load_contract, save_contract
@@ -40,6 +40,7 @@ def _load_runtime_dependencies() -> None:
     )
     from causal4d.observation_evidence import GroupedObservationEvidence
     from causal4d.rollout_bank_io import load_rollout_bank
+    from causal4d.trusted_pickle import load_trusted_pickle
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -54,6 +55,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("final_data_pickle")
     parser.add_argument("output_factual_npz")
     parser.add_argument("output_evaluation_json")
+    parser.add_argument(
+        "--allow-unsafe-pickle",
+        action="store_true",
+        help="explicitly acknowledge that unpickling can execute arbitrary code",
+    )
+    parser.add_argument(
+        "--expected-final-data-sha256",
+        help="lowercase SHA-256 digest of the exact trusted final_data.pkl bytes",
+    )
     parser.add_argument("--o-plus-prefix-frames", type=int, default=6)
     parser.add_argument("--observation-scale-m", type=float, default=0.01)
     parser.add_argument("--likelihood-power", type=float, default=12.0)
@@ -137,17 +147,34 @@ def _load_identifiability(
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    _load_runtime_dependencies()
     if args.o_plus_prefix_frames < 1:
         raise ValueError("--o-plus-prefix-frames must be positive")
     if args.abstain_when_unidentifiable and args.identifiability_npz is None:
         raise ValueError("--abstain-when-unidentifiable requires --identifiability-npz")
+    if args.expected_final_data_sha256 is None:
+        raise ValueError(
+            "--expected-final-data-sha256 is required for final_data.pkl"
+        )
+    _load_runtime_dependencies()
     bank, manifest = load_rollout_bank(args.rollout_bank_npz)
     artifact = load_contract(args.twin_belief_npz)
     if not isinstance(artifact, TwinBelief):
         raise TypeError("twin_belief_npz must contain a TwinBelief")
-    with Path(args.final_data_pickle).open("rb") as handle:
-        data = pickle.load(handle)
+    data = load_trusted_pickle(
+        args.final_data_pickle,
+        allow_unsafe_pickle=args.allow_unsafe_pickle,
+        expected_sha256=args.expected_final_data_sha256,
+    )
+    if not isinstance(data, Mapping):
+        raise ValueError("final_data.pkl must contain a mapping")
+    required_keys = {
+        "object_points",
+        "object_visibilities",
+        "object_motions_valid",
+    }
+    missing = sorted(required_keys - set(data))
+    if missing:
+        raise ValueError("final_data.pkl is missing: " + ", ".join(missing))
     observed = np.asarray(data["object_points"], dtype=float)
     visible = np.asarray(data["object_visibilities"], dtype=bool)
     motion_valid = np.asarray(data["object_motions_valid"], dtype=bool)
@@ -216,6 +243,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             "factual_intervention_id": factual.artifact_id,
             "rollout_bank_manifest": manifest,
             "twin_belief_id": artifact.artifact_id,
+            "source_final_data_sha256": args.expected_final_data_sha256,
+            "trusted_pickle_input": {
+                "explicitly_allowed": bool(args.allow_unsafe_pickle),
+                "digest_verified_before_load": True,
+            },
             "grouped_observation_evidence_id": (
                 None if grouped_evidence is None else grouped_evidence.evidence_id
             ),
