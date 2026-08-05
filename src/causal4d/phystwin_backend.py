@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import pickle
 from dataclasses import asdict, dataclass
 from itertools import product
@@ -36,6 +35,15 @@ from causal4d.contracts import (
     array_sha256,
 )
 from causal4d.graph_provider_contract import require_bayesian_phystwin_graph_provider
+from causal4d._phystwin_validation import (
+    require_controller_points,
+    require_exact_bool,
+    require_finite_real,
+    require_group_labels,
+    require_integer,
+    require_nonempty_string,
+    require_nonempty_tuple,
+)
 from causal4d.immutable_array import readonly_array as _readonly_array
 from causal4d.parameter_support import SupportMethod, reduce_parameter_support
 from causal4d.provider_contract import require_bayesian_phystwin_provider
@@ -45,6 +53,10 @@ from causal4d.replay_provider_contract import (
     validate_replay_trajectory,
 )
 from causal4d.rollout_bank import JointRolloutBank
+from causal4d.rollout_bank_io import (
+    load_rollout_bank as load_rollout_bank,
+    save_rollout_bank as save_rollout_bank,
+)
 
 
 def _load_pickle(path: str | Path) -> Any:
@@ -373,14 +385,34 @@ class PhysTwinActionProposal:
     provenance: str
 
     def __post_init__(self) -> None:
-        controls = _readonly_array(self.controller_points_m, dtype=float)
-        if controls.ndim != 3 or controls.shape[2] != 3:
-            raise ValueError("controller_points_m must have shape (T, C, 3)")
-        if not np.all(np.isfinite(controls)):
-            raise ValueError("controller points must be finite")
-        if not self.proposal_id or self.prior_weight <= 0.0:
-            raise ValueError("action proposal id and prior weight must be valid")
+        proposal_id = require_nonempty_string(
+            self.proposal_id,
+            name="proposal_id",
+        )
+        provenance = require_nonempty_string(
+            self.provenance,
+            name="provenance",
+        )
+        controls = require_controller_points(self.controller_points_m)
+        prior_weight = require_finite_real(
+            self.prior_weight,
+            name="prior_weight",
+        )
+        if prior_weight <= 0.0:
+            raise ValueError("prior_weight must be positive")
+        future_action_observed = require_exact_bool(
+            self.future_action_observed,
+            name="future_action_observed",
+        )
+        object.__setattr__(self, "proposal_id", proposal_id)
         object.__setattr__(self, "controller_points_m", controls)
+        object.__setattr__(self, "prior_weight", prior_weight)
+        object.__setattr__(
+            self,
+            "future_action_observed",
+            future_action_observed,
+        )
+        object.__setattr__(self, "provenance", provenance)
 
     def metadata(self) -> dict[str, Any]:
         return {
@@ -410,9 +442,18 @@ def hidden_action_proposals(
 ) -> tuple[PhysTwinActionProposal, ...]:
     """Build action proposals using controller history only, never future controls."""
 
-    controls = np.asarray(controller_points_m, dtype=float)
-    if controls.ndim != 3 or controls.shape[2] != 3:
-        raise ValueError("controller_points_m must have shape (T, C, 3)")
+    controls = require_controller_points(controller_points_m)
+    start_frame = require_integer(
+        start_frame,
+        name="start_frame",
+        minimum=1,
+    )
+    history_frames = require_integer(
+        history_frames,
+        name="history_frames",
+        minimum=2,
+    )
+    damping = require_finite_real(damping, name="damping")
     if not 2 <= history_frames <= start_frame < len(controls):
         raise ValueError("hidden action history and start frame are inconsistent")
     if not 0.0 < damping <= 1.0:
@@ -471,16 +512,52 @@ class PhysTwinContactState:
     prior_weight: float
 
     def __post_init__(self) -> None:
-        if not self.attachment_shifts or any(
-            value not in {-1, 0, 1} for value in self.attachment_shifts
-        ):
+        raw_shifts = require_nonempty_tuple(
+            self.attachment_shifts,
+            name="attachment_shifts",
+        )
+        shifts = tuple(
+            require_integer(
+                value,
+                name=f"attachment_shifts[{index}]",
+            )
+            for index, value in enumerate(raw_shifts)
+        )
+        if any(value not in {-1, 0, 1} for value in shifts):
             raise ValueError("attachment shifts must be -1, 0, or 1 per hand")
-        if self.gain_multiplier <= 0.0 or self.delay_steps < 0:
-            raise ValueError("contact gain and delay must be valid")
-        if not 0.0 <= self.slip_fraction < 1.0:
+        gain_multiplier = require_finite_real(
+            self.gain_multiplier,
+            name="gain_multiplier",
+        )
+        if gain_multiplier <= 0.0:
+            raise ValueError("gain_multiplier must be positive")
+        delay_steps = require_integer(
+            self.delay_steps,
+            name="delay_steps",
+            minimum=0,
+        )
+        slip_fraction = require_finite_real(
+            self.slip_fraction,
+            name="slip_fraction",
+        )
+        if not 0.0 <= slip_fraction < 1.0:
             raise ValueError("slip_fraction must lie in [0, 1)")
-        if not np.isfinite(self.rotation_degrees) or self.prior_weight <= 0.0:
-            raise ValueError("rotation and prior weight must be valid")
+        rotation_degrees = require_finite_real(
+            self.rotation_degrees,
+            name="rotation_degrees",
+        )
+        prior_weight = require_finite_real(
+            self.prior_weight,
+            name="prior_weight",
+        )
+        if prior_weight <= 0.0:
+            raise ValueError("prior_weight must be positive")
+        object.__setattr__(self, "attachment_shifts", shifts)
+        object.__setattr__(self, "gain_multiplier", gain_multiplier)
+        object.__setattr__(self, "delay_steps", delay_steps)
+        object.__setattr__(self, "slip_fraction", slip_fraction)
+        object.__setattr__(self, "rotation_degrees", rotation_degrees)
+        object.__setattr__(self, "prior_weight", prior_weight)
 
     @property
     def state_id(self) -> str:
@@ -512,34 +589,113 @@ class PhysTwinHypothesisConfig:
     maximum_contact_states: int = 12
 
     def __post_init__(self) -> None:
+        raw_shifts = require_nonempty_tuple(
+            self.attachment_shift_values,
+            name="attachment_shift_values",
+        )
+        attachment_shift_values = tuple(
+            require_integer(
+                value,
+                name=f"attachment_shift_values[{index}]",
+            )
+            for index, value in enumerate(raw_shifts)
+        )
         if (
-            set(self.attachment_shift_values) - {-1, 0, 1}
-            or 0 not in self.attachment_shift_values
+            set(attachment_shift_values) - {-1, 0, 1}
+            or 0 not in attachment_shift_values
         ):
             raise ValueError("attachment shift values must include zero and use -1/0/1")
-        if (
-            not self.gain_values
-            or min(self.gain_values) <= 0.0
-            or 1.0 not in self.gain_values
-        ):
+        if len(set(attachment_shift_values)) != len(attachment_shift_values):
+            raise ValueError("attachment shift values must be unique")
+
+        raw_gains = require_nonempty_tuple(
+            self.gain_values,
+            name="gain_values",
+        )
+        gain_values = tuple(
+            require_finite_real(
+                value,
+                name=f"gain_values[{index}]",
+            )
+            for index, value in enumerate(raw_gains)
+        )
+        if min(gain_values) <= 0.0 or 1.0 not in gain_values:
             raise ValueError("gain values must be positive and include 1")
-        if (
-            not self.delay_values
-            or min(self.delay_values) < 0
-            or 0 not in self.delay_values
-        ):
+        if len(set(gain_values)) != len(gain_values):
+            raise ValueError("gain values must be unique")
+
+        raw_delays = require_nonempty_tuple(
+            self.delay_values,
+            name="delay_values",
+        )
+        delay_values = tuple(
+            require_integer(
+                value,
+                name=f"delay_values[{index}]",
+                minimum=0,
+            )
+            for index, value in enumerate(raw_delays)
+        )
+        if 0 not in delay_values:
             raise ValueError("delay values must be nonnegative and include 0")
-        if (
-            not self.slip_values
-            or min(self.slip_values) < 0.0
-            or max(self.slip_values) >= 1.0
-            or 0.0 not in self.slip_values
-        ):
+        if len(set(delay_values)) != len(delay_values):
+            raise ValueError("delay values must be unique")
+
+        raw_slips = require_nonempty_tuple(
+            self.slip_values,
+            name="slip_values",
+        )
+        slip_values = tuple(
+            require_finite_real(
+                value,
+                name=f"slip_values[{index}]",
+            )
+            for index, value in enumerate(raw_slips)
+        )
+        if min(slip_values) < 0.0 or max(slip_values) >= 1.0 or 0.0 not in slip_values:
             raise ValueError("slip values must lie in [0, 1) and include 0")
-        if not self.rotation_values_degrees or 0.0 not in self.rotation_values_degrees:
+        if len(set(slip_values)) != len(slip_values):
+            raise ValueError("slip values must be unique")
+
+        raw_rotations = require_nonempty_tuple(
+            self.rotation_values_degrees,
+            name="rotation_values_degrees",
+        )
+        rotation_values_degrees = tuple(
+            require_finite_real(
+                value,
+                name=f"rotation_values_degrees[{index}]",
+            )
+            for index, value in enumerate(raw_rotations)
+        )
+        if 0.0 not in rotation_values_degrees:
             raise ValueError("rotation values must include zero")
-        if self.maximum_contact_states < 1:
-            raise ValueError("maximum_contact_states must be positive")
+        if len(set(rotation_values_degrees)) != len(rotation_values_degrees):
+            raise ValueError("rotation values must be unique")
+
+        maximum_contact_states = require_integer(
+            self.maximum_contact_states,
+            name="maximum_contact_states",
+            minimum=1,
+        )
+        object.__setattr__(
+            self,
+            "attachment_shift_values",
+            attachment_shift_values,
+        )
+        object.__setattr__(self, "gain_values", gain_values)
+        object.__setattr__(self, "delay_values", delay_values)
+        object.__setattr__(self, "slip_values", slip_values)
+        object.__setattr__(
+            self,
+            "rotation_values_degrees",
+            rotation_values_degrees,
+        )
+        object.__setattr__(
+            self,
+            "maximum_contact_states",
+            maximum_contact_states,
+        )
 
 
 def _contact_prior_score(
@@ -569,8 +725,11 @@ def build_contact_states(
     """Build a prior-ranked beam while retaining every latent contact channel."""
 
     cfg = config or PhysTwinHypothesisConfig()
-    if hand_count < 1:
-        raise ValueError("hand_count must be positive")
+    hand_count = require_integer(
+        hand_count,
+        name="hand_count",
+        minimum=1,
+    )
     candidates: dict[tuple[tuple[int, ...], float, int, float, float], float] = {}
     for shifts, gain, delay, slip, rotation in product(
         product(cfg.attachment_shift_values, repeat=hand_count),
@@ -695,15 +854,20 @@ def transform_controller_trajectory(
 ) -> np.ndarray:
     """Apply delay, slip, and direction error to future controller targets."""
 
-    controls = np.asarray(controller_points_m, dtype=float)
-    labels = np.asarray(groups, dtype=int)
-    if controls.ndim != 3 or controls.shape[2] != 3:
-        raise ValueError("controller_points_m must have shape (T, C, 3)")
-    if labels.shape != (controls.shape[1],):
-        raise ValueError("groups must label every controller point")
+    controls = require_controller_points(controller_points_m)
+    labels = require_group_labels(
+        groups,
+        name="groups",
+        expected_count=controls.shape[1],
+    )
     if len(contact.attachment_shifts) != int(np.max(labels)) + 1:
         raise ValueError("contact hand count and controller groups differ")
-    if not 1 <= start_frame < len(controls):
+    start_frame = require_integer(
+        start_frame,
+        name="start_frame",
+        minimum=1,
+    )
+    if start_frame >= len(controls):
         raise ValueError("start_frame must leave a future controller interval")
     delayed = controls.copy()
     for frame in range(start_frame, len(controls)):
@@ -750,10 +914,13 @@ def shift_phystwin_attachment_graph(
 ) -> AttachmentGraphVariant:
     """Move every controller spring endpoint by one coherent object-graph hop."""
 
-    groups = np.asarray(controller_groups, dtype=int)
-    shifts = tuple(int(value) for value in attachment_shifts)
-    if groups.ndim != 1 or not len(groups):
-        raise ValueError("controller_groups must be a nonempty vector")
+    groups = require_group_labels(
+        controller_groups,
+        name="controller_groups",
+    )
+    shifts = tuple(attachment_shifts)
+    if any(type(value) is not int for value in shifts):
+        raise ValueError("attachment_shifts must contain exact integers")
     if len(shifts) != int(np.max(groups)) + 1 or any(
         value not in {-1, 0, 1} for value in shifts
     ):
@@ -1368,47 +1535,3 @@ class OfficialPhysTwinBackend:
             }
         )
         return bank, manifest
-
-
-def save_rollout_bank(
-    path: str | Path,
-    bank: JointRolloutBank,
-    manifest: dict[str, Any],
-) -> None:
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(
-        target,
-        hypothesis_ids=np.asarray(bank.hypothesis_ids),
-        hypothesis_metadata_json=np.asarray(
-            [json.dumps(value, sort_keys=True) for value in bank.hypothesis_metadata]
-        ),
-        hypothesis_prior_weights=bank.hypothesis_prior_weights,
-        parameter_particles=bank.parameter_particles,
-        parameter_weights=bank.parameter_weights,
-        trajectories=bank.trajectories,
-        variance_floor_m2=np.asarray(bank.variance_floor_m2),
-        confidence_level=np.asarray(bank.confidence_level),
-        manifest_json=np.asarray(json.dumps(manifest, sort_keys=True)),
-    )
-
-
-def load_rollout_bank(path: str | Path) -> tuple[JointRolloutBank, dict[str, Any]]:
-    with np.load(path, allow_pickle=False) as archive:
-        metadata = tuple(
-            json.loads(str(value)) for value in archive["hypothesis_metadata_json"]
-        )
-        bank = JointRolloutBank(
-            hypothesis_ids=tuple(map(str, archive["hypothesis_ids"])),
-            hypothesis_metadata=metadata,
-            hypothesis_prior_weights=np.asarray(
-                archive["hypothesis_prior_weights"], dtype=float
-            ),
-            parameter_particles=np.asarray(archive["parameter_particles"], dtype=float),
-            parameter_weights=np.asarray(archive["parameter_weights"], dtype=float),
-            trajectories=np.asarray(archive["trajectories"], dtype=np.float32),
-            variance_floor_m2=float(archive["variance_floor_m2"]),
-            confidence_level=float(archive["confidence_level"]),
-        )
-        manifest = json.loads(str(archive["manifest_json"]))
-    return bank, manifest
