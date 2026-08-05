@@ -89,7 +89,7 @@ jobs:
         run: |
           set -o pipefail
           python -m pytest -ra \
-            --ignore=tests/test_belief_provider_v2_contract.py \
+            --deselect=tests/test_belief_provider_v2_contract.py \
             | tee external-forecast-validation/core-tests.log
 
       - name: Build and inspect distributions
