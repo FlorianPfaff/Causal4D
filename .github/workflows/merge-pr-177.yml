@@ -1,0 +1,42 @@
+name: Merge current main into PR 177
+
+on:
+  push:
+    branches: [ci/merge-pr-177]
+    paths: [.github/workflows/merge-pr-177.yml]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: merge-pr-177
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the exact pull-request branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/harden-immutable-artifacts-provider-registry
+          fetch-depth: 0
+          persist-credentials: true
+          clean: true
+
+      - name: Merge current main and verify the reconciliation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-edit origin/main
+          git diff --check
+          grep -F "strict non-pickled physical evaluation target" CHANGELOG.md
+          grep -F "Replace mutable \`dict\`/\`list\` subclasses" CHANGELOG.md
+          test -z "$(git diff --name-only --diff-filter=U)"
+
+      - name: Push the conflict-free merge commit
+        run: git push origin HEAD:agent/harden-immutable-artifacts-provider-registry
