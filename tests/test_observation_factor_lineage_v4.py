@@ -69,9 +69,7 @@ def _write_bundle(
         factor_0000__association_probability=np.asarray(
             [0.9, 0.8], dtype=np.float64
         ),
-        factor_0000__prior_reliability=np.asarray(
-            [0.7, 0.6], dtype=np.float64
-        ),
+        factor_0000__prior_reliability=np.asarray([0.7, 0.6], dtype=np.float64),
     )
     gauge_ids = ["window-0", "window-1"]
     record = {
@@ -109,9 +107,7 @@ def _write_bundle(
             "ordered_gauge_ids": (
                 gauge_ids if ordered_gauge_ids is None else ordered_gauge_ids
             ),
-            "cross_window_covariance_preserved": (
-                semantics == JOINT_GAUGE_COVARIANCE
-            ),
+            "cross_window_covariance_preserved": (semantics == JOINT_GAUGE_COVARIANCE),
             "diagonal_blocks_match_gauge_marginals": True,
         },
         "factors": [
@@ -155,9 +151,10 @@ def test_loads_schema_v4_joint_covariance_and_binds_semantics(tmp_path: Path) ->
     assert lineage.gauge_covariance_semantics == JOINT_GAUGE_COVARIANCE
     assert lineage.cross_window_gauge_covariance_preserved
     assert lineage.gauge_count == 2
-    assert lineage.metadata()[
-        "source_observation_factor_gauge_covariance_semantics"
-    ] == JOINT_GAUGE_COVARIANCE
+    assert (
+        lineage.metadata()["source_observation_factor_gauge_covariance_semantics"]
+        == JOINT_GAUGE_COVARIANCE
+    )
     assert lineage.artifact_id == compute_observation_factor_bundle_id(
         file_sha256(manifest),
         lineage.payload_sha256,
