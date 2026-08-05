@@ -4,6 +4,14 @@
 
 ### Added
 
+- Add a locked, source-only Deform360 filament-support boundary that preserves
+  exact registered graphs on connected resets and applies a deterministic
+  component-level minimum-spanning bridge only to the frozen disconnected
+  filament resets.
+- Bind the structure candidate to the completed observed-reset result, require
+  exact common-case parity and predeclared bridge/locality and same-object
+  geometry gates, and keep mechanics rescoring, calibration, and target data
+  closed.
 - Add a locked source-only Deform360 contact/support mechanism diagnostic that
   reproduces the archived backend before comparing support-height, visual
   contact-patch, source-fitted opening-schedule, and no-contact controls across

@@ -1,0 +1,54 @@
+{
+  "artifact_kind": "Deform360SourceFilamentSupportConfig",
+  "config": {
+    "expected_registered_failure_episode_count": 7,
+    "expected_registered_failure_reset_count": 8,
+    "expected_registered_success_reset_count": 28,
+    "expected_total_reset_count": 36,
+    "maximum_bridge_to_local_scale_ratio": 12.0,
+    "maximum_component_count_before_bridge": 4,
+    "maximum_edge_length_coefficient_of_variation": 0.05,
+    "maximum_horizon_observation_count": 6,
+    "maximum_repaired_length_ratio_to_object_median": 1.25,
+    "maximum_repaired_p95_ratio_to_object_q95": 1.5,
+    "maximum_single_bridge_fraction_of_centerline_length": 0.25,
+    "maximum_total_bridge_fraction_of_centerline_length": 0.35,
+    "minimum_repaired_length_ratio_to_object_median": 0.75,
+    "node_count": 21,
+    "policy_order": [
+      "registered_v1",
+      "component_bridge_v1"
+    ],
+    "primary_construction": "maximum_knn_component_mst_bridge_then_registered_refinement_v1",
+    "primary_policy": "component_bridge_v1",
+    "registered_policy": "registered_v1",
+    "reset_count": 3,
+    "reset_selection": "availability_only_evenly_spaced_including_prefix_and_latest_eligible",
+    "selected_object_ids": [
+      "002-rope-silk",
+      "081-stripe-rope"
+    ]
+  },
+  "config_sha256": "657d03d0985dffe5fbe84f978d55fa74383b8368dcd3dedfa7ec119c585a52d2",
+  "information_boundary": {
+    "calibration_outcomes_allowed": false,
+    "registered_method_mutable": false,
+    "registered_reset_result_mutable": false,
+    "source_candidate_outcomes_allowed_for_identity_only": true,
+    "source_future_geometry_allowed_for_structure_scoring": true,
+    "source_only": true,
+    "target_future_allowed": false,
+    "target_prefix_allowed": false
+  },
+  "prior_reset_mechanics": {
+    "config_file_sha256": "c698d501505f8e9ba981d162d4978775c3708da548f5b89e5d6b777167e58667",
+    "config_sha256": "954201786e456d3533a4422128da4a7fff6eafd06f35b08ca27455be2c1f2a5a",
+    "result_content_sha256": "58d306eb513df8812ffacd509c90d39319f1c51e0e0064108ff44805884678d8",
+    "summary_content_sha256": "a358cbfef6f97f2e7d3356ae3e270c920d8da2de8bc049847ef47dbad7b92e2f",
+    "summary_file_sha256": "803f609458d5b27a7f54693fb2bd5bf1e2e3839d51f4b883c17a9b0b829465d7"
+  },
+  "protocol_config_sha256": "f0aab308345807b2183f653306a062d4ad0295584b6b283deb99d29b3c247934",
+  "required_parent_commit": "b6ac681b3cbeed077beb0059be88f041d312c969",
+  "schema_version": 1,
+  "source_milestone_manifest_sha256": "594107433cda1be386210df85e150796240255f91e25436e43d21c0911e9ffa2"
+}
