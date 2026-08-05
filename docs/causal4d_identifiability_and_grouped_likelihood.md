@@ -112,12 +112,15 @@ The physical simulator trajectories remain immutable.
 ## Command-line use
 
 The factual-abduction CLI can construct frame-grouped evidence directly from
-the permitted object tracks:
+the permitted object tracks. Legacy pickle input is admitted only with explicit
+consent and a digest checked before deserialization:
 
 ```bash
 causal4d experiment phystwin abduct-intervention \
   known.bank.npz belief.npz CASE/final_data.pkl \
   factual.npz factual_eval.json \
+  --allow-unsafe-pickle \
+  --expected-final-data-sha256 <lowercase-sha256> \
   --grouped-observation-likelihood \
   --prior-nominal-probability 0.95 \
   --outlier-scale-multiplier 100
@@ -131,6 +134,8 @@ arrays. Guarded use is:
 causal4d experiment phystwin abduct-intervention \
   known.bank.npz belief.npz CASE/final_data.pkl \
   factual.npz factual_eval.json \
+  --allow-unsafe-pickle \
+  --expected-final-data-sha256 <lowercase-sha256> \
   --grouped-observation-likelihood \
   --identifiability-npz source_identifiability.npz \
   --abstain-when-unidentifiable
@@ -138,7 +143,9 @@ causal4d experiment phystwin abduct-intervention \
 
 The sensitivity artifact must be fitted or generated without the target
 continuation. Threshold flags are explicit CLI inputs so a protocol can freeze
-them before target outcomes are opened.
+them before target outcomes are opened. Consent and an expected digest do not
+make an untrusted pickle safe; new acquisition pipelines should use data-only
+prefix artifacts.
 
 ## Required protocol usage
 
