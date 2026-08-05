@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Select a local Python matching the frozen Deform360 GPU runtime."""
+"""Select a local Python matching the Deform360 reproduction runtime."""
 
 from __future__ import annotations
 
@@ -35,10 +35,10 @@ _ENVIRONMENT_PATH = (
     / "verification"
     / "environment.json"
 )
-_ERRATUM_PATH = (
+_REPRODUCTION_RUNTIME_PATH = (
     Path("configs")
     / "causal4d_public"
-    / "deform360_source_backend_runtime_erratum_v1.json"
+    / "deform360_source_backend_reproduction_runtime_v1.json"
 )
 _PROBE = r"""
 from __future__ import annotations
@@ -145,26 +145,33 @@ def _require_sha256(value: Any, *, name: str) -> str:
 
 
 def _validate_file_evidence(repository_root: Path, record: Mapping[str, Any]) -> Path:
+    required = frozenset({"path", "sha256", "fact"})
+    if "captured_at" in record:
+        required |= {"captured_at"}
     _require_exact_fields(
         record,
-        required=frozenset({"path", "sha256", "fact"})
-        | ({"captured_at"} if "captured_at" in record else frozenset()),
-        name="runtime-erratum file evidence",
+        required=required,
+        name="reproduction-runtime file evidence",
     )
     relative = record.get("path")
     if type(relative) is not str or not relative:
-        raise ValueError("runtime-erratum evidence path must be a nonempty string")
+        raise ValueError("reproduction-runtime evidence path must be nonempty")
+    fact = record.get("fact")
+    if type(fact) is not str or not fact:
+        raise ValueError("reproduction-runtime evidence fact must be nonempty")
     path = repository_root / relative
     expected_sha = _require_sha256(
         record.get("sha256"),
-        name="runtime-erratum evidence sha256",
+        name="reproduction-runtime evidence sha256",
     )
     if not path.is_file() or path.is_symlink():
-        raise ValueError(f"runtime-erratum evidence is not an ordinary file: {path}")
+        raise ValueError(
+            f"reproduction-runtime evidence is not an ordinary file: {path}"
+        )
     observed_sha = _sha256_file(path)
     if observed_sha != expected_sha:
         raise ValueError(
-            f"runtime-erratum evidence checksum changed for {path}: "
+            f"reproduction-runtime evidence checksum changed for {path}: "
             f"expected {expected_sha}, observed {observed_sha}"
         )
     return path
@@ -174,103 +181,107 @@ def _load_runtime_lock(
     repository_root: Path,
 ) -> tuple[dict[str, str], dict[str, Any]]:
     environment_path = repository_root / _ENVIRONMENT_PATH
-    payload = _strict_json_object(environment_path)
-    expected: dict[str, str] = {}
+    recorded_environment = _strict_json_object(environment_path)
+    recorded_runtime: dict[str, str] = {}
     for key in _EXPECTED_KEYS:
-        value = payload.get(key)
+        value = recorded_environment.get(key)
         if type(value) is not str or not value:
-            raise ValueError(f"runtime lock {key} must be a nonempty string")
-        expected[key] = value
+            raise ValueError(f"recorded runtime {key} must be a nonempty string")
+        recorded_runtime[key] = value
 
-    erratum_path = repository_root / _ERRATUM_PATH
-    erratum = _strict_json_object(erratum_path)
+    contract_path = repository_root / _REPRODUCTION_RUNTIME_PATH
+    contract = _strict_json_object(contract_path)
     _require_exact_fields(
-        erratum,
+        contract,
         required=frozenset(
             {
                 "schema_version",
                 "artifact_kind",
                 "status",
-                "original_environment",
-                "corrections",
-                "unchanged_runtime",
+                "recorded_runtime",
+                "candidate_runtime",
                 "evidence",
                 "boundary",
                 "content_sha256",
             }
         ),
-        name="runtime erratum",
+        name="reproduction-runtime contract",
     )
-    if erratum.get("schema_version") != 1:
-        raise ValueError("unsupported runtime-erratum schema version")
-    if erratum.get("artifact_kind") != "Deform360SourceBackendRuntimeErratum":
-        raise ValueError("unsupported runtime-erratum artifact kind")
-    if erratum.get("status") != "additive-provenance-correction":
-        raise ValueError("runtime erratum is not an additive provenance correction")
-    recorded_content_sha = _require_sha256(
-        erratum.get("content_sha256"),
-        name="runtime-erratum content_sha256",
+    if contract.get("schema_version") != 1:
+        raise ValueError("unsupported reproduction-runtime schema version")
+    if contract.get("artifact_kind") != (
+        "Deform360SourceBackendReproductionRuntimeDeviation"
+    ):
+        raise ValueError("unsupported reproduction-runtime artifact kind")
+    if contract.get("status") != "conditional-reproduction-runtime-deviation":
+        raise ValueError("runtime deviation is not conditional reproduction evidence")
+    contract_sha256 = _require_sha256(
+        contract.get("content_sha256"),
+        name="reproduction-runtime content_sha256",
     )
-    canonical = dict(erratum)
+    canonical = dict(contract)
     canonical.pop("content_sha256")
-    if _canonical_sha256(canonical) != recorded_content_sha:
-        raise ValueError("runtime-erratum content checksum changed")
+    if _canonical_sha256(canonical) != contract_sha256:
+        raise ValueError("reproduction-runtime content checksum changed")
 
-    original = erratum.get("original_environment")
-    if not isinstance(original, Mapping):
-        raise ValueError("runtime-erratum original_environment must be a mapping")
+    recorded = contract.get("recorded_runtime")
+    if not isinstance(recorded, Mapping):
+        raise ValueError("recorded_runtime must be a mapping")
     _require_exact_fields(
-        original,
-        required=frozenset({"path", "sha256", "recorded_numpy"}),
-        name="runtime-erratum original_environment",
+        recorded,
+        required=frozenset({"path", "sha256", "values"}),
+        name="recorded runtime",
     )
-    if original.get("path") != str(_ENVIRONMENT_PATH):
-        raise ValueError("runtime erratum identifies another environment lock")
-    expected_environment_sha = _require_sha256(
-        original.get("sha256"),
-        name="original environment sha256",
+    if recorded.get("path") != str(_ENVIRONMENT_PATH):
+        raise ValueError("reproduction contract identifies another environment lock")
+    environment_sha256 = _require_sha256(
+        recorded.get("sha256"),
+        name="recorded environment sha256",
     )
-    if _sha256_file(environment_path) != expected_environment_sha:
-        raise ValueError("original source-backend environment lock changed")
-    if original.get("recorded_numpy") != expected["numpy"]:
-        raise ValueError("runtime erratum no longer matches the recorded NumPy value")
-
-    corrections = erratum.get("corrections")
-    if not isinstance(corrections, Mapping) or set(corrections) != {"numpy"}:
-        raise ValueError("runtime erratum may correct only the NumPy field")
-    numpy_correction = corrections["numpy"]
-    if not isinstance(numpy_correction, Mapping):
-        raise ValueError("runtime-erratum NumPy correction must be a mapping")
+    if _sha256_file(environment_path) != environment_sha256:
+        raise ValueError("recorded source-backend environment lock changed")
+    recorded_values = recorded.get("values")
+    if not isinstance(recorded_values, Mapping):
+        raise ValueError("recorded runtime values must be a mapping")
     _require_exact_fields(
-        numpy_correction,
-        required=frozenset({"recorded", "corrected"}),
-        name="runtime-erratum NumPy correction",
+        recorded_values,
+        required=frozenset(_EXPECTED_KEYS),
+        name="recorded runtime values",
     )
-    if numpy_correction.get("recorded") != expected["numpy"]:
-        raise ValueError("runtime-erratum recorded NumPy value changed")
-    corrected_numpy = numpy_correction.get("corrected")
-    if corrected_numpy != "1.26.4":
-        raise ValueError("runtime-erratum corrected NumPy value changed")
+    for key in _EXPECTED_KEYS:
+        if recorded_values.get(key) != recorded_runtime[key]:
+            raise ValueError(f"recorded runtime no longer matches {key}")
 
-    unchanged = erratum.get("unchanged_runtime")
-    if not isinstance(unchanged, Mapping):
-        raise ValueError("runtime-erratum unchanged_runtime must be a mapping")
+    candidate = contract.get("candidate_runtime")
+    if not isinstance(candidate, Mapping):
+        raise ValueError("candidate_runtime must be a mapping")
     _require_exact_fields(
-        unchanged,
-        required=frozenset(set(_EXPECTED_KEYS) - {"numpy"}),
-        name="runtime-erratum unchanged runtime",
+        candidate,
+        required=frozenset(_EXPECTED_KEYS),
+        name="candidate runtime",
     )
-    for key, value in unchanged.items():
-        if value != expected[key]:
-            raise ValueError(f"runtime erratum unexpectedly changes {key}")
+    candidate_runtime: dict[str, str] = {}
+    for key in _EXPECTED_KEYS:
+        value = candidate.get(key)
+        if type(value) is not str or not value:
+            raise ValueError(f"candidate runtime {key} must be a nonempty string")
+        if key != "numpy" and value != recorded_runtime[key]:
+            raise ValueError(f"candidate runtime unexpectedly changes {key}")
+        candidate_runtime[key] = value
+    if candidate_runtime["numpy"] != "1.26.4":
+        raise ValueError("candidate NumPy version changed")
+    if candidate_runtime["numpy"] == recorded_runtime["numpy"]:
+        raise ValueError("candidate runtime does not declare a NumPy deviation")
 
-    evidence = erratum.get("evidence")
+    evidence = contract.get("evidence")
     if not isinstance(evidence, list) or len(evidence) != 3:
-        raise ValueError("runtime erratum must contain exactly three evidence records")
+        raise ValueError(
+            "reproduction-runtime contract must contain exactly three evidence records"
+        )
     command_path = _validate_file_evidence(repository_root, evidence[0])
     command_text = command_path.read_text(encoding="utf-8")
     if "/home/florianpfaff/.venvs/bpt-gpu/bin/python -m pytest" not in command_text:
-        raise ValueError("runtime erratum lost the archived interpreter command")
+        raise ValueError("runtime evidence lost the archived interpreter command")
     freeze_path = _validate_file_evidence(repository_root, evidence[1])
     freeze_lines = set(freeze_path.read_text(encoding="utf-8").splitlines())
     for line in (
@@ -280,29 +291,31 @@ def _load_runtime_lock(
         "warp-lang==1.15.0",
     ):
         if line not in freeze_lines:
-            raise ValueError(f"runtime erratum evidence no longer contains {line}")
+            raise ValueError(f"runtime evidence no longer contains {line}")
     workflow_record = evidence[2]
     if not isinstance(workflow_record, Mapping):
-        raise ValueError("runtime-erratum workflow evidence must be a mapping")
+        raise ValueError("workflow runtime evidence must be a mapping")
     _require_exact_fields(
         workflow_record,
         required=frozenset(
             {"workflow_run_id", "artifact_id", "artifact_sha256", "fact"}
         ),
-        name="runtime-erratum workflow evidence",
+        name="workflow runtime evidence",
     )
     if workflow_record.get("workflow_run_id") != 30970401038:
-        raise ValueError("runtime-erratum workflow identity changed")
+        raise ValueError("workflow runtime identity changed")
     if workflow_record.get("artifact_id") != 8916348471:
-        raise ValueError("runtime-erratum artifact identity changed")
+        raise ValueError("workflow artifact identity changed")
     _require_sha256(
         workflow_record.get("artifact_sha256"),
-        name="runtime-erratum workflow artifact sha256",
+        name="workflow artifact sha256",
     )
 
-    boundary = erratum.get("boundary")
+    boundary = contract.get("boundary")
     expected_boundary = {
+        "interpretation_permitted_only_after_zero_baseline_reproduction": True,
         "original_milestone_files_rewritten": False,
+        "recorded_runtime_relabelled": False,
         "scientific_artifacts_changed": False,
         "scores_or_decisions_changed": False,
         "target_future_access_permitted": False,
@@ -310,18 +323,26 @@ def _load_runtime_lock(
         "zero_baseline_reproduction_required": True,
     }
     if boundary != expected_boundary:
-        raise ValueError("runtime-erratum scientific boundary changed")
+        raise ValueError("reproduction-runtime scientific boundary changed")
 
-    expected["numpy"] = corrected_numpy
     provenance = {
-        "environment_path": str(_ENVIRONMENT_PATH),
-        "environment_sha256": expected_environment_sha,
-        "erratum_path": str(_ERRATUM_PATH),
-        "erratum_sha256": recorded_content_sha,
-        "correction": {"numpy": {"recorded": "2.5.1", "effective": "1.26.4"}},
+        "status": "conditional-reproduction-runtime-deviation",
+        "recorded_environment_path": str(_ENVIRONMENT_PATH),
+        "recorded_environment_sha256": environment_sha256,
+        "recorded_runtime": recorded_runtime,
+        "reproduction_runtime_contract_path": str(_REPRODUCTION_RUNTIME_PATH),
+        "reproduction_runtime_contract_sha256": contract_sha256,
+        "candidate_runtime": candidate_runtime,
+        "deviation": {
+            "numpy": {
+                "recorded": recorded_runtime["numpy"],
+                "candidate": candidate_runtime["numpy"],
+            }
+        },
+        "interpretation_permitted_only_after_zero_baseline_reproduction": True,
         "zero_baseline_reproduction_required": True,
     }
-    return expected, provenance
+    return candidate_runtime, provenance
 
 
 def _expected_runtime(repository_root: Path) -> dict[str, str]:
@@ -333,7 +354,7 @@ def runtime_mismatches(
     expected: Mapping[str, str],
     observed: Mapping[str, Any],
 ) -> list[str]:
-    """Return exact frozen-runtime mismatches for one interpreter probe."""
+    """Return exact reproduction-runtime mismatches for one interpreter probe."""
 
     mismatches = [
         f"{key}: expected {expected[key]!r}, observed {observed.get(key)!r}"
@@ -461,7 +482,7 @@ def main() -> None:
             )
             for record in records
         )
-        raise SystemExit(f"no interpreter matches the frozen GPU runtime: {rendered}")
+        raise SystemExit(f"no interpreter matches the reproduction runtime: {rendered}")
     selected_text = str(selected)
     if re.fullmatch(r"[^\n\r]+", selected_text) is None:
         raise SystemExit("selected interpreter path contains a newline")
