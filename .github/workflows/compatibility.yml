@@ -39,6 +39,7 @@ jobs:
         run: |
           set -euo pipefail
           candidates=(
+            /home/florianpfaff/.venvs/bpt-gpu/bin/python
             /home/github-runner/.venvs/bpt-gpu/bin/python
             /home/github-runner/.cache/venvs/bpt-gpu/bin/python
             /home/github-runner/miniconda3/envs/bpt-gpu/bin/python
@@ -55,8 +56,18 @@ jobs:
           echo "No runner Python with pip is available" >&2
           exit 1
       - name: Install development dependencies
+        shell: bash
         run: |
-          "$AGENT_PYTHON" -m pip install -e ".[dev]" pyyaml
+          set -euo pipefail
+          if [[ "$AGENT_PYTHON" == /usr/bin/python3 ]]; then
+            "$AGENT_PYTHON" -m pip install \
+              --user \
+              --break-system-packages \
+              -e ".[dev]" \
+              pyyaml
+          else
+            "$AGENT_PYTHON" -m pip install -e ".[dev]" pyyaml
+          fi
       - name: Apply and format focused patch
         run: |
           "$AGENT_PYTHON" scripts/ci/agent_apply_public_provider_ci.py
@@ -194,9 +205,9 @@ jobs:
           }
           actual = {name: version(name) for name in expected}
           if actual != expected:
-            raise SystemExit(
-                f"minimum-dependency environment drifted: {actual!r} != {expected!r}"
-            )
+              raise SystemExit(
+                  f"minimum-dependency environment drifted: {actual!r} != {expected!r}"
+              )
           PY
       - name: Assert optional runtimes are absent
         run: |
