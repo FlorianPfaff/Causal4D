@@ -70,20 +70,34 @@ jobs:
           PY
           python /tmp/apply_agent_hardening.py
 
-      - name: Pin the static-analysis target to Python 3.12
+      - name: Pin static analysis and complete the typing ratchet
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
-          path = Path(".github/workflows/ci.yml")
-          text = path.read_text(encoding="utf-8")
-          old = "python -m mypy \\\n"
-          new = "python -m mypy --python-version 3.12 \\\n"
-          if old not in text:
+          workflow_path = Path(".github/workflows/ci.yml")
+          workflow_text = workflow_path.read_text(encoding="utf-8")
+          old_command = "python -m mypy \\\n"
+          new_command = "python -m mypy --python-version 3.12 \\\n"
+          if old_command not in workflow_text:
               raise SystemExit("CI mypy invocation was not found")
-          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          workflow_path.write_text(
+              workflow_text.replace(old_command, new_command, 1),
+              encoding="utf-8",
+          )
+
+          script_path = Path("scripts/ci/run_self_hosted_evaluation.py")
+          script_text = script_path.read_text(encoding="utf-8")
+          old_annotation = "    array = np.asarray(values, dtype=float)\n"
+          new_annotation = "    array: np.ndarray = np.asarray(values, dtype=float)\n"
+          if script_text.count(old_annotation) != 1:
+              raise SystemExit("bootstrap array assignment was not found exactly once")
+          script_path.write_text(
+              script_text.replace(old_annotation, new_annotation, 1),
+              encoding="utf-8",
+          )
           PY
 
       - name: Remove one-shot executor before validation
