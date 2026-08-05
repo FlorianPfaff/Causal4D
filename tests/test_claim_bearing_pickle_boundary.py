@@ -31,9 +31,7 @@ def test_claim_bearing_commands_do_not_import_pickle_directly() -> None:
                         violations.append(f"{path}:{node.lineno}: import pickle")
             elif isinstance(node, ast.ImportFrom) and node.module == "pickle":
                 violations.append(f"{path}:{node.lineno}: from pickle import ...")
-    message = "claim-bearing commands import pickle directly:\n" + "\n".join(
-        violations
-    )
+    message = "claim-bearing commands import pickle directly:\n" + "\n".join(violations)
     assert not violations, message
 
 
