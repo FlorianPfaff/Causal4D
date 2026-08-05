@@ -6,7 +6,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "deform360-prefix-kinematics.yml"
+TEMPORARY_WORKFLOW = (
+    ROOT
+    / ".github"
+    / "workflows"
+    / "temporary-deform360-prefix-kinematics-evidence.yml"
+)
 PROTOCOL = ROOT / "configs" / "causal4d_public" / "deform360_replication_v1.json"
+SELECTOR = (
+    ROOT / "scripts" / "remote" / "select_deform360_prefix_kinematics_python.py"
+)
 
 
 def test_prefix_kinematics_workflow_is_read_only_and_review_safe() -> None:
@@ -31,8 +40,31 @@ def test_prefix_kinematics_gpu_evidence_requires_explicit_dispatch() -> None:
     assert "runs-on: [self-hosted, Linux, X64, nvidia-smi]" in text
     assert "BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}" in text
     assert "ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}" in text
-    assert text.count("Set up Python 3.12") >= 2
+    assert text.count("Set up Python 3.12") == 1
     assert "continue-on-error: true" not in text
+
+
+def test_gpu_jobs_reuse_only_the_exact_frozen_python_runtime() -> None:
+    permanent = WORKFLOW.read_text(encoding="utf-8")
+    temporary = TEMPORARY_WORKFLOW.read_text(encoding="utf-8")
+    shell = (
+        ROOT / "scripts" / "remote" / "run_deform360_prefix_kinematics_workflow.sh"
+    ).read_text(encoding="utf-8")
+
+    for text in (permanent, temporary):
+        assert "select_deform360_prefix_kinematics_python.py" in text
+        assert "python-selection.json" in text
+        assert "PREFIX_KINEMATICS_PYTHON=" in text
+        assert text.index("Initialize source-evidence directory") < text.index(
+            "Require BayesianPhysTwin read access"
+        )
+        assert "if: always()" in text
+    assert "Probe archived GPU interpreter locations" not in temporary
+    assert "actions/setup-python" not in temporary
+    assert 'python_bin="${PREFIX_KINEMATICS_PYTHON:-python3}"' in shell
+    assert '"$python_bin" -m pytest' in shell
+    assert '"$python_bin" "$repository_root/scripts/remote/' in shell
+    assert SELECTOR.is_file()
 
 
 def test_prefix_kinematics_workflow_separates_code_and_dataset_pins() -> None:
