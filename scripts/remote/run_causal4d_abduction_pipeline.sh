@@ -51,6 +51,8 @@ run -m causal4d.cli.abduct_phystwin_intervention \
   "${case_dir}/final_data.pkl" \
   "${output}/factual.npz" \
   "${output}/factual_evaluation.json" \
+  --allow-unsafe-pickle \
+  --expected-final-data-sha256 "${final_data_sha256}" \
   --o-plus-prefix-frames "${prefix_frames}"
 
 for specification in "known_action:same_grasp" "history_reverse:new_contact"; do
