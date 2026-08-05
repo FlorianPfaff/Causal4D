@@ -48,24 +48,20 @@ def test_prefix_kinematics_gpu_evidence_requires_explicit_dispatch() -> None:
     assert "continue-on-error: true" not in text
 
 
-def test_gpu_jobs_use_only_the_conditional_reproduction_runtime() -> None:
-    permanent = WORKFLOW.read_text(encoding="utf-8")
-    temporary = TEMPORARY_WORKFLOW.read_text(encoding="utf-8")
+def test_permanent_gpu_job_uses_the_conditional_reproduction_runtime() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
     shell = (
         ROOT / "scripts" / "remote" / "run_deform360_prefix_kinematics_workflow.sh"
     ).read_text(encoding="utf-8")
 
-    assert "deform360_source_backend_reproduction_runtime_v1.json" in permanent
-    for text in (permanent, temporary):
-        assert "select_deform360_prefix_kinematics_python.py" in text
-        assert "python-selection.json" in text
-        assert "PREFIX_KINEMATICS_PYTHON=" in text
-        assert text.index("Initialize source-evidence directory") < text.index(
-            "Require BayesianPhysTwin read access"
-        )
-        assert "if: always()" in text
-    assert "Probe archived GPU interpreter locations" not in temporary
-    assert "actions/setup-python" not in temporary
+    assert "deform360_source_backend_reproduction_runtime_v1.json" in text
+    assert "select_deform360_prefix_kinematics_python.py" in text
+    assert "python-selection.json" in text
+    assert "PREFIX_KINEMATICS_PYTHON=" in text
+    assert text.index("Initialize source-evidence directory") < text.index(
+        "Require BayesianPhysTwin read access"
+    )
+    assert "if: always()" in text
     assert 'python_bin="${PREFIX_KINEMATICS_PYTHON:-python3}"' in shell
     assert '"$python_bin" -m pytest' in shell
     assert '"$python_bin" "$repository_root/scripts/remote/' in shell
@@ -73,6 +69,10 @@ def test_gpu_jobs_use_only_the_conditional_reproduction_runtime() -> None:
     assert "runtime_provenance" in shell
     assert SELECTOR.is_file()
     assert REPRODUCTION_RUNTIME.is_file()
+
+
+def test_completed_one_shot_evidence_workflow_is_removed() -> None:
+    assert not TEMPORARY_WORKFLOW.exists()
 
 
 def test_prefix_kinematics_workflow_separates_code_and_dataset_pins() -> None:
