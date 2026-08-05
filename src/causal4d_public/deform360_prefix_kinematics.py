@@ -9,6 +9,8 @@ from typing import Any
 
 import numpy as np
 
+from causal4d.immutable_array import readonly_array
+
 from .deform360_replication_graph import Deform360SparseGraph
 
 
@@ -42,9 +44,7 @@ def _positive_integer(value: Any, *, name: str) -> int:
 
 
 def _readonly(values: np.ndarray, *, dtype: np.dtype[Any] | type[Any]) -> np.ndarray:
-    result = np.asarray(values, dtype=dtype).copy()
-    result.setflags(write=False)
-    return result
+    return readonly_array(values, dtype=dtype)
 
 
 def _edge_graph_is_connected(node_count: int, edges: np.ndarray) -> bool:

@@ -48,8 +48,7 @@ def _normalized_weights(values: np.ndarray, *, name: str) -> np.ndarray:
     if total <= 0.0:
         raise ValueError(f"{name} must have positive mass")
     normalized = weights / total
-    normalized.setflags(write=False)
-    return normalized
+    return _readonly_array(normalized)
 
 
 def _validated_joint_weights(
@@ -236,8 +235,7 @@ class SparseTrajectoryEvidence:
                 raise ValueError(
                     "evidence validity must have shape (F, Q) or (F, Q, C)"
                 )
-            valid.setflags(write=False)
-            object.__setattr__(self, "valid", valid)
+            object.__setattr__(self, "valid", _readonly_array(valid, dtype=bool))
         if self.compare_displacements:
             if self.anchor_positions_m is None:
                 raise ValueError("displacement evidence requires anchor_positions_m")

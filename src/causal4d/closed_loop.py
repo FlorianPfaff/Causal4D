@@ -52,9 +52,7 @@ def _validated_graph_discrepancy_state(
         raise ValueError(
             f"{owner} graph discrepancy covariance must be positive semidefinite"
         )
-    mean.setflags(write=False)
-    covariance.setflags(write=False)
-    return mean, covariance
+    return readonly_array(mean), readonly_array(covariance)
 
 
 @dataclass(frozen=True)
@@ -209,7 +207,7 @@ class RecursivePhysicalBelief:
             component_count=len(component),
             owner="recursive",
         )
-        for values in (
+        (
             component,
             particle_indices,
             phi_support,
@@ -219,8 +217,20 @@ class RecursivePhysicalBelief:
             particles,
             phi,
             kappa,
-        ):
-            values.setflags(write=False)
+        ) = tuple(
+            readonly_array(values)
+            for values in (
+                component,
+                particle_indices,
+                phi_support,
+                kappa_support,
+                state_position,
+                state_velocity,
+                particles,
+                phi,
+                kappa,
+            )
+        )
         object.__setattr__(self, "component_weights", component)
         object.__setattr__(self, "twin_particle_indices", particle_indices)
         object.__setattr__(self, "phi_support", phi_support)

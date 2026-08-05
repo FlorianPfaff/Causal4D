@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Sequence
 
@@ -43,7 +44,7 @@ def _default_phi_values(bank: JointRolloutBank) -> np.ndarray:
     rows = []
     for metadata in bank.hypothesis_metadata:
         contact = metadata.get("contact")
-        if not isinstance(contact, dict):
+        if not isinstance(contact, Mapping):
             raise ValueError("hypothesis metadata is missing contact variables")
         rows.append(
             (

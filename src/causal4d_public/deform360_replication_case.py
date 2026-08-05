@@ -8,6 +8,8 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from causal4d.immutable_array import readonly_array
+
 from .deform360_replication_graph import build_sparse_graph_for_stratum
 from .deform360_replication_warp import (
     Deform360WarpForecastCase,
@@ -45,9 +47,7 @@ class ReplicationWarpObservation:
             > int(frames[-1]) - self.prefix_endpoint_frame,
             "case does not reach the final hull",
         )
-        copied = frames.copy()
-        copied.setflags(write=False)
-        object.__setattr__(self, "raw_hull_frame_indices", copied)
+        object.__setattr__(self, "raw_hull_frame_indices", readonly_array(frames))
 
 
 def _robot_arrays(state: Any) -> tuple[np.ndarray, np.ndarray]:
@@ -138,9 +138,9 @@ def build_replication_warp_observation(
             taxels = gripper_taxel_points(
                 float(openings[raw_frame, axis]), transforms[raw_frame, axis]
             )
-            controllers[output_index, axis] = np.mean(
-                taxels[selected_taxels[axis]], axis=0
-            ) + offsets[axis]
+            controllers[output_index, axis] = (
+                np.mean(taxels[selected_taxels[axis]], axis=0) + offsets[axis]
+            )
     case = Deform360WarpForecastCase(
         episode_id=episode_id,
         graph=graph,
@@ -192,12 +192,8 @@ def score_constant_persistence(
         "future hull references are required for scoring",
     )
     count = len(observation.reference_hulls_m) - 1
-    prediction = np.repeat(
-        observation.case.graph.positions_m[None], count, axis=0
-    )
-    return sparse_trajectory_chamfer_m(
-        observation.reference_hulls_m[1:], prediction
-    )
+    prediction = np.repeat(observation.case.graph.positions_m[None], count, axis=0)
+    return sparse_trajectory_chamfer_m(observation.reference_hulls_m[1:], prediction)
 
 
 __all__ = [

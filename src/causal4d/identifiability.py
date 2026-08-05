@@ -7,6 +7,8 @@ from typing import Sequence
 
 import numpy as np
 
+from causal4d.immutable_array import readonly_array
+
 
 @dataclass(frozen=True)
 class IdentifiabilityConfig:
@@ -27,7 +29,9 @@ class IdentifiabilityConfig:
         if self.maximum_condition_number <= 1.0:
             raise ValueError("maximum_condition_number must exceed one")
         if not 0.0 <= self.minimum_residualized_response_fraction <= 1.0:
-            raise ValueError("minimum_residualized_response_fraction must lie in [0, 1]")
+            raise ValueError(
+                "minimum_residualized_response_fraction must lie in [0, 1]"
+            )
         if not 0.0 <= self.maximum_subspace_cosine <= 1.0:
             raise ValueError("maximum_subspace_cosine must lie in [0, 1]")
         if not 0.0 <= self.maximum_query_null_response_fraction <= 1.0:
@@ -95,11 +99,15 @@ class InterventionIdentifiabilityResult:
                 rtol=1e-10,
             ):
                 raise ValueError(f"{name} must have orthonormal columns")
-        if identified.shape[1] and null.shape[1] and not np.allclose(
-            identified.T @ null,
-            0.0,
-            atol=1e-10,
-            rtol=1e-10,
+        if (
+            identified.shape[1]
+            and null.shape[1]
+            and not np.allclose(
+                identified.T @ null,
+                0.0,
+                atol=1e-10,
+                rtol=1e-10,
+            )
         ):
             raise ValueError("identified and null bases must be orthogonal")
         if self.query_null_response_fraction is not None and not (
@@ -107,11 +115,11 @@ class InterventionIdentifiabilityResult:
             and 0.0 <= self.query_null_response_fraction <= 1.0 + 1e-12
         ):
             raise ValueError("query_null_response_fraction must lie in [0, 1]")
-        information.setflags(write=False)
-        eigenvalues.setflags(write=False)
-        scales.setflags(write=False)
-        identified.setflags(write=False)
-        null.setflags(write=False)
+        information = readonly_array(information)
+        eigenvalues = readonly_array(eigenvalues)
+        scales = readonly_array(scales)
+        identified = readonly_array(identified)
+        null = readonly_array(null)
         object.__setattr__(self, "conditional_information", information)
         object.__setattr__(self, "eigenvalues", eigenvalues)
         object.__setattr__(self, "parameter_scales", scales)
@@ -176,10 +184,20 @@ def finite_response_sensitivity(
     perturbed = np.asarray(perturbed_responses, dtype=float)
     steps = np.asarray(tuple(perturbation_steps), dtype=float)
     if perturbed.ndim != reference.ndim + 1 or perturbed.shape[1:] != reference.shape:
-        raise ValueError("perturbed_responses must have shape (parameter, *reference.shape)")
-    if steps.shape != (len(perturbed),) or np.any(~np.isfinite(steps)) or np.any(steps == 0.0):
-        raise ValueError("perturbation_steps must be finite, nonzero, and match parameters")
-    responses = (perturbed - reference[None]) / steps.reshape((-1,) + (1,) * reference.ndim)
+        raise ValueError(
+            "perturbed_responses must have shape (parameter, *reference.shape)"
+        )
+    if (
+        steps.shape != (len(perturbed),)
+        or np.any(~np.isfinite(steps))
+        or np.any(steps == 0.0)
+    ):
+        raise ValueError(
+            "perturbation_steps must be finite, nonzero, and match parameters"
+        )
+    responses = (perturbed - reference[None]) / steps.reshape(
+        (-1,) + (1,) * reference.ndim
+    )
     if valid is None:
         selected = np.ones(reference.shape, dtype=bool)
     else:
@@ -310,10 +328,14 @@ def assess_intervention_identifiability(
     )
     original_energy = float(np.sum(np.square(intervention)))
     residual_energy = float(np.sum(np.square(residualized)))
-    residual_fraction = residual_energy / original_energy if original_energy > 0.0 else 0.0
+    residual_fraction = (
+        residual_energy / original_energy if original_energy > 0.0 else 0.0
+    )
     if nuisance_basis.shape[1] and intervention_basis.shape[1]:
         maximum_cosine = float(
-            np.max(np.linalg.svd(nuisance_basis.T @ intervention_basis, compute_uv=False))
+            np.max(
+                np.linalg.svd(nuisance_basis.T @ intervention_basis, compute_uv=False)
+            )
         )
     else:
         maximum_cosine = 0.0
@@ -351,7 +373,9 @@ def assess_intervention_identifiability(
             query_fraction <= settings.maximum_query_null_response_fraction
         )
         if not query_identifiable:
-            query_reasons.append("query_depends_on_unidentified_intervention_directions")
+            query_reasons.append(
+                "query_depends_on_unidentified_intervention_directions"
+            )
 
     return InterventionIdentifiabilityResult(
         conditional_information=information,

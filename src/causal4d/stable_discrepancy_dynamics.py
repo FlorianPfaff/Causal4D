@@ -15,15 +15,14 @@ from causal4d.action_conditioned_discrepancy import (
 )
 from causal4d.contracts import array_sha256
 from causal4d.discrepancy_belief import GraphDiscrepancyBelief
+from causal4d.immutable_array import readonly_array
 
 
 TIME_PARAMETERIZATIONS = ("per_step", "per_second")
 
 
 def _readonly(values: np.ndarray) -> np.ndarray:
-    result = np.asarray(values, dtype=float).copy()
-    result.setflags(write=False)
-    return result
+    return readonly_array(values, dtype=float)
 
 
 def _positive_semidefinite(values: np.ndarray) -> np.ndarray:
@@ -115,9 +114,7 @@ class StableDiscrepancyTransitionModel:
             skew = skew / norms[:, None, None]
         skew_weights = np.asarray(self.skew_feature_weights, dtype=float)
         if skew_weights.shape != (len(skew), feature_count):
-            raise ValueError(
-                "skew_feature_weights must have shape (J, feature_count)"
-            )
+            raise ValueError("skew_feature_weights must have shape (J, feature_count)")
 
         contraction = _normalized_rows(
             self.contraction_directions,
@@ -145,9 +142,7 @@ class StableDiscrepancyTransitionModel:
             drift = drift / norms[:, None, None]
         drift_weights = np.asarray(self.drift_feature_weights, dtype=float)
         if drift_weights.shape != (len(drift), feature_count):
-            raise ValueError(
-                "drift_feature_weights must have shape (J, feature_count)"
-            )
+            raise ValueError("drift_feature_weights must have shape (J, feature_count)")
         if not all(
             np.all(np.isfinite(value))
             for value in (skew_weights, contraction_weights, drift_weights)
@@ -352,9 +347,7 @@ def forecast_action_conditioned_dynamics(
                 feature_vector,
                 step_duration_s=duration,
             )
-            mean[component, step + 1] = (
-                transition @ mean[component, step] + drift
-            )
+            mean[component, step + 1] = transition @ mean[component, step] + drift
             if (
                 transition_model.time_parameterization == "per_second"
                 and innovation_model.time_parameterization == "per_second"
@@ -371,10 +364,8 @@ def forecast_action_conditioned_dynamics(
                 )
             for coordinate in range(3):
                 previous = covariance[component, step, coordinate]
-                covariance[component, step + 1, coordinate] = (
-                    _positive_semidefinite(
-                        transition @ previous @ transition.T + innovation
-                    )
+                covariance[component, step + 1, coordinate] = _positive_semidefinite(
+                    transition @ previous @ transition.T + innovation
                 )
 
     readout_mean = np.einsum("nr,khrc->khnc", graph_basis, mean)

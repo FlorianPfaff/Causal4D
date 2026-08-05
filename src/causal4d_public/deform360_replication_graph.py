@@ -7,6 +7,8 @@ from typing import Any
 
 import numpy as np
 
+from causal4d.immutable_array import readonly_array
+
 from .deform360_rope_graph import (
     RopeCenterlineConfig,
     extract_rope_centerline,
@@ -77,9 +79,7 @@ class Deform360SparseGraph:
             ("spring_families", families),
             ("masses", masses),
         ):
-            copied = values.copy()
-            copied.setflags(write=False)
-            object.__setattr__(self, name, copied)
+            object.__setattr__(self, name, readonly_array(values))
 
 
 def _edge_arrays(

@@ -7,6 +7,8 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from causal4d.immutable_array import readonly_array
+
 
 PARAMETER_NAMES = (
     "spring_acceleration_per_m_s2",
@@ -116,18 +118,10 @@ class RopeDynamicsObservation:
             "observation trajectories contain non-finite values",
         )
         _require(self.dt_seconds > 0.0, "frame interval must be positive")
-        positions = positions.copy()
-        controllers = controllers.copy()
-        active = active.copy()
-        offsets = offsets.copy()
-        positions.setflags(write=False)
-        controllers.setflags(write=False)
-        active.setflags(write=False)
-        offsets.setflags(write=False)
-        object.__setattr__(self, "positions_m", positions)
-        object.__setattr__(self, "controller_positions_m", controllers)
-        object.__setattr__(self, "contact_active", active)
-        object.__setattr__(self, "contact_offsets_m", offsets)
+        object.__setattr__(self, "positions_m", readonly_array(positions))
+        object.__setattr__(self, "controller_positions_m", readonly_array(controllers))
+        object.__setattr__(self, "contact_active", readonly_array(active))
+        object.__setattr__(self, "contact_offsets_m", readonly_array(offsets))
 
 
 @dataclass(frozen=True)
@@ -146,9 +140,7 @@ class RopeDynamicsFit:
             "invalid rope parameter covariance shape",
         )
         _require(np.all(np.isfinite(covariance)), "parameter covariance is non-finite")
-        covariance = covariance.copy()
-        covariance.setflags(write=False)
-        object.__setattr__(self, "parameter_covariance", covariance)
+        object.__setattr__(self, "parameter_covariance", readonly_array(covariance))
 
 
 def _chain_force_bases(

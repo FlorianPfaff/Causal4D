@@ -10,7 +10,8 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from causal4d.immutable_json import validated_json_mapping
+from causal4d.immutable_array import readonly_array
+from causal4d.immutable_json import plain_json, validated_json_mapping
 
 from causal4d.contracts import array_sha256
 from causal4d.observation_evidence import GroupedObservationEvidence
@@ -20,9 +21,7 @@ GRAPH_DISCREPANCY_BELIEF_VERSION = 1
 
 
 def _readonly(values: np.ndarray, *, dtype: type | None = float) -> np.ndarray:
-    array = np.asarray(values, dtype=dtype).copy()
-    array.setflags(write=False)
-    return array
+    return readonly_array(values, dtype=dtype)
 
 
 def _validate_sha256(value: str, *, name: str) -> None:
@@ -131,7 +130,7 @@ class GraphDiscrepancyBelief:
             "transition_model_id": self.transition_model_id,
             "innovation_model_id": self.innovation_model_id,
             "source_physical_posterior_id": self.source_physical_posterior_id,
-            "metadata": self.metadata,
+            "metadata": plain_json(self.metadata),
         }
         digest = hashlib.sha256(
             json.dumps(
@@ -254,7 +253,7 @@ def write_graph_discrepancy_belief(
         "transition_model_id": belief.transition_model_id,
         "innovation_model_id": belief.innovation_model_id,
         "source_physical_posterior_id": belief.source_physical_posterior_id,
-        "metadata": belief.metadata,
+        "metadata": plain_json(belief.metadata),
         "payload": {
             "path": payload.name,
             "sha256": _file_sha256(payload),

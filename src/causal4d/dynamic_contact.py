@@ -16,6 +16,7 @@ from typing import Any
 
 import numpy as np
 
+from causal4d.immutable_array import readonly_array
 from causal4d.weighting import log_weights_from_probabilities
 
 
@@ -32,9 +33,7 @@ CONTACT_REGIME_NAMES = tuple(regime.name.lower() for regime in ContactRegime)
 
 
 def _readonly(values: np.ndarray, *, dtype: Any = None) -> np.ndarray:
-    array = np.asarray(values, dtype=dtype).copy()
-    array.setflags(write=False)
-    return array
+    return readonly_array(values, dtype=dtype)
 
 
 def _normalized_weights(values: np.ndarray, *, name: str) -> np.ndarray:

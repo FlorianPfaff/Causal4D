@@ -4,6 +4,13 @@
 
 ### Added
 
+- Add a declarative Bayesian-PhysTwin provider registry that owns the complete
+  versioned import inventory, API suffixes, roles, lifecycle labels, and local
+  contract modules. The AST import boundary and documentation validation now
+  consume that registry instead of maintaining a separate hard-coded allowlist.
+- Document the additive belief-provider-v2 horizon-discrepancy boundary, released
+  artifact-v2 surface, verified scheduled-contact replay integration, and portable
+  external sparse-trajectory forecast import without changing frozen v1 results.
 - Add a locked, source-only Deform360 filament-support boundary that preserves
   exact registered graphs on connected resets and applies a deterministic
   component-level minimum-spanning bridge only to the frozen disconnected
@@ -54,6 +61,16 @@ evidence. Source-panel executions remain source-only and cannot increment the
 
 ### Fixed
 
+- Replace mutable `dict`/`list` subclasses used for frozen JSON with read-only
+  mapping and sequence value objects, closing `dict.__setitem__`, `dict.update`,
+  `list.append`, and `list.__setitem__` base-class mutation bypasses while
+  preserving valid JSON values and content identities. Frozen containers now
+  expose the explicit read-only `Mapping`/`Sequence` protocols; use
+  `plain_json()` at mutable built-in or serialization boundaries.
+- Back frozen NumPy arrays with immutable byte storage so callers cannot restore
+  write access through `setflags(write=True)` or `flags.writeable = True`.
+  Serialization boundaries now export explicit plain JSON, preserving existing
+  content identities and artifact schemas for valid inputs.
 - Reject coercible or schema-drifted Causal4D contract descriptors, archive
   inventories, support indices, and grouped-observation indices before they can
   change content identity or evidence selection. Preserve exact JSON numeric

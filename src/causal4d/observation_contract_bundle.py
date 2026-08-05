@@ -19,6 +19,8 @@ from typing import Any, Mapping
 
 import numpy as np
 
+from causal4d.immutable_array import readonly_array
+
 OBSERVATION_BELIEF_CONTRACT_BUNDLE = "phys4d.observation_belief.v1"
 OBSERVATION_BELIEF_CONTRACT_BUNDLE_VERSION = 1
 OBSERVATION_BELIEF_CONTRACT_BUNDLE_SHA256 = (
@@ -256,8 +258,7 @@ def observation_contract_vector(name: str) -> ObservationContractVector:
                 f"array record {array_name!r} has shape {array.shape}, "
                 f"expected {expected_shape}"
             )
-        array.setflags(write=False)
-        arrays[str(array_name)] = array
+        arrays[str(array_name)] = readonly_array(array)
 
     expected_artifact_id = _validate_sha256(
         str(payload["expected_artifact_id"]),
@@ -378,8 +379,7 @@ def invalid_observation_contract_vector(
         else:
             raise ValueError("unsupported observation-contract mutation target")
 
-    for array in arrays.values():
-        array.setflags(write=False)
+    arrays = {name: readonly_array(array) for name, array in arrays.items()}
     return InvalidObservationContractVector(
         case_id=identifier,
         mode=str(case["mode"]),

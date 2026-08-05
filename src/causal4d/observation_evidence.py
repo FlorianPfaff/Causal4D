@@ -7,14 +7,12 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from causal4d.immutable_array import readonly_integer_array
+from causal4d.immutable_array import readonly_array, readonly_integer_array
 from causal4d.immutable_json import validated_json_mapping
 
 
 def _readonly(values: np.ndarray, *, dtype: Any = float) -> np.ndarray:
-    result = np.asarray(values, dtype=dtype).copy()
-    result.setflags(write=False)
-    return result
+    return readonly_array(values, dtype=dtype)
 
 
 def _require_nonempty_string(value: Any, *, name: str) -> str:

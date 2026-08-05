@@ -16,6 +16,7 @@ import zipfile
 import numpy as np
 
 from causal4d.contracts import array_sha256
+from causal4d.immutable_array import readonly_array, readonly_integer_array
 
 ROLLOUT_CACHE_SCHEMA_NAME = "causal4d.phystwin-rollout-cache"
 ROLLOUT_CACHE_SCHEMA_VERSION = 1
@@ -212,8 +213,7 @@ def _validated_trajectory(
         raise ValueError("cached rollout contains fewer nodes than requested")
     if not np.all(np.isfinite(trajectory)):
         raise ValueError("cached rollout must contain only finite values")
-    trajectory.setflags(write=False)
-    return trajectory
+    return readonly_array(trajectory)
 
 
 @dataclass(frozen=True)
@@ -516,7 +516,7 @@ class CachedReplayTrajectory:
             raise ValueError(
                 "cached replay frame_ids must be increasing and nonnegative"
             )
-        frame_ids.setflags(write=False)
+        frame_ids = readonly_integer_array(frame_ids, name="frame_ids")
         dt_s = float(self.dt_s)
         if not np.isfinite(dt_s) or dt_s <= 0.0:
             raise ValueError("cached replay dt_s must be positive and finite")

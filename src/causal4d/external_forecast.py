@@ -252,8 +252,8 @@ class ExternalForecastBundle:
         if np.any(np.sum(valid, axis=(1, 2, 3)) == 0):
             raise ValueError("each forecast must contain at least one valid coordinate")
         future[~valid] = np.nan
-        future.setflags(write=False)
-        valid.setflags(write=False)
+        future = readonly_array(future)
+        valid = readonly_array(valid, dtype=bool)
 
         frames = readonly_array(self.physical_frame_indices, dtype=np.float64)
         if frames.shape != (future.shape[1],) or not np.all(np.isfinite(frames)):

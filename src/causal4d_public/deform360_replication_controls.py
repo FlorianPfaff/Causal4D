@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 import numpy as np
+
+from causal4d.immutable_array import readonly_array
 from scipy.optimize import minimize
 
 
@@ -283,9 +285,7 @@ class ContactTransitionEpisode:
             ("predicted_object_positions_m", objects),
             ("contact_active", active),
         ):
-            copied = values.copy()
-            copied.setflags(write=False)
-            object.__setattr__(self, name, copied)
+            object.__setattr__(self, name, readonly_array(values))
 
 
 @dataclass(frozen=True)

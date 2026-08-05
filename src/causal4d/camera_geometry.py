@@ -106,8 +106,7 @@ def invert_se3_transform(
     inverse = np.eye(4, dtype=np.float64)
     inverse[:3, :3] = rotation.T
     inverse[:3, 3] = -(rotation.T @ translation)
-    inverse.setflags(write=False)
-    return inverse
+    return readonly_array(inverse)
 
 
 __all__ = [

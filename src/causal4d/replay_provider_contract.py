@@ -9,7 +9,7 @@ from typing import Any
 
 import numpy as np
 
-from causal4d.immutable_json import validated_json_mapping
+from causal4d.immutable_json import plain_json, validated_json_mapping
 from causal4d.provider_contract import (
     BAYESIAN_PHYSTWIN_COMPATIBILITY_RANGE,
     PhysicalBeliefProviderManifest,
@@ -56,7 +56,7 @@ def stable_replay_identifier(namespace: str, payload: Mapping[str, Any]) -> str:
         ),
     )
     encoded = json.dumps(
-        normalized,
+        plain_json(normalized),
         sort_keys=True,
         separators=(",", ":"),
         allow_nan=False,

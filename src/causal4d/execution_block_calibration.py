@@ -19,7 +19,7 @@ import numpy as np
 
 from causal4d.atomic_io import atomic_write_json
 from causal4d.immutable_array import readonly_array as _readonly_array
-from causal4d.immutable_json import validated_json_mapping
+from causal4d.immutable_json import plain_json, validated_json_mapping
 
 
 EXECUTION_BLOCK_CALIBRATION_SCHEMA_VERSION = 1
@@ -91,7 +91,7 @@ class ExecutionBlockCalibrationCase:
         valid[: self.start_frame] = False
         if not np.any(valid):
             raise ValueError("execution has no valid held-out point-frames")
-        valid.setflags(write=False)
+        valid = _readonly_array(valid, dtype=bool)
 
         labels = self.node_group_labels
         if labels is not None:
@@ -510,7 +510,7 @@ class ExecutionBlockConformalCalibration:
             "expected_calibration_units": self.expected_calibration_units,
             "order_statistic_rank_one_based": (self.order_statistic_rank_one_based),
             "threshold": float(self.threshold),
-            "fragility_diagnostics": self.fragility_diagnostics,
+            "fragility_diagnostics": plain_json(self.fragility_diagnostics),
             "claim_ready": self.claim_ready,
             "coverage_claim": (
                 "finite marginal execution-block split-conformal coverage under "
@@ -518,7 +518,7 @@ class ExecutionBlockConformalCalibration:
             ),
             "worst_group_coverage_guarantee_claimed": False,
             "pooled_coordinate_conformal_claimed": False,
-            "metadata": self.metadata,
+            "metadata": plain_json(self.metadata),
         }
 
     @property

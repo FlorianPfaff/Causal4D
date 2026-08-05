@@ -7,7 +7,7 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from causal4d.immutable_json import validated_json_mapping
+from causal4d.immutable_json import plain_json, validated_json_mapping
 
 
 @dataclass(frozen=True)
@@ -58,7 +58,7 @@ class CausalSufficiencyResult:
             "execution_count": self.execution_count,
             "group_count": self.group_count,
             "command_count": self.command_count,
-            "metadata": dict(self.metadata),
+            "metadata": plain_json(self.metadata),
         }
 
 

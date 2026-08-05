@@ -52,6 +52,10 @@ def _assert_read_only(values: np.ndarray) -> None:
     assert not values.flags.writeable
     with pytest.raises(ValueError, match="read-only"):
         values[...] = 0
+    with pytest.raises(ValueError, match="WRITEABLE"):
+        values.setflags(write=True)
+    with pytest.raises(ValueError, match="WRITEABLE"):
+        values.flags.writeable = True
 
 
 def test_sparse_semantic_evidence_owns_every_retained_array() -> None:

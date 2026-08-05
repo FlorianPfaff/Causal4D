@@ -25,6 +25,8 @@ from typing import Any
 
 import numpy as np
 
+from causal4d.immutable_array import readonly_array
+
 from causal4d.benchmark import CounterfactualBenchmarkConfig
 from causal4d.contact_concentration_diagnostic import (
     _CalibrationCase,
@@ -233,7 +235,7 @@ def _build_seed_folds(
                 prefix,
             )
             feature_matrix = _canonical_residual_features(feature_matrix)
-            feature_matrix.setflags(write=False)
+            feature_matrix = readonly_array(feature_matrix)
         output.append(
             _TopologyFold(
                 seed=seed,

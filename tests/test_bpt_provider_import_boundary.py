@@ -5,22 +5,34 @@ from __future__ import annotations
 import ast
 import importlib
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
 
-ALLOWED_BAYESIAN_PHYSTWIN_MODULES = frozenset(
-    {
-        "bayesian_phystwin.causal4d_artifacts_v1",
-        "bayesian_phystwin.causal4d_artifacts_v2",
-        "bayesian_phystwin.causal4d_belief_provider_v1",
-        "bayesian_phystwin.causal4d_belief_provider_v2",
-        "bayesian_phystwin.causal4d_graph_provider_v1",
-        "bayesian_phystwin.causal4d_provider_v1",
-        "bayesian_phystwin.causal4d_provider_v2",
-        "bayesian_phystwin.causal4d_public_provider_v1",
-    }
-)
+
+def _provider_registry() -> dict[str, object]:
+    repository_root = Path(__file__).resolve().parents[1]
+    path = repository_root / "ci" / "bayesian_phystwin_provider_registry.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise AssertionError("Bayesian-PhysTwin provider registry must be an object")
+    return payload
+
+
+def _allowed_bayesian_phystwin_modules() -> frozenset[str]:
+    modules = _provider_registry().get("modules")
+    if not isinstance(modules, list):
+        raise AssertionError("provider registry modules must be a list")
+    result: set[str] = set()
+    for entry in modules:
+        if not isinstance(entry, dict) or type(entry.get("module")) is not str:
+            raise AssertionError("provider registry entries require string modules")
+        result.add(entry["module"])
+    return frozenset(result)
+
+
+ALLOWED_BAYESIAN_PHYSTWIN_MODULES = _allowed_bayesian_phystwin_modules()
 
 
 def _python_sources() -> list[Path]:
