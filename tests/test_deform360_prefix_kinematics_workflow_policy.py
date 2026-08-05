@@ -19,6 +19,7 @@ def test_prefix_kinematics_workflow_is_read_only_and_review_safe() -> None:
     assert text.count("persist-credentials: false") >= 4
     assert "runs-on: ubuntu-latest" in text
     assert "cache: pip" in text
+    assert "python -m mypy --no-site-packages" in text
 
 
 def test_prefix_kinematics_gpu_evidence_requires_explicit_dispatch() -> None:
