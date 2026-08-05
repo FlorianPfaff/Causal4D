@@ -11,7 +11,7 @@ import platform
 from pathlib import Path
 import subprocess
 import sys
-from typing import Any
+from typing import Any, Mapping
 
 import numpy as np
 
@@ -20,6 +20,9 @@ from causal4d_public.deform360_prefix_kinematics_diagnostic import (
     run_source_prefix_kinematics_diagnostic,
     validate_source_prefix_kinematics_diagnostic,
 )
+
+
+_RUNTIME_KEYS = ("python", "numpy", "scipy", "torch", "torch_cuda", "warp")
 
 
 def _parse_args() -> argparse.Namespace:
@@ -50,6 +53,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--bayesian-phystwin-repo", type=Path, required=True)
     parser.add_argument("--deform360-repo", type=Path, required=True)
     parser.add_argument("--official-phystwin-repo", type=Path, required=True)
+    parser.add_argument("--runtime-selection", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--device", default="cuda:0")
     return parser.parse_args()
@@ -83,6 +87,70 @@ def _distribution_version(name: str) -> str | None:
         return None
 
 
+def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate runtime-selection JSON key {key!r}")
+        result[key] = value
+    return result
+
+
+def _load_runtime_selection(path: Path) -> dict[str, Any]:
+    if not path.is_file() or path.is_symlink():
+        raise ValueError("runtime selection must be an ordinary file")
+    payload = json.loads(
+        path.read_text(encoding="utf-8"),
+        object_pairs_hook=_reject_duplicate_keys,
+        parse_constant=lambda value: (_ for _ in ()).throw(
+            ValueError(f"non-finite runtime-selection value {value!r}")
+        ),
+    )
+    if not isinstance(payload, dict) or any(type(key) is not str for key in payload):
+        raise ValueError("runtime selection must be a string-keyed JSON object")
+    required = {
+        "schema_version",
+        "artifact_kind",
+        "expected",
+        "runtime_provenance",
+        "candidates",
+        "selected",
+        "selected_runtime",
+    }
+    if set(payload) != required:
+        raise ValueError("runtime-selection fields changed")
+    if payload["schema_version"] != 1:
+        raise ValueError("unsupported runtime-selection schema version")
+    if payload["artifact_kind"] != "Deform360PrefixKinematicsPythonSelection":
+        raise ValueError("unsupported runtime-selection artifact kind")
+    selected = payload["selected"]
+    if type(selected) is not str or Path(selected).absolute() != Path(sys.executable).absolute():
+        raise ValueError("runtime selection identifies another interpreter")
+    expected = payload["expected"]
+    observed = payload["selected_runtime"]
+    if not isinstance(expected, Mapping) or not isinstance(observed, Mapping):
+        raise ValueError("runtime selection omitted expected or observed runtime")
+    for key in _RUNTIME_KEYS:
+        if expected.get(key) != observed.get(key):
+            raise ValueError(f"runtime selection does not match {key}")
+    if observed.get("torch_cuda_available") is not True:
+        raise ValueError("selected PyTorch runtime cannot see CUDA")
+    warp_device_count = observed.get("warp_cuda_device_count")
+    if type(warp_device_count) is not int or warp_device_count < 1:
+        raise ValueError("selected Warp runtime cannot see CUDA")
+    provenance = payload["runtime_provenance"]
+    if not isinstance(provenance, Mapping):
+        raise ValueError("runtime selection omitted lock provenance")
+    if provenance.get("zero_baseline_reproduction_required") is not True:
+        raise ValueError("runtime selection relaxed zero-baseline reproduction")
+    correction = provenance.get("correction")
+    if correction != {
+        "numpy": {"effective": "1.26.4", "recorded": "2.5.1"}
+    }:
+        raise ValueError("runtime selection has another provenance correction")
+    return payload
+
+
 def _runtime_provenance(
     repository_root: Path,
     result_path: Path,
@@ -91,6 +159,8 @@ def _runtime_provenance(
     bayesian_phystwin_repo: Path,
     deform360_repo: Path,
     official_phystwin_repo: Path,
+    runtime_selection_path: Path,
+    runtime_selection: Mapping[str, Any],
 ) -> dict[str, Any]:
     runtime: dict[str, Any] = {
         "schema_version": 1,
@@ -101,6 +171,9 @@ def _runtime_provenance(
         "python": sys.version,
         "platform": platform.platform(),
         "numpy": np.__version__,
+        "runtime_selection_path": str(runtime_selection_path),
+        "runtime_selection_file_sha256": _sha256_file(runtime_selection_path),
+        "runtime_lock_provenance": runtime_selection["runtime_provenance"],
         "repositories": {
             name: {
                 "path": str(path.resolve()),
@@ -160,6 +233,8 @@ def main() -> None:
     args = _parse_args()
     repository_root = args.repository_root.resolve()
     output = args.output.resolve()
+    runtime_selection_path = args.runtime_selection.resolve()
+    runtime_selection = _load_runtime_selection(runtime_selection_path)
     result = run_source_prefix_kinematics_diagnostic(
         repository_root,
         args.protocol,
@@ -180,6 +255,8 @@ def main() -> None:
             bayesian_phystwin_repo=args.bayesian_phystwin_repo.resolve(),
             deform360_repo=args.deform360_repo.resolve(),
             official_phystwin_repo=args.official_phystwin_repo.resolve(),
+            runtime_selection_path=runtime_selection_path,
+            runtime_selection=runtime_selection,
         ),
     )
     print(
@@ -190,6 +267,7 @@ def main() -> None:
                 "result_path": str(output),
                 "result_sha256": result["result_sha256"],
                 "runtime_path": str(runtime_path),
+                "runtime_selection_path": str(runtime_selection_path),
             },
             sort_keys=True,
         ),
