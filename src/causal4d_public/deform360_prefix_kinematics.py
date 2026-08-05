@@ -47,6 +47,27 @@ def _readonly(values: np.ndarray, *, dtype: np.dtype[Any] | type[Any]) -> np.nda
     return result
 
 
+def _edge_graph_is_connected(node_count: int, edges: np.ndarray) -> bool:
+    """Return whether undirected edges reach every node from node zero."""
+
+    adjacency: list[list[int]] = [[] for _ in range(node_count)]
+    for raw_left, raw_right in np.asarray(edges, dtype=np.int64):
+        left = int(raw_left)
+        right = int(raw_right)
+        adjacency[left].append(right)
+        adjacency[right].append(left)
+    reached = {0}
+    pending = [0]
+    while pending:
+        current = pending.pop()
+        for neighbor in adjacency[current]:
+            if neighbor in reached:
+                continue
+            reached.add(neighbor)
+            pending.append(neighbor)
+    return len(reached) == node_count
+
+
 @dataclass(frozen=True)
 class PrefixKinematicsConfig:
     """Fixed controls for source-only object-velocity initialization."""
@@ -167,12 +188,12 @@ def _association_values(
         "contact association robot axis changed",
     )
     raw_indices = association.get("selected_taxel_indices")
-    _require(
-        isinstance(raw_indices, Sequence)
-        and not isinstance(raw_indices, (str, bytes))
-        and len(raw_indices) >= 1,
-        "contact association has no taxel indices",
-    )
+    if (
+        not isinstance(raw_indices, Sequence)
+        or isinstance(raw_indices, (str, bytes))
+        or len(raw_indices) < 1
+    ):
+        raise ValueError("contact association has no taxel indices")
     _require(
         all(type(index) is int and index >= 0 for index in raw_indices),
         "contact association taxel indices must be nonnegative integers",
@@ -182,7 +203,14 @@ def _association_values(
         len(np.unique(indices)) == len(indices),
         "contact association repeats a taxel index",
     )
-    offset = np.asarray(association.get("contact_offset_m"), dtype=np.float64)
+    raw_offset = association.get("contact_offset_m")
+    if (
+        not isinstance(raw_offset, Sequence)
+        or isinstance(raw_offset, (str, bytes))
+        or len(raw_offset) != 3
+    ):
+        raise ValueError("contact association offset must be a three-element sequence")
+    offset = np.asarray(raw_offset, dtype=np.float64)
     _require(
         offset.shape == (3,) and np.all(np.isfinite(offset)),
         "contact association offset must be a finite three-vector",
@@ -328,7 +356,11 @@ def graph_harmonic_contact_velocity(
         return _readonly(np.zeros_like(graph.positions_m), dtype=np.float64)
 
     stretch = graph.spring_edges[graph.spring_families == 0]
-    _require(len(stretch) >= node_count - 1, "stretch/shear graph is disconnected")
+    _require(
+        len(stretch) >= node_count - 1
+        and _edge_graph_is_connected(node_count, stretch),
+        "stretch/shear graph is disconnected",
+    )
     lengths = np.linalg.norm(
         graph.positions_m[stretch[:, 1]] - graph.positions_m[stretch[:, 0]],
         axis=1,

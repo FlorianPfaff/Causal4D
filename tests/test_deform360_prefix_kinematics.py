@@ -31,6 +31,18 @@ def _chain_graph() -> Deform360SparseGraph:
     )
 
 
+def _disconnected_graph() -> Deform360SparseGraph:
+    positions = np.column_stack((np.linspace(0.0, 0.4, 5), np.zeros(5), np.zeros(5)))
+    return Deform360SparseGraph(
+        positions_m=positions,
+        spring_edges=np.asarray([[0, 1], [1, 2], [0, 2], [3, 4]]),
+        spring_families=np.zeros(4, dtype=np.int8),
+        masses=np.ones(5),
+        stratum="filament",
+        diagnostics={},
+    )
+
+
 def _install_fake_deform360(
     monkeypatch: pytest.MonkeyPatch,
 ) -> list[float]:
@@ -121,6 +133,20 @@ def test_global_policy_applies_mean_active_controller_velocity() -> None:
         maximum_node_speed_m_s=3.0,
     )
     np.testing.assert_allclose(field, np.repeat([[0.5, 1.0, 0.0]], 5, axis=0))
+
+
+def test_graph_policy_rejects_disconnected_stretch_graph() -> None:
+    with pytest.raises(ValueError, match="disconnected"):
+        graph_harmonic_contact_velocity(
+            _disconnected_graph(),
+            np.asarray([[1.0, 0.0, 0.0]]),
+            np.asarray([True]),
+            (0,),
+            contact_weight=100.0,
+            smoothness_weight=1.0,
+            ridge_weight=0.1,
+            maximum_node_speed_m_s=2.0,
+        )
 
 
 def test_graph_policy_diffuses_contact_velocity() -> None:

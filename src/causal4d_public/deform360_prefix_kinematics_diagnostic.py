@@ -8,7 +8,7 @@ import gc
 import hashlib
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -50,6 +50,18 @@ SOURCE_MILESTONE = Path("milestones/deform360-replication-source-backend-v1")
 def _require(condition: bool, message: str) -> None:
     if not condition:
         raise ValueError(message)
+
+
+def _require_mapping(value: Any, *, message: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping) or any(type(key) is not str for key in value):
+        raise ValueError(message)
+    return cast(Mapping[str, Any], value)
+
+
+def _require_nonempty_list(value: Any, *, message: str) -> list[Any]:
+    if not isinstance(value, list) or len(value) == 0:
+        raise ValueError(message)
+    return value
 
 
 def _canonical_bytes(value: Any) -> bytes:
@@ -169,15 +181,20 @@ def load_prefix_kinematics_diagnostic_lock(
         payload.get("config_sha256") == prefix_kinematics_config_sha256(payload),
         "prefix-kinematics config checksum mismatch",
     )
-    controls = payload.get("config")
-    _require(isinstance(controls, Mapping), "prefix-kinematics controls are missing")
-    kinematics = controls.get("kinematics")
-    _require(isinstance(kinematics, Mapping), "kinematics controls are missing")
-    selected = controls.get("selected_object_ids")
+    controls = _require_mapping(
+        payload.get("config"),
+        message="prefix-kinematics controls are missing",
+    )
+    kinematics = _require_mapping(
+        controls.get("kinematics"),
+        message="kinematics controls are missing",
+    )
+    selected = _require_nonempty_list(
+        controls.get("selected_object_ids"),
+        message="selected source object set is invalid",
+    )
     _require(
-        isinstance(selected, list)
-        and selected
-        and all(type(value) is str and value for value in selected)
+        all(type(value) is str and value for value in selected)
         and len(selected) == len(set(selected)),
         "selected source object set is invalid",
     )
@@ -191,8 +208,10 @@ def load_prefix_kinematics_diagnostic_lock(
         and controls.get("control_policy") == "global_contact_translation_v1",
         "prefix-kinematics policy roles changed",
     )
-    boundary = payload.get("information_boundary")
-    _require(isinstance(boundary, Mapping), "config information boundary is missing")
+    boundary = _require_mapping(
+        payload.get("information_boundary"),
+        message="config information boundary is missing",
+    )
     _require(
         boundary.get("source_only") is True
         and boundary.get("calibration_outcomes_allowed") is False
@@ -224,16 +243,19 @@ def verify_source_milestone(repository_root: str | Path) -> dict[str, Any]:
     manifest_path = milestone / "artifact-manifest.json"
     _require(manifest_path.is_file(), "source milestone manifest is missing")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    entries = manifest.get("entries")
-    _require(isinstance(entries, list) and entries, "source manifest has no entries")
+    entries = _require_nonempty_list(
+        manifest.get("entries"),
+        message="source manifest has no entries",
+    )
     seen: set[str] = set()
-    for index, entry in enumerate(entries):
-        _require(isinstance(entry, Mapping), "source manifest entry is not a mapping")
-        source_path = entry.get("source_path")
-        _require(
-            type(source_path) is str and source_path not in seen,
-            "source manifest path is invalid or repeated",
+    for index, raw_entry in enumerate(entries):
+        entry = _require_mapping(
+            raw_entry,
+            message="source manifest entry is not a mapping",
         )
+        source_path = entry.get("source_path")
+        if type(source_path) is not str or not source_path or source_path in seen:
+            raise ValueError("source manifest path is invalid or repeated")
         seen.add(source_path)
         path = root / source_path
         _require(path.is_file(), f"source milestone file is missing: {source_path}")
@@ -290,11 +312,13 @@ def select_fixed_source_candidate(
         finite_rows.append(candidate)
         if float(strain) <= limit:
             quality_rows.append(candidate)
-    _require(finite_rows, "source grid has no finite candidate")
+    _require(len(finite_rows) > 0, "source grid has no finite candidate")
     selected_pool = quality_rows if quality_rows else finite_rows
     score, index, row = min(selected_pool, key=lambda value: (value[0], value[1]))
-    parameters = row.get("parameters")
-    _require(isinstance(parameters, Mapping), "selected candidate has no parameters")
+    parameters = _require_mapping(
+        row.get("parameters"),
+        message="selected candidate has no parameters",
+    )
     return {
         "selection_kind": (
             "quality_constrained_source_oracle"
@@ -339,13 +363,17 @@ def summarize_policy(
     regressions = 0
     per_object: dict[str, list[tuple[float, float, bool, bool]]] = {}
     for record in episode_records:
-        policies = record.get("policies")
-        _require(isinstance(policies, Mapping), "episode policy record is missing")
-        baseline = policies.get(PREFIX_KINEMATICS_POLICIES[0])
-        candidate = policies.get(policy_name)
-        _require(
-            isinstance(baseline, Mapping) and isinstance(candidate, Mapping),
-            "episode policy result is missing",
+        policies = _require_mapping(
+            record.get("policies"),
+            message="episode policy record is missing",
+        )
+        baseline = _require_mapping(
+            policies.get(PREFIX_KINEMATICS_POLICIES[0]),
+            message="episode zero-velocity result is missing",
+        )
+        candidate = _require_mapping(
+            policies.get(policy_name),
+            message="episode candidate-policy result is missing",
         )
         if baseline.get("finite") is not True or candidate.get("finite") is not True:
             continue
@@ -766,7 +794,7 @@ def run_source_prefix_kinematics_diagnostic(
             )
         )
     )
-    _require(selected_objects, "diagnostic object set is empty")
+    _require(len(selected_objects) > 0, "diagnostic object set is empty")
     _require(
         len(selected_objects) == len(set(selected_objects))
         and all(type(value) is str and value in cohorts for value in selected_objects),
@@ -879,8 +907,10 @@ def validate_source_prefix_kinematics_diagnostic(
         payload.get("result_sha256") == _artifact_sha256(payload),
         "prefix-kinematics diagnostic checksum mismatch",
     )
-    boundary = payload.get("information_boundary")
-    _require(isinstance(boundary, Mapping), "diagnostic boundary is missing")
+    boundary = _require_mapping(
+        payload.get("information_boundary"),
+        message="diagnostic boundary is missing",
+    )
     _require(
         boundary.get("calibration_outcomes_read") is False
         and boundary.get("target_prefix_read") is False
@@ -889,17 +919,31 @@ def validate_source_prefix_kinematics_diagnostic(
         and boundary.get("registered_replication_result_changed") is False,
         "diagnostic crossed its information or claim boundary",
     )
-    records = payload.get("episode_records")
-    _require(isinstance(records, list) and records, "diagnostic has no episodes")
-    for record in records:
-        _require(
-            record["information_boundary"]["source_episode_only"] is True
-            and record["information_boundary"]["target_prefix_read"] is False
-            and record["information_boundary"]["target_future_read"] is False,
-            "episode crossed the source-only boundary",
+    records = _require_nonempty_list(
+        payload.get("episode_records"),
+        message="diagnostic has no episodes",
+    )
+    for raw_record in records:
+        record = _require_mapping(
+            raw_record,
+            message="diagnostic episode is not a mapping",
+        )
+        episode_boundary = _require_mapping(
+            record.get("information_boundary"),
+            message="episode information boundary is missing",
         )
         _require(
-            tuple(record["policies"]) == PREFIX_KINEMATICS_POLICIES,
+            episode_boundary.get("source_episode_only") is True
+            and episode_boundary.get("target_prefix_read") is False
+            and episode_boundary.get("target_future_read") is False,
+            "episode crossed the source-only boundary",
+        )
+        policies = _require_mapping(
+            record.get("policies"),
+            message="episode policy record is missing",
+        )
+        _require(
+            tuple(policies) == PREFIX_KINEMATICS_POLICIES,
             "diagnostic policy set or ordering changed",
         )
 
