@@ -10,6 +10,9 @@ from __future__ import annotations
 
 from causal4d._multi_contact_common import MULTI_CONTACT_SCHEDULE_SCHEMA_VERSION
 from causal4d._multi_contact_inference import (
+    MULTI_CONTACT_ROLLOUT_SCHEMA_VERSION,
+    MultiContactInferencePolicy,
+    MultiContactInferenceRejectedError,
     MultiContactPathBank,
     MultiContactPosterior,
     infer_multi_contact_posterior,
@@ -23,8 +26,11 @@ from causal4d._multi_contact_prior import (
 
 
 __all__ = [
+    "MULTI_CONTACT_ROLLOUT_SCHEMA_VERSION",
     "MULTI_CONTACT_SCHEDULE_SCHEMA_VERSION",
     "MultiContactEnumerationConfig",
+    "MultiContactInferencePolicy",
+    "MultiContactInferenceRejectedError",
     "MultiContactPathBank",
     "MultiContactPathPrior",
     "MultiContactPosterior",
