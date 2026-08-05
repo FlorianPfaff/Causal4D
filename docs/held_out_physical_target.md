@@ -31,7 +31,8 @@ inputs.
 
 The migration command is intentionally not an installed console route. Invoke it
 as a module and provide both explicit consent and the expected digest of the
-trusted pickle bytes:
+trusted pickle bytes. The experimental factual-abduction CLI requires the same
+explicit consent and digest before it can inspect the legacy prefix source:
 
 ```bash
 python -m causal4d.cli.import_physical_target \
@@ -41,6 +42,16 @@ python -m causal4d.cli.import_physical_target \
   --allow-unsafe-pickle \
   --expected-sha256 <lowercase-sha256> \
   --source-revision <dataset-or-acquisition-revision>
+```
+
+For the existing factual-abduction path, pass the same byte identity as:
+
+```bash
+python -m causal4d.cli.abduct_phystwin_intervention \
+  rollout_bank.npz twin_belief.npz /path/to/final_data.pkl \
+  factual.npz factual_evaluation.json \
+  --allow-unsafe-pickle \
+  --expected-final-data-sha256 <lowercase-sha256>
 ```
 
 `--allow-unsafe-pickle` acknowledges executable-code risk. The SHA-256 check
