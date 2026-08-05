@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 import sys
 
@@ -60,15 +61,67 @@ def test_candidate_paths_prioritize_configured_interpreter(
     assert candidates.count(configured.absolute()) == 1
 
 
+def test_runtime_erratum_is_additive_and_exact() -> None:
+    selector = _load_selector()
+    original_path = ROOT / selector._ENVIRONMENT_PATH
+    original = json.loads(original_path.read_text(encoding="utf-8"))
+
+    expected, provenance = selector._load_runtime_lock(ROOT)
+
+    assert original["numpy"] == "2.5.1"
+    assert expected == {
+        "python": "3.12.3",
+        "numpy": "1.26.4",
+        "scipy": "1.13.1",
+        "torch": "2.4.0+cu121",
+        "torch_cuda": "12.1",
+        "warp": "1.15.0",
+    }
+    assert provenance["correction"] == {
+        "numpy": {"recorded": "2.5.1", "effective": "1.26.4"}
+    }
+    assert provenance["zero_baseline_reproduction_required"] is True
+    assert provenance["environment_sha256"] == (
+        "2274f2a38e5b49a9e1fc5e4c49c80910d2095cf43e8b1e84928c6cc3d99b2d8c"
+    )
+    assert provenance["erratum_sha256"] == (
+        "1bb1c8bfefc7e47caa08a2270d5eee95b4f3d82b73bd95b3aea82aca7d70b68c"
+    )
+
+
+def test_runtime_erratum_rejects_content_identity_drift(tmp_path: Path) -> None:
+    selector = _load_selector()
+    for relative in (
+        selector._ENVIRONMENT_PATH,
+        selector._ERRATUM_PATH,
+        Path(
+            "milestones/deform360-replication-source-backend-v1/verification/"
+            "test-and-lint.txt"
+        ),
+        Path(
+            "milestones/v0.3.0-causal4d-aip/environment/"
+            "bpt-gpu-pip-freeze.txt"
+        ),
+    ):
+        source = ROOT / relative
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(source.read_bytes())
+    erratum_path = tmp_path / selector._ERRATUM_PATH
+    erratum = json.loads(erratum_path.read_text(encoding="utf-8"))
+    erratum["corrections"]["numpy"]["corrected"] = "2.0.0"
+    erratum_path.write_text(
+        json.dumps(erratum, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="content checksum changed"):
+        selector._load_runtime_lock(tmp_path)
+
+
 def test_expected_runtime_rejects_duplicate_json_keys(tmp_path: Path) -> None:
     selector = _load_selector()
-    environment = (
-        tmp_path
-        / "milestones"
-        / "deform360-replication-source-backend-v1"
-        / "verification"
-        / "environment.json"
-    )
+    environment = tmp_path / selector._ENVIRONMENT_PATH
     environment.parent.mkdir(parents=True)
     environment.write_text(
         '{"python":"3.12.3","python":"3.12.4"}\n',
