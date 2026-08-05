@@ -5,6 +5,7 @@ from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/horizon-discrepancy-integration.yml")
 BPT_HORIZON_PROVIDER_REVISION = "bfa844798f0ab3ddbc67a0744ae14a221324e504"
+CAUSAL4D_HEAD_REF = "${{ github.event.pull_request.head.sha || github.sha }}"
 
 
 def test_horizon_workflow_uses_exact_public_provider_revision() -> None:
@@ -14,6 +15,15 @@ def test_horizon_workflow_uses_exact_public_provider_revision() -> None:
     assert f"ref: {BPT_HORIZON_PROVIDER_REVISION}" in text
     assert "persist-credentials: false" in text
     assert "BPT_READ_SSH_KEY" not in text
+
+
+def test_horizon_workflow_records_exact_causal4d_revision() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    assert f"ref: {CAUSAL4D_HEAD_REF}" in text
+    assert f"EXPECTED_CAUSAL4D_SHA: {CAUSAL4D_HEAD_REF}" in text
+    assert 'actual_sha="$(git rev-parse HEAD)"' in text
+    assert 'test "$actual_sha" = "$EXPECTED_CAUSAL4D_SHA"' in text
 
 
 def test_horizon_workflow_exercises_installed_wheels() -> None:
@@ -27,6 +37,18 @@ def test_horizon_workflow_exercises_installed_wheels() -> None:
     assert "test_belief_provider_v2_contract.py" in text
     assert "test_horizon_discrepancy.py" in text
     assert "test_belief_provider_contract.py" in text
+
+
+def test_horizon_workflow_runs_contract_before_local_quality() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    contract_index = text.index(
+        "- name: Exercise the installed cross-repository contract"
+    )
+    quality_index = text.index("- name: Check Causal4D source quality")
+
+    assert contract_index < quality_index
+    assert "if: always()" in text[quality_index:]
 
 
 def test_horizon_workflow_pins_external_actions() -> None:
