@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/deform360-prefix-kinematics.yml"
       - "configs/causal4d_public/deform360_prefix_kinematics_v1.json"
+      - "configs/causal4d_public/deform360_source_backend_runtime_erratum_v1.json"
       - "docs/causal4d_deform360_prefix_kinematics.md"
       - "scripts/remote/find_deform360_replication_root.py"
       - "scripts/remote/run_deform360_prefix_kinematics.py"
@@ -16,12 +17,14 @@ on:
       - "tests/test_deform360_prefix_kinematics.py"
       - "tests/test_deform360_prefix_kinematics_diagnostic.py"
       - "tests/test_deform360_prefix_kinematics_python_selector.py"
+      - "tests/test_deform360_prefix_kinematics_runner.py"
       - "tests/test_deform360_prefix_kinematics_workflow_policy.py"
   push:
     branches: [main]
     paths:
       - ".github/workflows/deform360-prefix-kinematics.yml"
       - "configs/causal4d_public/deform360_prefix_kinematics_v1.json"
+      - "configs/causal4d_public/deform360_source_backend_runtime_erratum_v1.json"
       - "scripts/remote/find_deform360_replication_root.py"
       - "scripts/remote/run_deform360_prefix_kinematics.py"
       - "scripts/remote/run_deform360_prefix_kinematics_workflow.sh"
@@ -31,6 +34,7 @@ on:
       - "tests/test_deform360_prefix_kinematics.py"
       - "tests/test_deform360_prefix_kinematics_diagnostic.py"
       - "tests/test_deform360_prefix_kinematics_python_selector.py"
+      - "tests/test_deform360_prefix_kinematics_runner.py"
       - "tests/test_deform360_prefix_kinematics_workflow_policy.py"
   workflow_dispatch:
     inputs:
@@ -83,6 +87,7 @@ jobs:
             tests/test_deform360_prefix_kinematics.py
             tests/test_deform360_prefix_kinematics_diagnostic.py
             tests/test_deform360_prefix_kinematics_python_selector.py
+            tests/test_deform360_prefix_kinematics_runner.py
             tests/test_deform360_prefix_kinematics_workflow_policy.py
           )
           python -m ruff check "${files[@]}"
@@ -101,6 +106,7 @@ jobs:
             tests/test_deform360_prefix_kinematics.py \
             tests/test_deform360_prefix_kinematics_diagnostic.py \
             tests/test_deform360_prefix_kinematics_python_selector.py \
+            tests/test_deform360_prefix_kinematics_runner.py \
             tests/test_deform360_prefix_kinematics_workflow_policy.py \
             tests/test_deform360_replication_case.py \
             tests/test_deform360_source_failure_attribution.py
