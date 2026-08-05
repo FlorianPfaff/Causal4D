@@ -13,11 +13,11 @@ TEMPORARY_WORKFLOW = (
     / "temporary-deform360-prefix-kinematics-evidence.yml"
 )
 PROTOCOL = ROOT / "configs" / "causal4d_public" / "deform360_replication_v1.json"
-RUNTIME_ERRATUM = (
+REPRODUCTION_RUNTIME = (
     ROOT
     / "configs"
     / "causal4d_public"
-    / "deform360_source_backend_runtime_erratum_v1.json"
+    / "deform360_source_backend_reproduction_runtime_v1.json"
 )
 SELECTOR = ROOT / "scripts" / "remote" / "select_deform360_prefix_kinematics_python.py"
 
@@ -48,7 +48,7 @@ def test_prefix_kinematics_gpu_evidence_requires_explicit_dispatch() -> None:
     assert "continue-on-error: true" not in text
 
 
-def test_gpu_jobs_reuse_only_the_exact_effective_runtime_lock() -> None:
+def test_gpu_jobs_use_only_the_conditional_reproduction_runtime() -> None:
     permanent = WORKFLOW.read_text(encoding="utf-8")
     temporary = TEMPORARY_WORKFLOW.read_text(encoding="utf-8")
     shell = (
@@ -57,7 +57,7 @@ def test_gpu_jobs_reuse_only_the_exact_effective_runtime_lock() -> None:
 
     for text in (permanent, temporary):
         assert "select_deform360_prefix_kinematics_python.py" in text
-        assert "deform360_source_backend_runtime_erratum_v1.json" in text
+        assert "deform360_source_backend_reproduction_runtime_v1.json" in text
         assert "python-selection.json" in text
         assert "PREFIX_KINEMATICS_PYTHON=" in text
         assert text.index("Initialize source-evidence directory") < text.index(
@@ -72,7 +72,7 @@ def test_gpu_jobs_reuse_only_the_exact_effective_runtime_lock() -> None:
     assert "--runtime-selection" in shell
     assert "runtime_provenance" in shell
     assert SELECTOR.is_file()
-    assert RUNTIME_ERRATUM.is_file()
+    assert REPRODUCTION_RUNTIME.is_file()
 
 
 def test_prefix_kinematics_workflow_separates_code_and_dataset_pins() -> None:
