@@ -55,9 +55,9 @@ def test_gpu_jobs_use_only_the_conditional_reproduction_runtime() -> None:
         ROOT / "scripts" / "remote" / "run_deform360_prefix_kinematics_workflow.sh"
     ).read_text(encoding="utf-8")
 
+    assert "deform360_source_backend_reproduction_runtime_v1.json" in permanent
     for text in (permanent, temporary):
         assert "select_deform360_prefix_kinematics_python.py" in text
-        assert "deform360_source_backend_reproduction_runtime_v1.json" in text
         assert "python-selection.json" in text
         assert "PREFIX_KINEMATICS_PYTHON=" in text
         assert text.index("Initialize source-evidence directory") < text.index(
