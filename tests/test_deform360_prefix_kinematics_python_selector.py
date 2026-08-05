@@ -85,9 +85,7 @@ def test_reproduction_runtime_deviation_is_conditional_and_exact() -> None:
     }
     assert provenance["zero_baseline_reproduction_required"] is True
     assert (
-        provenance[
-            "interpretation_permitted_only_after_zero_baseline_reproduction"
-        ]
+        provenance["interpretation_permitted_only_after_zero_baseline_reproduction"]
         is True
     )
     assert provenance["recorded_environment_sha256"] == (

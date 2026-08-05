@@ -150,9 +150,7 @@ def _load_runtime_selection(path: Path) -> dict[str, Any]:
     if provenance.get("zero_baseline_reproduction_required") is not True:
         raise ValueError("runtime selection relaxed zero-baseline reproduction")
     if (
-        provenance.get(
-            "interpretation_permitted_only_after_zero_baseline_reproduction"
-        )
+        provenance.get("interpretation_permitted_only_after_zero_baseline_reproduction")
         is not True
     ):
         raise ValueError("runtime selection permits premature interpretation")
