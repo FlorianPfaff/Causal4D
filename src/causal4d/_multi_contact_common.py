@@ -137,9 +137,11 @@ def validate_identifiers(
     if expected_count < 1 or isinstance(values, (str, bytes)):
         raise ValueError(f"{name} must be nonempty unique strings")
     result = tuple(values)
-    if len(result) != expected_count or any(
-        type(value) is not str or not value for value in result
-    ) or len(set(result)) != expected_count:
+    if (
+        len(result) != expected_count
+        or any(type(value) is not str or not value for value in result)
+        or len(set(result)) != expected_count
+    ):
         raise ValueError(f"{name} must be nonempty unique strings")
     return result
 
