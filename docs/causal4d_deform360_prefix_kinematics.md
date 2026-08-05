@@ -84,30 +84,31 @@ visual-hull scoring frames, simulator configuration, and p99 strain threshold
 remain unchanged. This isolates initial velocity rather than rerunning a new
 joint model search.
 
-## Runtime provenance erratum
+## Conditional reproduction-runtime deviation
 
 The original source-backend milestone remains byte-for-byte unchanged. Its
-`verification/environment.json` records NumPy `2.5.1`, but its own validation
-record states that the source suite ran with
-`/home/florianpfaff/.venvs/bpt-gpu/bin/python`. The complete pip freeze captured
-for that same `bpt-gpu` environment on 2026-07-12 records NumPy `1.26.4`, SciPy
-`1.13.1`, Torch `2.4.0+cu121`, and Warp `1.15.0`. Fail-closed workflow run
-`30970401038` independently found NumPy `1.26.4` at that interpreter while all
-other locked numerical versions matched.
+`verification/environment.json` records NumPy `2.5.1`. Separate evidence shows
+that the named `bpt-gpu` interpreter used by the archived validation command had
+NumPy `1.26.4` in an earlier captured freeze and again when workstation2 was
+probed on 5 August 2026. Those observations do not prove that the July 14
+milestone record was erroneous or that the environment could not have changed
+between captures.
 
-The additive correction is recorded in
-[`configs/causal4d_public/deform360_source_backend_runtime_erratum_v1.json`](
-../configs/causal4d_public/deform360_source_backend_runtime_erratum_v1.json).
-It binds the original environment file, the archived command record, the earlier
-full pip freeze, and the failed workflow artifact by SHA-256. It corrects only
-the effective NumPy value from `2.5.1` to `1.26.4`; no frozen milestone file,
-score, decision, threshold, split, or access boundary is rewritten.
+The conditional reproduction runtime is recorded in
+[`configs/causal4d_public/deform360_source_backend_reproduction_runtime_v1.json`](
+../configs/causal4d_public/deform360_source_backend_reproduction_runtime_v1.json).
+It preserves `2.5.1` as the recorded value and separately declares `1.26.4` as
+the only candidate-runtime deviation. The contract binds the original
+environment file, archived command record, earlier pip freeze, and failed
+workstation2 selector artifact by SHA-256. It does not relabel or rewrite the
+frozen milestone.
 
-The runtime selector verifies all of those identities before accepting an
-interpreter. It does not install or upgrade packages. The correction cannot by
-itself admit a scientific comparison: every archived zero-velocity score and
-p99-strain value must still reproduce within the locked tolerances before any
-velocity policy is interpreted.
+The runtime selector accepts the candidate environment only for this source-only
+diagnostic and does not install or upgrade packages. Candidate-policy results
+are interpretable only after every archived zero-velocity Chamfer and p99-strain
+value reproduces within the locked tolerances. If that parity gate fails, the
+workflow stops and retains the runtime deviation as an infrastructure finding;
+it cannot promote or rescue a scientific result.
 
 ## Decision gate
 
@@ -147,8 +148,8 @@ python -m pytest -q \
 ```
 
 Run the source diagnostic through the wrapper so the selected interpreter,
-runtime erratum, repository revisions, result, and runtime sidecar are bound in
-one checksummed output directory:
+conditional reproduction-runtime record, repository revisions, result, and
+runtime sidecar are bound in one checksummed output directory:
 
 ```bash
 export PREFIX_KINEMATICS_PYTHON=/home/florianpfaff/.venvs/bpt-gpu/bin/python
