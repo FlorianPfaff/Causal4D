@@ -2,6 +2,12 @@
 set -euo pipefail
 
 PYTHONPATH_ORIGINAL="${PYTHONPATH:-}"
+python_bin="${PREFIX_KINEMATICS_PYTHON:-python3}"
+
+if [[ ! -x "${python_bin}" ]]; then
+  echo "prefix-kinematics Python is not executable: ${python_bin}" >&2
+  exit 1
+fi
 
 repository_root="${1:-$PWD}"
 bpt_root="${2:-$PWD/_bpt}"
@@ -17,14 +23,16 @@ mkdir -p "$output_dir"
 output_dir="$(realpath "$output_dir")"
 
 data_root="$(
-  python "$repository_root/scripts/remote/find_deform360_replication_root.py"
+  "$python_bin" \
+    "$repository_root/scripts/remote/find_deform360_replication_root.py"
 )"
 
 export PYTHONPATH="${repository_root}/src:${bpt_root}/src"
 export PYTHONPATH="${PYTHONPATH}:${deform360_root}:${PYTHONPATH_ORIGINAL:-}"
 export PYTHONUNBUFFERED=1
 
-python - "$repository_root" "$bpt_root" "$deform360_root" "$official_root" <<'PY'
+"$python_bin" \
+  - "$repository_root" "$bpt_root" "$deform360_root" "$official_root" <<'PY'
 from __future__ import annotations
 
 import json
@@ -108,14 +116,14 @@ print(
 )
 PY
 
-python -m pytest -q \
+"$python_bin" -m pytest -q \
   "$repository_root/tests/test_deform360_prefix_kinematics.py" \
   "$repository_root/tests/test_deform360_prefix_kinematics_diagnostic.py" \
   "$repository_root/tests/test_deform360_replication_case.py" \
   "$repository_root/tests/test_deform360_replication_warp.py"
 
 result="$output_dir/result.json"
-python "$repository_root/scripts/remote/run_deform360_prefix_kinematics.py" \
+"$python_bin" "$repository_root/scripts/remote/run_deform360_prefix_kinematics.py" \
   --repository-root "$repository_root" \
   --data-root "$data_root" \
   --bayesian-phystwin-repo "$bpt_root" \
