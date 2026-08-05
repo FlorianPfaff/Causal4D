@@ -4,6 +4,13 @@
 
 ### Added
 
+- Add a locked source-only Deform360 contact/support mechanism diagnostic that
+  reproduces the archived backend before comparing support-height, visual
+  contact-patch, source-fitted opening-schedule, and no-contact controls across
+  the unchanged 30 opened source episodes.
+- Bind the mechanism panel to the completed source-failure and negative
+  prefix-kinematics results, apply independent preregistered gates to each
+  physical candidate, and keep calibration and target outcomes closed.
 - Add a locked, source-only Deform360 prefix-kinematics diagnostic that
   reproduces the archived zero-velocity baseline, compares rigid and
   graph-harmonic causal velocity fields on the unchanged source candidates,
