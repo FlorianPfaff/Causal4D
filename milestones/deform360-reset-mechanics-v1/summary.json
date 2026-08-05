@@ -1,0 +1,153 @@
+{
+  "artifact_kind": "Deform360ResetMechanicsSummary",
+  "decision": {
+    "baseline_reproduction_episode_count": 30,
+    "baseline_reproduction_passed": true,
+    "classification": "insufficient_common_episode_support",
+    "first_failed_horizon_observations": 1,
+    "horizon_summaries": {
+      "next_1_observations": {
+        "common_episode_count": 23,
+        "episode_win_fraction": 0.0,
+        "excluded_episode_count": 7,
+        "horizon_observations": 1,
+        "mean_chamfer_m": 0.023323052767207097,
+        "mean_quality_valid_fraction": 1.0,
+        "passed": false,
+        "persistence_mean_chamfer_m": 0.01832488862421879,
+        "relative_improvement_vs_persistence": -0.27275277058887915,
+        "technical_failure_episode_count": 7
+      },
+      "next_3_observations": {
+        "common_episode_count": 23,
+        "episode_win_fraction": 0.0,
+        "excluded_episode_count": 7,
+        "horizon_observations": 3,
+        "mean_chamfer_m": 0.028514155714495414,
+        "mean_quality_valid_fraction": 0.9710144927536232,
+        "passed": false,
+        "persistence_mean_chamfer_m": 0.019109374357350568,
+        "relative_improvement_vs_persistence": -0.49215537784088803,
+        "technical_failure_episode_count": 7
+      },
+      "next_6_observations": {
+        "common_episode_count": 23,
+        "episode_win_fraction": 0.0,
+        "excluded_episode_count": 7,
+        "horizon_observations": 6,
+        "mean_chamfer_m": 0.03462691307651241,
+        "mean_quality_valid_fraction": 0.9130434782608695,
+        "passed": false,
+        "persistence_mean_chamfer_m": 0.020193421811179554,
+        "relative_improvement_vs_persistence": -0.7147620348990152,
+        "technical_failure_episode_count": 7
+      }
+    },
+    "passed": false,
+    "technical_failure_episode_count": 7,
+    "technical_failure_reset_count": 8
+  },
+  "information_boundary": {
+    "calibration_outcomes_read": false,
+    "physical_evidence_count": "0/36",
+    "registered_36_execution_method_changed": false,
+    "registered_method_changed": false,
+    "source_only": true,
+    "target_future_read": false,
+    "target_prefix_read": false
+  },
+  "schema_version": 1,
+  "source": {
+    "artifact_id": 8918737949,
+    "artifact_zip_sha256": "3be594f0fd6500468591aae3ff054bdc82b9ae065bcbc2e85779cbbea26bfcd4",
+    "evaluated_head_sha": "05c633aa972b9c99c43f3fe9ae65a31d2b33dca7",
+    "evaluated_merge_sha": "f0b15201f33d8eb77ab3e95d57fbf6f53987fa3a",
+    "result_content_sha256": "58d306eb513df8812ffacd509c90d39319f1c51e0e0064108ff44805884678d8",
+    "result_file_sha256": "a60b6ecc5612a113feac04ce644a97654a176dc8f90c6e5db7ee705edb118f33",
+    "runtime_file_sha256": "17f4dea96c3684217c4c6bb8d2ba61195b8442bdf1c3783ec71441fa08cdf4a1",
+    "workflow_run_id": 30977227684
+  },
+  "summary_sha256": "a358cbfef6f97f2e7d3356ae3e270c920d8da2de8bc049847ef47dbad7b92e2f",
+  "technical_failures": [
+    {
+      "episode_id": "002-rope-silk/episode_0000",
+      "exception_type": "ValueError",
+      "message": "rope point cloud remains disconnected at the maximum neighbor count",
+      "object_id": "002-rope-silk",
+      "reset_hull_position": 29,
+      "reset_ordinal": 1,
+      "reset_raw_frame": 176,
+      "stage": "build_observation"
+    },
+    {
+      "episode_id": "002-rope-silk/episode_0000",
+      "exception_type": "ValueError",
+      "message": "rope point cloud remains disconnected at the maximum neighbor count",
+      "object_id": "002-rope-silk",
+      "reset_hull_position": 58,
+      "reset_ordinal": 2,
+      "reset_raw_frame": 350,
+      "stage": "build_observation"
+    },
+    {
+      "episode_id": "002-rope-silk/episode_0005",
+      "exception_type": "ValueError",
+      "message": "rope point cloud remains disconnected at the maximum neighbor count",
+      "object_id": "002-rope-silk",
+      "reset_hull_position": 63,
+      "reset_ordinal": 2,
+      "reset_raw_frame": 380,
+      "stage": "build_observation"
+    },
+    {
+      "episode_id": "002-rope-silk/episode_0006",
+      "exception_type": "ValueError",
+      "message": "rope point cloud remains disconnected at the maximum neighbor count",
+      "object_id": "002-rope-silk",
+      "reset_hull_position": 27,
+      "reset_ordinal": 1,
+      "reset_raw_frame": 164,
+      "stage": "build_observation"
+    },
+    {
+      "episode_id": "002-rope-silk/episode_0007",
+      "exception_type": "ValueError",
+      "message": "rope point cloud remains disconnected at the maximum neighbor count",
+      "object_id": "002-rope-silk",
+      "reset_hull_position": 48,
+      "reset_ordinal": 2,
+      "reset_raw_frame": 290,
+      "stage": "build_observation"
+    },
+    {
+      "episode_id": "081-stripe-rope/episode_0001",
+      "exception_type": "ValueError",
+      "message": "rope point cloud remains disconnected at the maximum neighbor count",
+      "object_id": "081-stripe-rope",
+      "reset_hull_position": 17,
+      "reset_ordinal": 1,
+      "reset_raw_frame": 104,
+      "stage": "build_observation"
+    },
+    {
+      "episode_id": "081-stripe-rope/episode_0007",
+      "exception_type": "ValueError",
+      "message": "rope point cloud remains disconnected at the maximum neighbor count",
+      "object_id": "081-stripe-rope",
+      "reset_hull_position": 37,
+      "reset_ordinal": 2,
+      "reset_raw_frame": 224,
+      "stage": "build_observation"
+    },
+    {
+      "episode_id": "081-stripe-rope/episode_0009",
+      "exception_type": "ValueError",
+      "message": "rope point cloud remains disconnected at the maximum neighbor count",
+      "object_id": "081-stripe-rope",
+      "reset_hull_position": 14,
+      "reset_ordinal": 1,
+      "reset_raw_frame": 86,
+      "stage": "build_observation"
+    }
+  ]
+}

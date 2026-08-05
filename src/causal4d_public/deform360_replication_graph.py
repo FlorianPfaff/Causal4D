@@ -7,7 +7,11 @@ from typing import Any
 
 import numpy as np
 
-from .deform360_rope_graph import RopeCenterlineConfig, extract_rope_centerline
+from .deform360_rope_graph import (
+    RopeCenterlineConfig,
+    extract_rope_centerline,
+    extract_rope_centerline_component_bridge,
+)
 
 
 def _require(condition: bool, message: str) -> None:
@@ -36,7 +40,9 @@ class Deform360SparseGraph:
             "graph positions must have shape (N,3) with at least four nodes",
         )
         _require(
-            edges.ndim == 2 and edges.shape[1] == 2 and len(edges) >= len(positions) - 1,
+            edges.ndim == 2
+            and edges.shape[1] == 2
+            and len(edges) >= len(positions) - 1,
             "graph edges must have shape (E,2)",
         )
         _require(families.shape == (len(edges),), "spring family count differs")
@@ -108,13 +114,13 @@ def _farthest_point_indices(points: np.ndarray, count: int) -> np.ndarray:
     for _ in range(1, count):
         index = int(np.argmax(nearest))
         selected.append(index)
-        nearest = np.minimum(
-            nearest, np.sum((values - values[index]) ** 2, axis=1)
-        )
+        nearest = np.minimum(nearest, np.sum((values - values[index]) ** 2, axis=1))
     return np.asarray(selected, dtype=np.int64)
 
 
-def _connected_knn_edges(points: np.ndarray, neighbor_count: int) -> set[tuple[int, int]]:
+def _connected_knn_edges(
+    points: np.ndarray, neighbor_count: int
+) -> set[tuple[int, int]]:
     try:
         from scipy.sparse import coo_matrix
         from scipy.sparse.csgraph import minimum_spanning_tree
@@ -125,8 +131,8 @@ def _connected_knn_edges(points: np.ndarray, neighbor_count: int) -> set[tuple[i
     count = len(points)
     neighbors = min(max(1, neighbor_count), count - 1)
     distances, indices = cKDTree(points).query(points, k=neighbors + 1)
-    edges = {
-        tuple(sorted((row, int(column))))
+    edges: set[tuple[int, int]] = {
+        (min(row, int(column)), max(row, int(column)))
         for row in range(count)
         for column in indices[row, 1:]
         if row != int(column)
@@ -138,7 +144,7 @@ def _connected_knn_edges(points: np.ndarray, neighbor_count: int) -> set[tuple[i
     spanning = minimum_spanning_tree(graph)
     span_rows, span_columns = spanning.nonzero()
     edges.update(
-        tuple(sorted((int(row), int(column))))
+        (min(int(row), int(column)), max(int(row), int(column)))
         for row, column in zip(span_rows, span_columns, strict=True)
     )
     return edges
@@ -166,6 +172,33 @@ def build_filament_sparse_graph(
         stratum="filament",
         diagnostics={
             "construction": "ordered visual-hull centerline",
+            "centerline": centerline_diagnostics,
+        },
+    )
+
+
+def build_filament_sparse_graph_component_bridge(
+    points_world_m: np.ndarray,
+    *,
+    node_count: int = 21,
+) -> Deform360SparseGraph:
+    """Build an additive filament graph with component-bridge fallback."""
+
+    centerline, centerline_diagnostics = extract_rope_centerline_component_bridge(
+        points_world_m,
+        config=RopeCenterlineConfig(node_count=node_count),
+    )
+    stretch = {(index, index + 1) for index in range(node_count - 1)}
+    bend = {(index, index + 2) for index in range(node_count - 2)}
+    edges, families = _edge_arrays(stretch, bend)
+    return Deform360SparseGraph(
+        positions_m=centerline,
+        spring_edges=edges,
+        spring_families=families,
+        masses=np.ones(node_count, dtype=np.float64),
+        stratum="filament",
+        diagnostics={
+            "construction": "component-bridged visual-hull centerline",
             "centerline": centerline_diagnostics,
         },
     )
@@ -199,9 +232,7 @@ def build_sheet_sparse_graph(
     targets = np.asarray([(x, y) for y in v for x in u], dtype=np.float64)
     squared = np.sum((targets[:, None] - projected[None]) ** 2, axis=2)
     neighbor_count = min(local_neighbor_count, len(points))
-    nearest = np.argpartition(squared, neighbor_count - 1, axis=1)[
-        :, :neighbor_count
-    ]
+    nearest = np.argpartition(squared, neighbor_count - 1, axis=1)[:, :neighbor_count]
     nearest_squared = np.take_along_axis(squared, nearest, axis=1)
     scale = np.maximum(np.median(nearest_squared, axis=1, keepdims=True), 1e-10)
     weights = np.exp(-nearest_squared / scale)
@@ -263,7 +294,7 @@ def build_volumetric_sparse_graph(
     sample_indices = _farthest_point_indices(points, node_count)
     positions = points[sample_indices]
     stretch = _connected_knn_edges(positions, neighbor_count)
-    adjacency = [set() for _ in range(node_count)]
+    adjacency: list[set[int]] = [set() for _ in range(node_count)]
     for left, right in stretch:
         adjacency[left].add(right)
         adjacency[right].add(left)
@@ -272,7 +303,7 @@ def build_volumetric_sparse_graph(
         for neighbor in neighbors:
             for second in adjacency[neighbor]:
                 if second != node and second not in neighbors:
-                    bend.add(tuple(sorted((node, second))))
+                    bend.add((min(node, second), max(node, second)))
     edges, families = _edge_arrays(stretch, bend)
     return Deform360SparseGraph(
         positions_m=positions,
@@ -307,6 +338,7 @@ def build_sparse_graph_for_stratum(
 __all__ = [
     "Deform360SparseGraph",
     "build_filament_sparse_graph",
+    "build_filament_sparse_graph_component_bridge",
     "build_sheet_sparse_graph",
     "build_sparse_graph_for_stratum",
     "build_volumetric_sparse_graph",

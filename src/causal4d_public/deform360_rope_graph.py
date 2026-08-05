@@ -8,6 +8,11 @@ from typing import Any
 import numpy as np
 
 
+_DISCONNECTED_ROPE_MESSAGE = (
+    "rope point cloud remains disconnected at the maximum neighbor count"
+)
+
+
 def _require(condition: bool, message: str) -> None:
     if not condition:
         raise ValueError(message)
@@ -129,6 +134,178 @@ def _minimum_spanning_diameter(
     return points[np.asarray(path, dtype=np.int64)], used_neighbors
 
 
+def _closest_component_points(
+    points: np.ndarray,
+    left_indices: np.ndarray,
+    right_indices: np.ndarray,
+) -> tuple[float, int, int]:
+    """Return the deterministic closest point pair between two components."""
+
+    _require(len(left_indices) >= 1 and len(right_indices) >= 1, "empty component")
+    best_distance_squared = float("inf")
+    best_left = -1
+    best_right = -1
+    chunk_size = 256
+    right_points = points[right_indices]
+    for start in range(0, len(left_indices), chunk_size):
+        chunk_indices = left_indices[start : start + chunk_size]
+        difference = points[chunk_indices, None, :] - right_points[None, :, :]
+        squared = np.einsum("ijk,ijk->ij", difference, difference)
+        minimum = float(np.min(squared))
+        local_pairs = np.argwhere(squared == minimum)
+        for local_left, local_right in local_pairs:
+            left = int(chunk_indices[int(local_left)])
+            right = int(right_indices[int(local_right)])
+            candidate = (minimum, min(left, right), max(left, right))
+            current = (best_distance_squared, best_left, best_right)
+            if candidate < current:
+                best_distance_squared, best_left, best_right = candidate
+    _require(best_left >= 0 and best_right >= 0, "cannot bridge rope components")
+    return float(np.sqrt(best_distance_squared)), best_left, best_right
+
+
+def _component_bridge_diameter(
+    points: np.ndarray,
+    config: RopeCenterlineConfig,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Connect a disconnected maximum-kNN graph by component-level MST bridges."""
+
+    try:
+        from scipy.sparse import coo_matrix
+        from scipy.sparse.csgraph import (
+            connected_components,
+            dijkstra,
+            minimum_spanning_tree,
+        )
+        from scipy.spatial import cKDTree
+    except ImportError as error:  # pragma: no cover - scipy is a project dependency
+        raise RuntimeError("SciPy is required for rope graph extraction") from error
+
+    neighbor_count = min(config.maximum_neighbor_count, len(points) - 1)
+    _require(neighbor_count >= 1, "cannot build a rope neighborhood graph")
+    distances, indices = cKDTree(points).query(points, k=neighbor_count + 1)
+    rows = np.repeat(np.arange(len(points)), neighbor_count)
+    columns = indices[:, 1:].reshape(-1)
+    values = distances[:, 1:].reshape(-1)
+    directed = coo_matrix(
+        (values, (rows, columns)),
+        shape=(len(points), len(points)),
+    ).tocsr()
+    graph = directed.maximum(directed.T)
+    component_count, labels = connected_components(
+        graph,
+        directed=False,
+        return_labels=True,
+    )
+    _require(component_count >= 1, "rope component count is invalid")
+    positive_edges = graph.data[graph.data > 0.0]
+    _require(len(positive_edges) >= 1, "rope neighborhood graph has no edges")
+    local_scale = float(np.median(positive_edges))
+
+    component_edges: list[tuple[float, int, int, int, int]] = []
+    component_indices = [
+        np.flatnonzero(labels == component) for component in range(component_count)
+    ]
+    for left_component in range(component_count):
+        for right_component in range(left_component + 1, component_count):
+            distance, left, right = _closest_component_points(
+                points,
+                component_indices[left_component],
+                component_indices[right_component],
+            )
+            component_edges.append(
+                (distance, left_component, right_component, left, right)
+            )
+
+    parent = list(range(component_count))
+
+    def find(component: int) -> int:
+        while parent[component] != component:
+            parent[component] = parent[parent[component]]
+            component = parent[component]
+        return component
+
+    bridge_records: list[tuple[float, int, int]] = []
+    for distance, left_component, right_component, left, right in sorted(
+        component_edges
+    ):
+        left_root = find(left_component)
+        right_root = find(right_component)
+        if left_root == right_root:
+            continue
+        parent[right_root] = left_root
+        bridge_records.append((distance, left, right))
+        if len(bridge_records) == component_count - 1:
+            break
+    _require(
+        len(bridge_records) == component_count - 1,
+        "cannot connect every rope component",
+    )
+
+    if bridge_records:
+        bridge_rows = np.asarray(
+            [left for _, left, right in bridge_records]
+            + [right for _, left, right in bridge_records],
+            dtype=np.int64,
+        )
+        bridge_columns = np.asarray(
+            [right for _, left, right in bridge_records]
+            + [left for _, left, right in bridge_records],
+            dtype=np.int64,
+        )
+        bridge_values = np.asarray(
+            [distance for distance, _, _ in bridge_records] * 2,
+            dtype=np.float64,
+        )
+        graph = (
+            graph
+            + coo_matrix(
+                (bridge_values, (bridge_rows, bridge_columns)),
+                shape=graph.shape,
+            ).tocsr()
+        )
+        graph = graph.maximum(graph.T)
+    _require(
+        connected_components(graph, directed=False, return_labels=False) == 1,
+        "component bridges did not connect the rope graph",
+    )
+
+    spanning = minimum_spanning_tree(graph)
+    spanning = (spanning + spanning.T).tocsr()
+    first_distances = dijkstra(spanning, directed=False, indices=0)
+    first = int(np.argmax(first_distances))
+    second_distances, predecessors = dijkstra(
+        spanning,
+        directed=False,
+        indices=first,
+        return_predecessors=True,
+    )
+    second = int(np.argmax(second_distances))
+    path = [second]
+    cursor = second
+    while cursor != first:
+        cursor = int(predecessors[cursor])
+        _require(cursor >= 0, "cannot reconstruct bridged rope graph diameter")
+        path.append(cursor)
+    path.reverse()
+
+    bridge_lengths = [float(distance) for distance, _, _ in bridge_records]
+    diagnostics = {
+        "component_count_before_bridge": int(component_count),
+        "maximum_neighbor_count_used": int(neighbor_count),
+        "bridge_count": len(bridge_records),
+        "bridge_edges": [[int(left), int(right)] for _, left, right in bridge_records],
+        "bridge_lengths_m": bridge_lengths,
+        "maximum_bridge_length_m": (max(bridge_lengths) if bridge_lengths else 0.0),
+        "total_bridge_length_m": float(sum(bridge_lengths)),
+        "local_neighbor_edge_scale_m": local_scale,
+        "maximum_bridge_to_local_scale_ratio": (
+            max(bridge_lengths) / local_scale if bridge_lengths else 0.0
+        ),
+    }
+    return points[np.asarray(path, dtype=np.int64)], diagnostics
+
+
 def _density_filter(points: np.ndarray, config: RopeCenterlineConfig) -> np.ndarray:
     if config.density_keep_quantile >= 1.0 or len(points) < 16:
         return points
@@ -233,7 +410,10 @@ def extract_rope_centerline(
         "rope point cloud must have shape (N,3)",
     )
     _require(len(points) >= cfg.node_count, "rope point cloud has too few points")
-    _require(np.all(np.isfinite(points)), "rope point cloud contains non-finite values")
+    _require(
+        np.all(np.isfinite(points)),
+        "rope point cloud contains non-finite values",
+    )
     retained = _density_filter(points, cfg)
     diameter = None
     used_neighbors = None
@@ -304,6 +484,97 @@ def extract_rope_centerline(
     return centerline, diagnostics
 
 
+def extract_rope_centerline_component_bridge(
+    points_world_m: np.ndarray,
+    *,
+    config: RopeCenterlineConfig | None = None,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Extract a centerline with a minimal disconnected-component bridge fallback.
+
+    Connected inputs use :func:`extract_rope_centerline` exactly. The fallback is
+    entered only for the registered maximum-kNN disconnection failure and changes
+    no density, resampling, refinement, or orientation control.
+    """
+
+    cfg = config or RopeCenterlineConfig()
+    try:
+        centerline, registered = extract_rope_centerline(
+            points_world_m,
+            config=cfg,
+        )
+    except ValueError as error:
+        if str(error) != _DISCONNECTED_ROPE_MESSAGE:
+            raise
+    else:
+        diagnostics = dict(registered)
+        diagnostics["connectivity_policy"] = "registered-parity"
+        diagnostics["component_bridge"] = {
+            "component_count_before_bridge": 1,
+            "maximum_neighbor_count_used": registered["neighbor_count_used"],
+            "bridge_count": 0,
+            "bridge_edges": [],
+            "bridge_lengths_m": [],
+            "maximum_bridge_length_m": 0.0,
+            "total_bridge_length_m": 0.0,
+            "local_neighbor_edge_scale_m": None,
+            "maximum_bridge_to_local_scale_ratio": 0.0,
+        }
+        return centerline, diagnostics
+
+    points = np.asarray(points_world_m, dtype=np.float64)
+    _require(
+        points.ndim == 2 and points.shape[1] == 3,
+        "rope point cloud must have shape (N,3)",
+    )
+    _require(len(points) >= cfg.node_count, "rope point cloud has too few points")
+    _require(
+        np.all(np.isfinite(points)),
+        "rope point cloud contains non-finite values",
+    )
+    retained = _density_filter(points, cfg)
+    diameter, bridge = _component_bridge_diameter(retained, cfg)
+    initial = _resample_polyline(diameter, cfg.node_count)
+    centerline = _refine_centerline(retained, initial, cfg)
+    distance = np.linalg.norm(
+        retained[:, None, :] - centerline[None, :, :],
+        axis=2,
+    ).min(axis=1)
+    edge_lengths = np.linalg.norm(np.diff(centerline, axis=0), axis=1)
+    centerline_length = float(np.sum(edge_lengths))
+    bridge = dict(bridge)
+    bridge["maximum_bridge_fraction_of_centerline_length"] = (
+        bridge["maximum_bridge_length_m"] / centerline_length
+    )
+    bridge["total_bridge_fraction_of_centerline_length"] = (
+        bridge["total_bridge_length_m"] / centerline_length
+    )
+    diagnostics = {
+        "input_point_count": len(points),
+        "density_retained_point_count": len(retained),
+        "initialization": "component-bridged-graph-diameter",
+        "fixed_length_m": None,
+        "neighbor_count_used": cfg.maximum_neighbor_count,
+        "graph_diameter_vertex_count": len(diameter),
+        "graph_diameter_length_m": float(
+            np.sum(np.linalg.norm(np.diff(diameter, axis=0), axis=1))
+        ),
+        "centerline_node_count": len(centerline),
+        "centerline_length_m": centerline_length,
+        "edge_length_coefficient_of_variation": float(
+            np.std(edge_lengths) / np.mean(edge_lengths)
+        ),
+        "point_to_centerline_node_distance_m": {
+            "median": float(np.median(distance)),
+            "p95": float(np.quantile(distance, 0.95)),
+            "maximum": float(np.max(distance)),
+        },
+        "orientation": "graph-diameter",
+        "connectivity_policy": "component-bridge-v1",
+        "component_bridge": bridge,
+    }
+    return centerline, diagnostics
+
+
 def initialize_rope_centerline_pca(
     points_world_m: np.ndarray,
     *,
@@ -318,7 +589,10 @@ def initialize_rope_centerline_pca(
         "rope point cloud must have shape (N,3)",
     )
     _require(len(points) >= cfg.node_count, "rope point cloud has too few points")
-    _require(np.all(np.isfinite(points)), "rope point cloud contains non-finite values")
+    _require(
+        np.all(np.isfinite(points)),
+        "rope point cloud contains non-finite values",
+    )
     retained = points
     center = np.median(retained, axis=0)
     _, singular_values, right = np.linalg.svd(retained - center, full_matrices=False)
@@ -372,6 +646,7 @@ def rope_chain_edges(node_count: int) -> np.ndarray:
 __all__ = [
     "RopeCenterlineConfig",
     "extract_rope_centerline",
+    "extract_rope_centerline_component_bridge",
     "initialize_rope_centerline_pca",
     "rope_chain_edges",
 ]
