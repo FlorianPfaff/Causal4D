@@ -36,7 +36,18 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main
+          set +e
           git merge --no-edit origin/main
+          status=$?
+          set -e
+          if [[ "${status}" -ne 0 ]]; then
+            mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
+            test "${#conflicts[@]}" -eq 1
+            test "${conflicts[0]}" = "CHANGELOG.md"
+            git checkout --ours CHANGELOG.md
+            git add CHANGELOG.md
+            git commit --no-edit
+          fi
           git diff --check
           grep -F "strict non-pickled physical evaluation target" CHANGELOG.md
           grep -F "Replace mutable \`dict\`/\`list\` subclasses" CHANGELOG.md
