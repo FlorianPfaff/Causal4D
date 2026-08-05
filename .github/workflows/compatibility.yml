@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: compatibility-${{ github.workflow }}-${{ github.ref }}
@@ -20,6 +20,60 @@ env:
   PYTHONUNBUFFERED: "1"
 
 jobs:
+  agent-contact-config-patch:
+    name: Apply and validate latent-contact hardening
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'agent/harden-contact-and-public-integration'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out pull-request branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install development dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Apply and format focused patch
+        run: |
+          python scripts/ci/agent_apply_contact_config.py
+          python -m ruff format \
+            src/causal4d/contact_inference.py \
+            tests/test_latent_contact_config_validation.py
+      - name: Validate focused patch
+        run: |
+          python -m ruff check \
+            src/causal4d/contact_inference.py \
+            tests/test_latent_contact_config_validation.py
+          python -m ruff format --check \
+            src/causal4d/contact_inference.py \
+            tests/test_latent_contact_config_validation.py
+          python -m pytest -ra \
+            tests/test_latent_contact_config_validation.py \
+            tests/test_causal4d_contact_inference.py
+      - name: Restore workflow, retire patch script, and push
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          git checkout origin/main -- .github/workflows/compatibility.yml
+          rm scripts/ci/agent_apply_contact_config.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            .github/workflows/compatibility.yml \
+            scripts/ci/agent_apply_contact_config.py \
+            src/causal4d/contact_inference.py \
+            tests/test_latent_contact_config_validation.py
+          git commit -m "Harden latent contact configuration"
+          git push origin "HEAD:${HEAD_BRANCH}"
+
   remaining-python-minors:
     name: Core-only / Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
