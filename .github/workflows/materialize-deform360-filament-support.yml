@@ -50,33 +50,45 @@ jobs:
 
           graph_path = Path("src/causal4d_public/deform360_replication_graph.py")
           graph = graph_path.read_text(encoding="utf-8")
-          old_edges = (
-              "    edges = {\n"
-              "        tuple(sorted((row, int(column))))\n"
-              "        for row in range(count)\n"
-              "        for column in indices[row, 1:]\n"
-              "        if row != int(column)\n"
-              "    }\n"
-          )
-          new_edges = (
-              "    edges: set[tuple[int, int]] = {\n"
-              "        (min(row, int(column)), max(row, int(column)))\n"
-              "        for row in range(count)\n"
-              "        for column in indices[row, 1:]\n"
-              "        if row != int(column)\n"
-              "    }\n"
-          )
-          if graph.count(old_edges) != 1:
-              raise SystemExit("unexpected kNN edge-construction source")
-          graph = graph.replace(old_edges, new_edges)
-          old_adjacency = "    adjacency = [set() for _ in range(node_count)]\n"
-          if graph.count(old_adjacency) != 1:
-              raise SystemExit("unexpected volumetric adjacency source")
-          graph = graph.replace(
-              old_adjacency,
-              "    adjacency: list[set[int]] = "
-              "[set() for _ in range(node_count)]\n",
-          )
+          replacements = {
+              (
+                  "    edges = {\n"
+                  "        tuple(sorted((row, int(column))))\n"
+                  "        for row in range(count)\n"
+                  "        for column in indices[row, 1:]\n"
+                  "        if row != int(column)\n"
+                  "    }\n"
+              ): (
+                  "    edges: set[tuple[int, int]] = {\n"
+                  "        (min(row, int(column)), max(row, int(column)))\n"
+                  "        for row in range(count)\n"
+                  "        for column in indices[row, 1:]\n"
+                  "        if row != int(column)\n"
+                  "    }\n"
+              ),
+              (
+                  "    edges.update(\n"
+                  "        tuple(sorted((int(row), int(column))))\n"
+                  "        for row, column in zip(span_rows, span_columns, strict=True)\n"
+                  "    )\n"
+              ): (
+                  "    edges.update(\n"
+                  "        (min(int(row), int(column)), max(int(row), int(column)))\n"
+                  "        for row, column in zip(span_rows, span_columns, strict=True)\n"
+                  "    )\n"
+              ),
+              "    adjacency = [set() for _ in range(node_count)]\n": (
+                  "    adjacency: list[set[int]] = "
+                  "[set() for _ in range(node_count)]\n"
+              ),
+              "                    bend.add(tuple(sorted((node, second))))\n": (
+                  "                    bend.add((min(node, second), max(node, second)))\n"
+              ),
+          }
+          for old, new in replacements.items():
+              if graph.count(old) != 1:
+                  raise SystemExit(f"unexpected graph source for replacement: {old!r}")
+              graph = graph.replace(old, new)
           graph_path.write_text(graph, encoding="utf-8")
 
           support_path = Path("src/causal4d_public/deform360_filament_support.py")
