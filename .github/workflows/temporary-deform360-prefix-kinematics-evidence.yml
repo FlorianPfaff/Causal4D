@@ -37,15 +37,47 @@ jobs:
           persist-credentials: false
           clean: true
 
-      - name: Read exact BayesianPhysTwin pin
-        id: bpt-pin
-        run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Read locked repository pins
+        id: repository-pins
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import re
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          protocol = json.loads(
+              Path(
+                  "configs/causal4d_public/deform360_replication_v1.json"
+              ).read_text(encoding="utf-8")
+          )["config"]
+          pins = {
+              "bpt_sha": subprocess.check_output(
+                  [sys.executable, "scripts/ci/read_bpt_pin.py"],
+                  text=True,
+              ).strip(),
+              "deform360_sha": protocol["deform360_code_commit"],
+              "official_phystwin_sha": protocol["official_phystwin_commit"],
+          }
+          for name, value in pins.items():
+              if type(value) is not str or re.fullmatch(r"[0-9a-f]{40}", value) is None:
+                  raise SystemExit(f"{name} is not a lowercase 40-hex commit")
+              print(f"{name}={value}")
+          PY
 
       - name: Check out pinned BayesianPhysTwin
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: IPS-Stuttgart/BayesianPhysTwin
-          ref: ${{ steps.bpt-pin.outputs.sha }}
+          ref: ${{ steps.repository-pins.outputs.bpt_sha }}
           ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}
           path: _bpt
           persist-credentials: false
@@ -55,7 +87,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: lhy0807/deform360
-          ref: 7fea8e20231a47641d1d2bc8791920ec4e62ec5e
+          ref: ${{ steps.repository-pins.outputs.deform360_sha }}
           path: _deform360
           persist-credentials: false
           clean: true
@@ -64,7 +96,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Jianghanxiao/PhysTwin
-          ref: 2b6630528141b9cba5a7677c8b88b2129b4a8390
+          ref: ${{ steps.repository-pins.outputs.official_phystwin_sha }}
           path: _official_phystwin
           persist-credentials: false
           clean: true
