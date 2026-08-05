@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/deform360-reset-mechanics.yml"
+      - ".github/repair_deform360_reset_mechanics.py"
       - "configs/causal4d_public/deform360_reset_mechanics_v1.json"
       - "docs/causal4d_deform360_reset_mechanics.md"
       - "scripts/remote/run_deform360_reset_mechanics.py"
@@ -69,17 +70,25 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install "ruff>=0.15.22,<0.17"
+          if [[ -f .github/repair_deform360_reset_mechanics.py ]]; then
+            python .github/repair_deform360_reset_mechanics.py
+            rm .github/repair_deform360_reset_mechanics.py
+          fi
           python -m ruff format \
             src/causal4d_public/deform360_reset_mechanics.py \
             tests/test_deform360_reset_mechanics.py
           if git diff --quiet -- \
+            .github/repair_deform360_reset_mechanics.py \
+            docs/causal4d_deform360_reset_mechanics.md \
             src/causal4d_public/deform360_reset_mechanics.py \
             tests/test_deform360_reset_mechanics.py; then
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- \
+          git add -A -- \
+            .github/repair_deform360_reset_mechanics.py \
+            docs/causal4d_deform360_reset_mechanics.md \
             src/causal4d_public/deform360_reset_mechanics.py \
             tests/test_deform360_reset_mechanics.py
           git commit -m "Format reset-mechanics technical-failure handling"
