@@ -124,6 +124,53 @@ def test_controller_patch_velocity_is_causal(
     assert not velocity.flags.writeable
 
 
+@pytest.mark.parametrize(
+    ("association", "message"),
+    [
+        (
+            {
+                "robot_axis": 0,
+                "selected_taxel_indices": None,
+                "contact_offset_m": [0.0, 0.0, 0.0],
+            },
+            "taxel indices",
+        ),
+        (
+            {
+                "robot_axis": 0,
+                "selected_taxel_indices": [0],
+                "contact_offset_m": None,
+            },
+            "three-element sequence",
+        ),
+        (
+            {
+                "robot_axis": 0,
+                "selected_taxel_indices": [0, 0],
+                "contact_offset_m": [0.0, 0.0, 0.0],
+            },
+            "repeats a taxel index",
+        ),
+    ],
+)
+def test_controller_patch_velocity_rejects_malformed_contact_associations(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    association: dict[str, object],
+    message: str,
+) -> None:
+    _install_fake_deform360(monkeypatch)
+    with pytest.raises(ValueError, match=message):
+        controller_patch_velocities_from_prefix(
+            tmp_path,
+            prefix_endpoint_frame=6,
+            contact_associations=(association,),
+            dt_seconds=0.1,
+            lookback_frames=3,
+            maximum_speed_m_s=2.0,
+        )
+
+
 def test_global_policy_applies_mean_active_controller_velocity() -> None:
     graph = _chain_graph()
     field = global_contact_translation_velocity(
