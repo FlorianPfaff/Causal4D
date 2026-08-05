@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import zipfile
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,6 +34,7 @@ from causal4d.immutable_json import plain_json, validated_json_mapping
 _ARCHIVE_FIELDS = frozenset(
     {"descriptor_json", "node_indices", "positions_m", "validity_mask"}
 )
+_ARCHIVE_MEMBERS = frozenset(f"{name}.npy" for name in _ARCHIVE_FIELDS)
 
 
 @dataclass(frozen=True)
@@ -293,6 +295,21 @@ def _parse_descriptor(value: np.ndarray) -> Mapping[str, Any]:
 
 def load_held_out_physical_target(path: str | Path) -> HeldOutPhysicalTarget:
     """Load and independently revalidate a held-out target archive."""
+
+    try:
+        with zipfile.ZipFile(path) as archive_zip:
+            member_names = archive_zip.namelist()
+    except (OSError, zipfile.BadZipFile) as error:
+        raise ValueError("held-out target archive is not a valid ZIP file") from error
+    if len(member_names) != len(set(member_names)):
+        raise ValueError("held-out target archive contains duplicate ZIP members")
+    actual_members = set(member_names)
+    if actual_members != _ARCHIVE_MEMBERS:
+        raise ValueError(
+            "held-out target ZIP members do not match schema; "
+            f"missing={sorted(_ARCHIVE_MEMBERS - actual_members)}, "
+            f"unexpected={sorted(actual_members - _ARCHIVE_MEMBERS)}"
+        )
 
     with np.load(path, allow_pickle=False) as archive:
         if len(archive.files) != len(set(archive.files)):
