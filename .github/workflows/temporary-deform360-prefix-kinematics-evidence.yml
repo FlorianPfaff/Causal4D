@@ -6,7 +6,7 @@ on:
     paths:
       - ".github/workflows/temporary-deform360-prefix-kinematics-evidence.yml"
       - "configs/causal4d_public/deform360_prefix_kinematics_v1.json"
-      - "configs/causal4d_public/deform360_source_backend_runtime_erratum_v1.json"
+      - "configs/causal4d_public/deform360_source_backend_reproduction_runtime_v1.json"
       - "scripts/remote/find_deform360_replication_root.py"
       - "scripts/remote/run_deform360_prefix_kinematics.py"
       - "scripts/remote/run_deform360_prefix_kinematics_workflow.sh"
@@ -54,7 +54,7 @@ jobs:
           BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}
         run: test -n "${BPT_READ_SSH_KEY}"
 
-      - name: Select the locked GPU Python runtime
+      - name: Select the conditional reproduction runtime
         shell: bash
         run: |
           set -euo pipefail
