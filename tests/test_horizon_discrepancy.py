@@ -5,6 +5,12 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
+from causal4d.contracts import TwinBelief, build_causal_context
+from causal4d.horizon_discrepancy import (
+    HorizonDiscrepancyBankV1,
+    build_horizon_discrepancy_bank,
+)
+
 provider_api = pytest.importorskip(
     "bayesian_phystwin.causal4d_belief_provider_v2"
 )
@@ -13,12 +19,6 @@ if not hasattr(provider_api, "HorizonDiscrepancyCalibrationV1"):
         "installed Bayesian-PhysTwin lacks horizon discrepancy provider v2",
         allow_module_level=True,
     )
-
-from causal4d.contracts import TwinBelief, build_causal_context
-from causal4d.horizon_discrepancy import (
-    HorizonDiscrepancyBankV1,
-    build_horizon_discrepancy_bank,
-)
 
 
 def _belief() -> TwinBelief:
