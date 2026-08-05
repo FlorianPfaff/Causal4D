@@ -13,6 +13,12 @@ TEMPORARY_WORKFLOW = (
     / "temporary-deform360-prefix-kinematics-evidence.yml"
 )
 PROTOCOL = ROOT / "configs" / "causal4d_public" / "deform360_replication_v1.json"
+RUNTIME_ERRATUM = (
+    ROOT
+    / "configs"
+    / "causal4d_public"
+    / "deform360_source_backend_runtime_erratum_v1.json"
+)
 SELECTOR = ROOT / "scripts" / "remote" / "select_deform360_prefix_kinematics_python.py"
 
 
@@ -42,7 +48,7 @@ def test_prefix_kinematics_gpu_evidence_requires_explicit_dispatch() -> None:
     assert "continue-on-error: true" not in text
 
 
-def test_gpu_jobs_reuse_only_the_exact_frozen_python_runtime() -> None:
+def test_gpu_jobs_reuse_only_the_exact_effective_runtime_lock() -> None:
     permanent = WORKFLOW.read_text(encoding="utf-8")
     temporary = TEMPORARY_WORKFLOW.read_text(encoding="utf-8")
     shell = (
@@ -51,6 +57,7 @@ def test_gpu_jobs_reuse_only_the_exact_frozen_python_runtime() -> None:
 
     for text in (permanent, temporary):
         assert "select_deform360_prefix_kinematics_python.py" in text
+        assert "deform360_source_backend_runtime_erratum_v1.json" in text
         assert "python-selection.json" in text
         assert "PREFIX_KINEMATICS_PYTHON=" in text
         assert text.index("Initialize source-evidence directory") < text.index(
@@ -62,7 +69,10 @@ def test_gpu_jobs_reuse_only_the_exact_frozen_python_runtime() -> None:
     assert 'python_bin="${PREFIX_KINEMATICS_PYTHON:-python3}"' in shell
     assert '"$python_bin" -m pytest' in shell
     assert '"$python_bin" "$repository_root/scripts/remote/' in shell
+    assert "--runtime-selection" in shell
+    assert "runtime_provenance" in shell
     assert SELECTOR.is_file()
+    assert RUNTIME_ERRATUM.is_file()
 
 
 def test_prefix_kinematics_workflow_separates_code_and_dataset_pins() -> None:
@@ -95,9 +105,10 @@ def test_prefix_kinematics_workflow_archives_exact_runtime_evidence() -> None:
     ).read_text(encoding="utf-8")
     assert "--bayesian-phystwin-repo" in shell
     assert "--deform360-repo" in shell
+    assert "--runtime-selection" in shell
     assert 'protocol["deform360_code_commit"]' in shell
     assert 'deform360_root: expected["dataset_revision"]' not in shell
-    assert '"dataset_revision": expected["dataset_revision"]' in shell
+    assert '"dataset_revision": environment["dataset_revision"]' in shell
     runner = (
         ROOT / "scripts" / "remote" / "run_deform360_prefix_kinematics.py"
     ).read_text(encoding="utf-8")
@@ -108,5 +119,8 @@ def test_prefix_kinematics_workflow_archives_exact_runtime_evidence() -> None:
         "official_phystwin",
     ):
         assert f'("{repository_name}",' in runner
+    assert '"runtime_selection_file_sha256"' in runner
+    assert '"runtime_lock_provenance"' in runner
     assert "result.runtime.json" in shell
+    assert '"$runtime_selection"' in shell
     assert "retention-days: 30" in text
