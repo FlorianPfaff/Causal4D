@@ -1,0 +1,180 @@
+name: Public pinned BayesianPhysTwin integration
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/public-pinned-bpt.yml"
+      - "requirements/ci/bayesian-phystwin-provider-v1.sha"
+      - "scripts/ci/read_bpt_pin.py"
+      - "scripts/ci/run_bpt_integration_tests.py"
+      - "src/**"
+      - "tests/**"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/public-pinned-bpt.yml"
+      - "requirements/ci/bayesian-phystwin-provider-v1.sha"
+      - "scripts/ci/read_bpt_pin.py"
+      - "scripts/ci/run_bpt_integration_tests.py"
+      - "src/**"
+      - "tests/**"
+  workflow_dispatch:
+  schedule:
+    - cron: "23 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-pinned-bpt-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  installed-wheel:
+    name: Pinned BPT installed-wheel boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out Causal4D
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: causal4d
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: causal4d/pyproject.toml
+
+      - name: Read exact BayesianPhysTwin pin
+        id: pin
+        working-directory: causal4d
+        run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out public pinned BayesianPhysTwin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/BayesianPhysTwin
+          ref: ${{ steps.pin.outputs.sha }}
+          path: bayesian-phystwin
+          persist-credentials: false
+
+      - name: Record exact clean revisions
+        id: revisions
+        shell: bash
+        run: |
+          for repository in causal4d bayesian-phystwin; do
+            test -z "$(git -C "$repository" status --porcelain=v1 --untracked-files=all)"
+          done
+          echo "causal4d=$(git -C causal4d rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "bpt=$(git -C bayesian-phystwin rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build both wheels
+        shell: bash
+        run: |
+          python -m pip install --upgrade build pip
+          wheelhouse="$RUNNER_TEMP/public-pinned-bpt-wheelhouse"
+          mkdir -p "$wheelhouse"
+          python -m build --wheel --outdir "$wheelhouse" causal4d
+          python -m build --wheel --outdir "$wheelhouse" bayesian-phystwin
+          test "$(find "$wheelhouse" -maxdepth 1 -name '*.whl' | wc -l)" -eq 2
+          (
+            cd "$wheelhouse"
+            sha256sum ./*.whl | sort
+          ) | tee "$RUNNER_TEMP/public-pinned-bpt-wheel-sha256.txt"
+
+      - name: Install wheels in a clean virtual environment
+        shell: bash
+        run: |
+          venv="$RUNNER_TEMP/public-pinned-bpt-venv"
+          wheelhouse="$RUNNER_TEMP/public-pinned-bpt-wheelhouse"
+          python -m venv "$venv"
+          "$venv/bin/python" -m pip install --upgrade pip
+          mapfile -t wheels < <(find "$wheelhouse" -maxdepth 1 -name '*.whl' -print | sort)
+          "$venv/bin/python" -m pip install "${wheels[@]}" pytest opencv-python-headless
+          "$venv/bin/python" -m pip check
+
+      - name: Reject checkout-resolved imports
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP"
+          env -u PYTHONPATH \
+            CAUSAL4D_CHECKOUT="$GITHUB_WORKSPACE/causal4d" \
+            BPT_CHECKOUT="$GITHUB_WORKSPACE/bayesian-phystwin" \
+            "$RUNNER_TEMP/public-pinned-bpt-venv/bin/python" - <<'PY'
+          import os
+          from pathlib import Path
+
+          import bayesian_phystwin
+          import causal4d
+
+          roots = (
+              Path(os.environ["CAUSAL4D_CHECKOUT"]).resolve(),
+              Path(os.environ["BPT_CHECKOUT"]).resolve(),
+          )
+          for module in (causal4d, bayesian_phystwin):
+              origin = Path(module.__file__).resolve()
+              if any(origin.is_relative_to(root) for root in roots):
+                  raise SystemExit(f"{module.__name__} resolved from checkout: {origin}")
+              print(module.__name__, origin)
+          PY
+
+      - name: Run pinned provider contract tests against installed wheels
+        shell: bash
+        env:
+          CAUSAL4D_REQUIRE_BPT_PROVIDER: "1"
+        run: |
+          cd "$RUNNER_TEMP"
+          env -u PYTHONPATH \
+            "$RUNNER_TEMP/public-pinned-bpt-venv/bin/python" -m pytest -ra \
+              --import-mode=importlib \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_bpt_graph_provider_integration.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_bpt_provider_integration.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_bpt_belief.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_molmo_acceptance.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_molmo_adapter.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_phystwin_backend.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_real_calibration.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_real_oracle_audit.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_rest_geometry.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_rest_geometry_protocol.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_rest_geometry_transfer.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_discrepancy_localization_aggregate.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_phystwin_propagated_state.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_phystwin_resumable.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_replay_provider_contract.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_rollout_cache.py"
+
+      - name: Publish revision and wheel identities
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Public pinned BayesianPhysTwin integration"
+            echo
+            echo "- Causal4D: \`${{ steps.revisions.outputs.causal4d }}\`"
+            echo "- BayesianPhysTwin: \`${{ steps.revisions.outputs.bpt }}\`"
+            if [[ -f "$RUNNER_TEMP/public-pinned-bpt-wheel-sha256.txt" ]]; then
+              echo
+              echo "#### Wheel SHA-256 identities"
+              echo '```text'
+              cat "$RUNNER_TEMP/public-pinned-bpt-wheel-sha256.txt"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload wheel identities
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: public-pinned-bpt-wheel-identities
+          path: ${{ runner.temp }}/public-pinned-bpt-wheel-sha256.txt
+          if-no-files-found: warn
+          retention-days: 7
