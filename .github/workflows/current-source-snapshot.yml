@@ -16,7 +16,7 @@ concurrency:
 jobs:
   snapshot:
     name: Export exact pull-request source
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
     timeout-minutes: 10
     steps:
       - name: Check out exact pull-request head
@@ -24,6 +24,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
+          clean: true
 
       - name: Archive source and provenance
         shell: bash
