@@ -124,7 +124,10 @@ def _load_runtime_selection(path: Path) -> dict[str, Any]:
     if payload["artifact_kind"] != "Deform360PrefixKinematicsPythonSelection":
         raise ValueError("unsupported runtime-selection artifact kind")
     selected = payload["selected"]
-    if type(selected) is not str or Path(selected).absolute() != Path(sys.executable).absolute():
+    if (
+        type(selected) is not str
+        or Path(selected).absolute() != Path(sys.executable).absolute()
+    ):
         raise ValueError("runtime selection identifies another interpreter")
     expected = payload["expected"]
     observed = payload["selected_runtime"]
@@ -144,9 +147,7 @@ def _load_runtime_selection(path: Path) -> dict[str, Any]:
     if provenance.get("zero_baseline_reproduction_required") is not True:
         raise ValueError("runtime selection relaxed zero-baseline reproduction")
     correction = provenance.get("correction")
-    if correction != {
-        "numpy": {"effective": "1.26.4", "recorded": "2.5.1"}
-    }:
+    if correction != {"numpy": {"effective": "1.26.4", "recorded": "2.5.1"}}:
         raise ValueError("runtime selection has another provenance correction")
     return payload
 
