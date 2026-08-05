@@ -42,6 +42,7 @@ jobs:
           python -m pip install pyyaml
           python - <<'PY'
           from pathlib import Path
+          import re
           import subprocess
           import yaml
 
@@ -57,6 +58,17 @@ jobs:
           if len(scripts) != 3:
               raise SystemExit(f"unexpected repair step count: {len(scripts)}")
           for index, script in enumerate(scripts, start=1):
+              if index == 1:
+                  script = script.replace(
+                      "from pathlib import Path\n",
+                      "from pathlib import Path\nfrom textwrap import dedent\n",
+                      1,
+                  )
+                  script = re.sub(
+                      r"(?s)('''.*?''')\.replace\(\" {10}\", \"\"\)",
+                      r"dedent(\1)",
+                      script,
+                  )
               print(f"::group::reviewed repair step {index}")
               subprocess.run(
                   ["bash", "-euo", "pipefail", "-c", script],
