@@ -61,12 +61,16 @@ artifact metadata, so a normalized result cannot be mistaken for a legacy one.
 
 ## Command line
 
-The factual-abduction command defaults to the registered path:
+Legacy `final_data.pkl` inputs require explicit consent and the exact SHA-256 of
+the trusted bytes. The factual-abduction command defaults to the registered
+likelihood path:
 
 ```bash
 causal4d experiment phystwin abduct-intervention \
   rollout-bank.npz twin-belief.npz final_data.pkl \
-  factual.npz evaluation.json
+  factual.npz evaluation.json \
+  --allow-unsafe-pickle \
+  --expected-final-data-sha256 <lowercase-sha256>
 ```
 
 Run the development comparator explicitly with:
@@ -75,13 +79,18 @@ Run the development comparator explicitly with:
 causal4d experiment phystwin abduct-intervention \
   rollout-bank.npz twin-belief.npz final_data.pkl \
   factual-normalized-v2.npz evaluation-normalized-v2.json \
+  --allow-unsafe-pickle \
+  --expected-final-data-sha256 <lowercase-sha256> \
   --likelihood-semantics normalized_v2 \
   --difference-correlation 0.25
 ```
 
-`difference_correlation` is accepted only with `normalized_v2`. The normalized
-dense path cannot be combined with the separate grouped full-covariance evidence
-path; contradictory requests fail rather than silently ignoring one model.
+The digest is checked before deserialization. Consent and byte identity do not
+make an untrusted pickle safe; new acquisition pipelines should use data-only
+artifacts instead. `difference_correlation` is accepted only with
+`normalized_v2`. The normalized dense path cannot be combined with the separate
+grouped full-covariance evidence path; contradictory requests fail rather than
+silently ignoring one model.
 
 ## Promotion boundary
 
