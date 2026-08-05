@@ -14,9 +14,11 @@ contact_count="${CAUSAL4D_CONTACT_STATES:-9}"
 prefix_frames="${CAUSAL4D_O_PLUS_PREFIX_FRAMES:-6}"
 
 case_dir="${data_root}/${case_name}"
+final_data="${case_dir}/final_data.pkl"
 profile="${profile_dir}/parameter_profile.npz"
 checkpoint="${profile_dir}/refit_checkpoint.pt"
 mkdir -p "${output}"
+final_data_sha256="$(sha256sum "${final_data}" | awk '{print $1}')"
 
 run() {
   PYTHONPATH="${repo_root}/src" CUDA_VISIBLE_DEVICES="${PHYSTWIN_GPU:-0}" \
@@ -39,7 +41,7 @@ run -m causal4d.cli.phystwin_rollout_bank \
 run -m causal4d.cli.abduct_phystwin_intervention \
   "${output}/known.bank.npz" \
   "${output}/known.twin_belief.npz" \
-  "${case_dir}/final_data.pkl" \
+  "${final_data}" \
   "${output}/factual.npz" \
   "${output}/factual_evaluation.json" \
   --o-plus-prefix-frames "${prefix_frames}"
@@ -56,9 +58,16 @@ for specification in "known_action:same_grasp" "history_reverse:new_contact"; do
     --maximum-contact-states "${contact_count}"
 done
 
+run -m causal4d.cli.import_physical_target \
+  "${output}/known_action.physical.npz" \
+  "${final_data}" \
+  "${output}/known_action.target.npz" \
+  --allow-unsafe-pickle \
+  --expected-sha256 "${final_data_sha256}"
+
 run -m causal4d.cli.evaluate_physical_counterfactual \
   "${output}/known_action.physical.npz" \
-  "${case_dir}/final_data.pkl" \
+  "${output}/known_action.target.npz" \
   "${output}/known_action.beta0_evaluation.json" \
   --start-frame "$((prefix_frames + 1))"
 

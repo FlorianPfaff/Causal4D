@@ -36,6 +36,11 @@ Bayesian-PhysTwin provider boundary. Unpickling can execute code. A SHA-256 chec
 proves that the bytes match an expected digest; it does not make arbitrary pickle
 content safe or sandbox its execution.
 
+For registered physical-counterfactual evaluation, prefer the one-time
+`causal4d evidence physical-target import-legacy` conversion. It requires
+explicit unsafe-pickle consent and an expected digest, then emits a strict
+non-pickled artifact used by the stable evaluator.
+
 Only load a legacy pickle when all of the following hold:
 
 1. the expected digest was obtained through a trusted, independently identified
