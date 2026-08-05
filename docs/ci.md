@@ -1,6 +1,6 @@
 # Continuous integration
 
-Causal4D separates its lightweight contracts from private-provider and
+Causal4D separates its lightweight contracts from public cross-repository and
 hardware integrations. This keeps a base installation testable while still
 detecting drift at the Prob4D and Bayesian-PhysTwin boundaries.
 
@@ -29,49 +29,23 @@ detecting drift at the Prob4D and Bayesian-PhysTwin boundaries.
 Formatting is an incremental ratchet: modified Python files must be
 Ruff-formatted without forcing unrelated historical files into the same change.
 
-## Private repository access
+## Public repository integration
 
-Configure the least-privilege repository credentials used at each private
-boundary:
-
-- `BPT_READ_SSH_KEY`, a read-only SSH identity for
-  `IPS-Stuttgart/BayesianPhysTwin`;
-- `PROB4D_READ_TOKEN`, a token with read access to
-  `IPS-Stuttgart/Prob4D`.
-
-`BPT_READ_SSH_KEY` is mandatory for trusted same-repository validation because
-Causal4D must execute its current BayesianPhysTwin consumer boundary. The
-credentialed Prob4D producer gate follows the same policy as BayesianPhysTwin's
-canonical three-repository workflow: on pull-request and push events, an absent
-or inaccessible `PROB4D_READ_TOKEN` is reported explicitly and no current
-Prob4D execution or evidence is admitted. Scheduled and manually dispatched
-validation remains fail-closed when the token is unavailable.
-
-Tag releases also fail in the main CI workflow when its required private
-credential is absent, so a skipped pinned-provider job cannot authorize release
-publication.
-
-GitHub does not expose repository secrets to pull requests from external forks.
-Those events receive a dedicated `External PR cannot access private providers`
-result explaining that private coverage is unavailable. A maintainer must
-reproduce the proposed head on a trusted same-repository branch before merge.
+Prob4D, BayesianPhysTwin, and Causal4D are public repositories. Required
+provider checks therefore use ordinary read-only `actions/checkout` steps and do
+not depend on repository secrets or deploy keys. Forked pull requests exercise
+the same installed-wheel boundary as organization branches, and release tags
+remain blocked unless the pinned public-provider job passes. Optional hardware
+workflows retain their separately documented runtime requirements.
 
 ## Three-repository installed-wheel golden path
 
 `.github/workflows/bayesian-phystwin-provider-compatibility.yml` is the terminal
 Prob4D -> BayesianPhysTwin -> Causal4D compatibility check. It runs on relevant
-same-repository pull requests and pushes, can be dispatched with explicit BPT
-and Prob4D revisions, and runs weekly against both private repositories' `main`
-branches.
-
-The workflow first requires the working BayesianPhysTwin SSH credential. It then
-probes `PROB4D_READ_TOKEN` before any producer checkout. When the token is
-available, the full installed-wheel path is mandatory. When it is unavailable
-on a continuous pull-request or push event, the workflow records the exact
-unavailable status and states that no current-Prob4D execution or evidence was
-admitted; the required Causal4D CI and pinned BayesianPhysTwin integration run as
-separate checks. Scheduled and manual validation rejects the same unavailable
-state.
+pull requests and pushes, can be dispatched with explicit BPT and Prob4D
+revisions, and runs weekly against both public repositories' `main` branches.
+All events execute the full path; an unavailable checkout or contract failure is
+a failing check rather than a credential-dependent skip.
 
 The installed-wheel job records the exact clean revision of every checkout,
 builds one wheel for each repository, records each wheel's SHA-256 identity, and
@@ -168,9 +142,8 @@ The manual GPU job additionally requires `BPT_READ_SSH_KEY`.
 
 ## Reproducing the wheel boundary locally
 
-The workflow is the canonical executable specification because it can read the
-two private repositories. A local equivalent requires checkouts of all three
-repositories and a token is not needed once they are available:
+The workflow is the canonical executable specification. A local equivalent
+requires checkouts of all three public repositories:
 
 ```bash
 python -m build --wheel --outdir /tmp/three-repo-wheels Prob4D
