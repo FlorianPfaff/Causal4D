@@ -1,8 +1,9 @@
 name: Temporary immutable-boundary publication
 
 on:
-  pull_request:
-    branches: [main]
+  push:
+    branches:
+      - agent/harden-immutable-artifact-boundaries
     paths:
       - ".github/workflows/immutable-boundary-publish.yml"
       - ".github/immutable-boundaries/**"
@@ -13,17 +14,16 @@ permissions:
 jobs:
   publish:
     name: Validate and publish exact maintenance patch
-    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
       PYTHONUNBUFFERED: "1"
     steps:
-      - name: Check out exact pull-request head
+      - name: Check out exact branch head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: true
           clean: true
@@ -39,7 +39,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           payload="$RUNNER_TEMP/immutable-boundaries.patch.xz"
           cat .github/immutable-boundaries/payload.* \
             | base64 --decode > "$payload"
@@ -121,4 +121,4 @@ jobs:
           git config user.email \
             "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "Harden immutable artifact boundaries"
-          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
