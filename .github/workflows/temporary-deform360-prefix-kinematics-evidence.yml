@@ -9,8 +9,12 @@ on:
       - "scripts/remote/find_deform360_replication_root.py"
       - "scripts/remote/run_deform360_prefix_kinematics.py"
       - "scripts/remote/run_deform360_prefix_kinematics_workflow.sh"
+      - "scripts/remote/select_deform360_prefix_kinematics_python.py"
       - "src/causal4d_public/deform360_prefix_kinematics.py"
       - "src/causal4d_public/deform360_prefix_kinematics_diagnostic.py"
+      - "tests/test_deform360_prefix_kinematics.py"
+      - "tests/test_deform360_prefix_kinematics_diagnostic.py"
+      - "tests/test_deform360_prefix_kinematics_python_selector.py"
 
 permissions:
   contents: read
@@ -24,12 +28,9 @@ jobs:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, nvidia-smi]
     timeout-minutes: 360
+    env:
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
-      - name: Require BayesianPhysTwin read access
-        env:
-          BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}
-        run: test -n "${BPT_READ_SSH_KEY}"
-
       - name: Check out exact Causal4D pull-request head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -37,76 +38,38 @@ jobs:
           persist-credentials: false
           clean: true
 
-      - name: Probe archived GPU interpreter locations
+      - name: Initialize source-evidence directory
         shell: bash
         run: |
           set -euo pipefail
-          candidates=(
-            /home/florianpfaff/.venvs/bpt-gpu/bin/python
-            /home/github-runner/.venvs/bpt-gpu/bin/python
-            /home/github-runner/.cache/venvs/bpt-gpu/bin/python
-            /home/github-runner/miniconda3/envs/bpt-gpu/bin/python
-            /opt/hostedtoolcache/Python/3.12.3/x64/bin/python
-            /usr/bin/python3
-          )
-          for candidate in "${candidates[@]}"; do
-            if [[ ! -x "${candidate}" ]]; then
-              echo "candidate=${candidate};status=absent"
-              continue
-            fi
-            echo "candidate=${candidate};status=executable"
-            "${candidate}" - <<'PY' || true
-          import importlib.metadata
-          import json
-          import sys
+          mkdir -p deform360-prefix-kinematics
+          printf '%s\n' \
+            '{"schema_version":1,"state":"initialized","head_sha":"'"${PR_HEAD_SHA}"'","run_id":"'"${GITHUB_RUN_ID}"'"}' \
+            > deform360-prefix-kinematics/status.json
 
-          result = {
-              "executable": sys.executable,
-              "python": ".".join(map(str, sys.version_info[:3])),
-              "packages": {},
-          }
-          for distribution in ("numpy", "scipy", "torch", "warp-lang", "pytest"):
-              try:
-                  result["packages"][distribution] = importlib.metadata.version(
-                      distribution
-                  )
-              except importlib.metadata.PackageNotFoundError:
-                  result["packages"][distribution] = None
-          try:
-              import torch
-          except ImportError:
-              result["torch_runtime"] = None
-          else:
-              result["torch_runtime"] = {
-                  "cuda_available": torch.cuda.is_available(),
-                  "cuda_version": torch.version.cuda,
-                  "version": torch.__version__,
-              }
-          try:
-              import warp as wp
-          except ImportError:
-              result["warp_runtime"] = None
-          else:
-              wp.init()
-              result["warp_runtime"] = {
-                  "cuda_devices": [str(device) for device in wp.get_cuda_devices()],
-                  "version": getattr(wp, "__version__", None),
-              }
-          print(json.dumps(result, sort_keys=True))
-          PY
-          done
+      - name: Require BayesianPhysTwin read access
+        env:
+          BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}
+        run: test -n "${BPT_READ_SSH_KEY}"
 
-      - name: Set up archived Python 3.12.3
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.12.3"
+      - name: Select the locked GPU Python runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          selected="$(
+            /usr/bin/python3 \
+              scripts/remote/select_deform360_prefix_kinematics_python.py \
+              --report deform360-prefix-kinematics/python-selection.json
+          )"
+          test -x "${selected}"
+          echo "PREFIX_KINEMATICS_PYTHON=${selected}" >> "$GITHUB_ENV"
 
       - name: Read locked repository pins
         id: repository-pins
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY' >> "$GITHUB_OUTPUT"
+          "$PREFIX_KINEMATICS_PYTHON" - <<'PY' >> "$GITHUB_OUTPUT"
           import json
           import re
           import subprocess
@@ -163,8 +126,7 @@ jobs:
       - name: Run locked source-only diagnostic
         shell: bash
         run: |
-          set -o pipefail
-          mkdir -p deform360-prefix-kinematics
+          set -euo pipefail
           bash scripts/remote/run_deform360_prefix_kinematics_workflow.sh \
             "$PWD" \
             "$PWD/_bpt" \
@@ -172,6 +134,26 @@ jobs:
             "$PWD/_official_phystwin" \
             "$PWD/deform360-prefix-kinematics" \
             2>&1 | tee deform360-prefix-kinematics/run.log
+          "$PREFIX_KINEMATICS_PYTHON" - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          Path("deform360-prefix-kinematics/status.json").write_text(
+              json.dumps(
+                  {
+                      "schema_version": 1,
+                      "state": "completed",
+                      "head_sha": os.environ["PR_HEAD_SHA"],
+                      "run_id": os.environ["GITHUB_RUN_ID"],
+                      "python": os.environ["PREFIX_KINEMATICS_PYTHON"],
+                  },
+                  sort_keys=True,
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          PY
 
       - name: Upload exact source evidence
         if: always()
