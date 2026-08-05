@@ -39,6 +39,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/test_deform360_prefix_kinematics_runner.py")
+          text = path.read_text(encoding="utf-8")
+          old = (
+              '            "correction": {"numpy": '
+              '{"recorded": "2.5.1", "effective": "1.26.4"}},\n'
+          )
+          new = (
+              '            "correction": {\n'
+              '                "numpy": {"recorded": "2.5.1", '
+              '"effective": "1.26.4"}\n'
+              '            },\n'
+          )
+          if text.count(old) != 1:
+              raise RuntimeError("formatted runner-test provenance anchor changed")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
           python scripts/ci/temporary_reframe_prefix_runtime.py
           rm configs/causal4d_public/deform360_source_backend_runtime_erratum_v1.json
           rm -f requirements/diagnostics/deform360-prefix-kinematics-numpy-overlay.txt
@@ -78,13 +97,15 @@ jobs:
             tests/test_deform360_replication_case.py \
             tests/test_deform360_source_failure_attribution.py
           bash -n scripts/remote/run_deform360_prefix_kinematics_workflow.sh
-          grep -R "runtime_erratum\|additive-provenance-correction\|effective.*2.5.1" \
+          if grep -R \
+            "runtime_erratum\|additive-provenance-correction\|effective.*2.5.1" \
             .github/workflows \
             configs/causal4d_public \
             docs/causal4d_deform360_prefix_kinematics.md \
             scripts/remote \
-            tests/test_deform360_prefix_kinematics_*.py \
-            && exit 1 || true
+            tests/test_deform360_prefix_kinematics_*.py; then
+            exit 1
+          fi
           git diff --check
 
       - name: Remove one-shot tooling and publish
