@@ -48,7 +48,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: IPS-Stuttgart/BayesianPhysTwin
-          ref: f4b2bdbe5372e0a1fd9bf88060ce40130fde6247
+          ref: 974c4e28a41ff0b22be7fe06e34c8fe1d00c6100
           path: bayesian-phystwin
           persist-credentials: false
 
