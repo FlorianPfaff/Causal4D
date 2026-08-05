@@ -4,6 +4,9 @@ on:
   push:
     branches: [ci/merge-pr-177]
     paths: [.github/workflows/merge-pr-177.yml]
+  pull_request:
+    branches: [main]
+    paths: [.github/workflows/merge-pr-177.yml]
 
 permissions:
   contents: write
@@ -14,6 +17,7 @@ concurrency:
 
 jobs:
   merge:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
