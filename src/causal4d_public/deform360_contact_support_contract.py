@@ -76,9 +76,7 @@ def contact_support_result_sha256(payload: Mapping[str, Any]) -> str:
 
 def _finite_float(value: Any, *, name: str) -> float:
     _require(
-        type(value) in {int, float}
-        and type(value) is not bool
-        and np.isfinite(value),
+        type(value) in {int, float} and type(value) is not bool and np.isfinite(value),
         f"{name} must be a finite number",
     )
     return float(value)
@@ -123,7 +121,8 @@ class ContactSupportDiagnosticConfig:
                 _strict_positive_integer(getattr(self, name), name=name),
             )
         _require(
-            self.narrow_taxel_count < self.registered_taxel_count
+            self.narrow_taxel_count
+            < self.registered_taxel_count
             < self.wide_taxel_count,
             "contact-patch sizes must bracket the registered patch",
         )
@@ -357,9 +356,7 @@ def summarize_contact_support_policy(
         "common_finite_episode_count": len(scores),
         "mean_chamfer_m": mean_score,
         "registered_mean_chamfer_m": mean_baseline,
-        "relative_improvement_vs_registered": (
-            mean_baseline - mean_score
-        )
+        "relative_improvement_vs_registered": (mean_baseline - mean_score)
         / mean_baseline,
         "win_fraction_vs_registered": float(np.mean(wins)),
         "quality_valid_episode_count": valid_count,

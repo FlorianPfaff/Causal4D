@@ -6,10 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "deform360-contact-support.yml"
 TEMPORARY_WORKFLOW = (
-    ROOT
-    / ".github"
-    / "workflows"
-    / "temporary-deform360-contact-support-evidence.yml"
+    ROOT / ".github" / "workflows" / "temporary-deform360-contact-support-evidence.yml"
 )
 SHELL = ROOT / "scripts" / "remote" / "run_deform360_contact_support_workflow.sh"
 LOCK = ROOT / "configs" / "causal4d_public" / "deform360_contact_support_v1.json"

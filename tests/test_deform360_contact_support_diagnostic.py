@@ -21,12 +21,7 @@ from causal4d_public.deform360_contact_support_diagnostic import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-LOCK = (
-    ROOT
-    / "configs"
-    / "causal4d_public"
-    / "deform360_contact_support_v1.json"
-)
+LOCK = ROOT / "configs" / "causal4d_public" / "deform360_contact_support_v1.json"
 
 
 def _policy(score: float, *, quality_valid: bool = True) -> dict[str, object]:
@@ -48,8 +43,7 @@ def _episode(
 ) -> dict[str, object]:
     overrides = candidate_scores or {}
     policies = {
-        name: _policy(overrides.get(name, 1.0))
-        for name in CONTACT_SUPPORT_POLICIES
+        name: _policy(overrides.get(name, 1.0)) for name in CONTACT_SUPPORT_POLICIES
     }
     return {
         "object_id": f"object-{index % 3}",
