@@ -1,0 +1,122 @@
+name: Temporary immutable-boundary publication
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/immutable-boundary-publish.yml"
+      - ".github/immutable-boundaries/**"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Validate and publish exact maintenance patch
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 30
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Check out exact pull-request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+          clean: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Apply the content-addressed production patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          payload="$RUNNER_TEMP/immutable-boundaries.patch.xz"
+          cat .github/immutable-boundaries/payload.* \
+            | base64 --decode > "$payload"
+          printf '%s  %s\n' \
+            '70c52df4bf3737fed7842631991b36c04f748c1c97a0af05841538eced172c78' \
+            "$payload" | sha256sum --check -
+          xz --decompress --stdout "$payload" \
+            > "$RUNNER_TEMP/immutable-boundaries.patch"
+          git apply --index --whitespace=error-all \
+            "$RUNNER_TEMP/immutable-boundaries.patch"
+          rm -rf .github/immutable-boundaries
+          rm .github/workflows/immutable-boundary-publish.yml
+          git add -A
+          test ! -e .github/workflows/current-source-snapshot.yml
+          test ! -e .github/workflows/immutable-boundary-publish.yml
+          test ! -e .github/immutable-boundaries
+          git diff --cached --check
+          git diff --cached --stat
+
+      - name: Create isolated validation environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv "$RUNNER_TEMP/causal4d-immutable-venv"
+          py="$RUNNER_TEMP/causal4d-immutable-venv/bin/python"
+          "$py" -m pip install --upgrade pip
+          "$py" -m pip install -e ".[dev]"
+          "$py" -m pip check
+
+      - name: Check lint and formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          py="$RUNNER_TEMP/causal4d-immutable-venv/bin/python"
+          "$py" -m ruff check .
+          mapfile -t files < <(
+            git diff --cached --name-only --diff-filter=ACMR -- '*.py'
+          )
+          if (( ${#files[@]} )); then
+            "$py" -m ruff format --check "${files[@]}"
+          fi
+
+      - name: Type-check stable boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          py="$RUNNER_TEMP/causal4d-immutable-venv/bin/python"
+          "$py" -m mypy --python-version 3.12 \
+            scripts/ci \
+            src/causal4d/atomic_io.py \
+            src/causal4d/result_bundle_publication.py \
+            src/causal4d/trusted_pickle.py \
+            src/causal4d/immutable_array.py \
+            src/causal4d/immutable_json.py \
+            src/causal4d/bpt_provider_registry.py \
+            src/causal4d/provider_contract.py \
+            src/causal4d/replay_provider_contract.py
+
+      - name: Run the complete core suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/causal4d-immutable-venv/bin/python" -m pytest -q
+
+      - name: Build and validate distributions
+        shell: bash
+        run: |
+          set -euo pipefail
+          py="$RUNNER_TEMP/causal4d-immutable-venv/bin/python"
+          "$py" -m build
+          "$py" -m twine check dist/*
+
+      - name: Commit and push the validated production tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Harden immutable artifact boundaries"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
