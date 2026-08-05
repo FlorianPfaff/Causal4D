@@ -49,6 +49,14 @@ expected = json.loads(
         / "environment.json"
     ).read_text(encoding="utf-8")
 )
+protocol = json.loads(
+    (
+        repository_root
+        / "configs"
+        / "causal4d_public"
+        / "deform360_replication_v1.json"
+    ).read_text(encoding="utf-8")
+)["config"]
 observed = {
     "python": ".".join(map(str, sys.version_info[:3])),
     "numpy": np.__version__,
@@ -73,8 +81,8 @@ expected_revisions = {
         [sys.executable, repository_root / "scripts/ci/read_bpt_pin.py"],
         text=True,
     ).strip(),
-    deform360_root: expected["dataset_revision"],
-    official_root: expected["official_phystwin_commit"],
+    deform360_root: protocol["deform360_code_commit"],
+    official_root: protocol["official_phystwin_commit"],
 }
 for root, revision in expected_revisions.items():
     observed_revision = subprocess.check_output(
@@ -86,7 +94,18 @@ for root, revision in expected_revisions.items():
             f"repository revision changed for {root}: "
             f"expected {revision}, observed {observed_revision}"
         )
-print(json.dumps({"runtime": observed}, sort_keys=True))
+print(
+    json.dumps(
+        {
+            "dataset_revision": expected["dataset_revision"],
+            "repositories": {
+                str(root): revision for root, revision in expected_revisions.items()
+            },
+            "runtime": observed,
+        },
+        sort_keys=True,
+    )
+)
 PY
 
 python -m pytest -q \
