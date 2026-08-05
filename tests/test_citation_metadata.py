@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from causal4d import __version__
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -18,13 +20,10 @@ def test_citation_metadata_matches_package_version_repository_and_license() -> N
     citation = (ROOT / "CITATION.cff").read_text(encoding="utf-8")
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     license_text = (ROOT / "LICENSE").read_text(encoding="utf-8")
-    version_match = re.search(r'(?m)^version = "([^"]+)"$', pyproject)
-    assert version_match is not None
-
     assert _required_scalar(citation, "cff-version") == "1.2.0"
     assert _required_scalar(citation, "title") == "Causal4D"
     assert _required_scalar(citation, "type") == "software"
-    assert _required_scalar(citation, "version") == version_match.group(1)
+    assert _required_scalar(citation, "version") == __version__
     assert _required_scalar(citation, "license") == "MIT"
     assert _required_scalar(citation, "repository-code") == (
         "https://github.com/IPS-Stuttgart/Causal4D"
@@ -34,8 +33,9 @@ def test_citation_metadata_matches_package_version_repository_and_license() -> N
     )
     assert "family-names: Pfaff" in citation
     assert "given-names: Florian" in citation
-    assert 'license = { file = "LICENSE" }' in pyproject
-    assert '"License :: OSI Approved :: MIT License"' in pyproject
+    assert 'license = "MIT"' in pyproject
+    assert 'license-files = ["LICENSE"]' in pyproject
+    assert '"License :: OSI Approved :: MIT License"' not in pyproject
     assert (
         'Citation = "https://github.com/IPS-Stuttgart/Causal4D/blob/main/CITATION.cff"'
     ) in pyproject

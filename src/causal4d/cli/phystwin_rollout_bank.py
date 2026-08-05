@@ -73,6 +73,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--num-substeps", type=int, default=667)
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--nondeterministic-spring-forces", action="store_true")
+    parser.add_argument(
+        "--allow-unsafe-pickle",
+        action="store_true",
+        help=(
+            "Explicitly trust the local PhysTwin .pkl inputs; loading "
+            "pickle can execute arbitrary code."
+        ),
+    )
     cache_group = parser.add_mutually_exclusive_group()
     cache_group.add_argument(
         "--rollout-cache-dir",
@@ -173,6 +181,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         train_end_frame=train_end,
         parameter_particle_count=args.parameter_particles,
         parameter_support_method=support_method,
+        allow_unsafe_pickle=args.allow_unsafe_pickle,
         config=OfficialPhysTwinBackendConfig(
             dt=args.dt,
             num_substeps=args.num_substeps,

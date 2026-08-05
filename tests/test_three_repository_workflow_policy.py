@@ -11,34 +11,31 @@ WORKFLOW = (
 )
 
 
-def test_continuous_and_explicit_private_provider_policy_is_fail_closed() -> None:
+def test_public_provider_workflow_is_mandatory_and_secret_free() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
-    assert "credential-gate:" in text
-    assert "Require BayesianPhysTwin read access" in text
-    assert "BPT_READ_SSH_KEY" in text
-    assert "ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}" in text
-    assert "Probe Prob4D repository access" in text
-    assert "PROB4D_READ_TOKEN" in text
-    assert "Credentialed three-repository gate unavailable" in text
-    assert "no current-Prob4D execution or evidence is admitted" in text
-    assert "Reject unavailable Prob4D gate on explicit validation events" in text
-    assert "github.event_name != 'pull_request'" in text
-    assert "github.event_name != 'push'" in text
-    assert "exit 1" in text
-    assert "steps.access.outputs.enabled" not in text
+    assert "Prob4D -> BPT -> Causal4D installed wheels" in text
+    assert "repository: IPS-Stuttgart/BayesianPhysTwin" in text
+    assert "repository: IPS-Stuttgart/Prob4D" in text
+    assert "credential-gate:" not in text
+    assert "external-pull-request:" not in text
+    assert "BPT_READ_SSH_KEY" not in text
+    assert "PROB4D_READ_TOKEN" not in text
+    assert "ssh-key:" not in text
+    assert "needs: credential-gate" not in text
+    assert "steps.prob4d-access" not in text
 
 
-def test_external_fork_limitation_is_separate_and_explicit() -> None:
+def test_external_forks_use_the_same_public_installed_wheel_path() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
-    assert "external-pull-request:" in text
-    assert "External PR cannot access private providers" in text
-    assert "github.event.pull_request.head.repo.full_name != github.repository" in text
-    assert "maintainers must run the installed-wheel golden path" in text
+    assert "pull_request:" in text
+    assert "github.event.pull_request.head.repo.full_name" not in text
+    assert "External PR cannot access private providers" not in text
+    assert "private golden path" not in text
 
 
-def test_strict_claim_bearing_path_is_mandatory_when_prob4d_is_available() -> None:
+def test_strict_claim_bearing_path_is_mandatory() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
     assert "Run strict claim-bearing provider-v2 admission path" in text
@@ -50,7 +47,7 @@ def test_strict_claim_bearing_path_is_mandatory_when_prob4d_is_available() -> No
     assert text.count("set -o pipefail") >= 2
     assert text.count('python" -m json.tool') >= 2
     assert text.count('test -s "$RUNNER_TEMP/three-repository-') >= 2
-    assert text.count("steps.prob4d-access.outputs.available == 'true'") >= 10
+    assert "steps.prob4d-access.outputs.available" not in text
 
 
 def test_built_wheels_receive_persistent_content_identities() -> None:

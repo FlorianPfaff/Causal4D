@@ -133,7 +133,7 @@ def _bootstrap_mean_interval(
     resamples: int,
     rng: np.random.Generator,
 ) -> tuple[float, float]:
-    array = np.asarray(values, dtype=float)
+    array: np.ndarray = np.asarray(values, dtype=float)
     if array.size == 0:
         raise ValueError("cannot bootstrap an empty sample")
     if array.size == 1:
