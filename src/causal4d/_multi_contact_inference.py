@@ -69,9 +69,7 @@ def _rollout_identity(
         "trajectories_m": _array_record(trajectories_m, dtype="<f8"),
         "base_variance_m2": _array_record(base_variance_m2, dtype="<f8"),
         "frame_times_s": (
-            None
-            if frame_times_s is None
-            else _array_record(frame_times_s, dtype="<f8")
+            None if frame_times_s is None else _array_record(frame_times_s, dtype="<f8")
         ),
     }
     encoded = json.dumps(
@@ -162,9 +160,7 @@ class MultiContactPathBank:
         if self.frame_times_s is None:
             frame_times = None
         else:
-            frame_times = readonly(
-                real_array(self.frame_times_s, name="frame_times_s")
-            )
+            frame_times = readonly(real_array(self.frame_times_s, name="frame_times_s"))
             if frame_times.shape != (frame_count,):
                 raise ValueError("frame_times_s must match the rollout frame count")
             if frame_count > 1 and np.any(np.diff(frame_times) <= 0.0):
@@ -209,8 +205,7 @@ class MultiContactPathBank:
         """Whether the bank binds an external replay result and explicit timebase."""
 
         return (
-            self.replay_result_identity is not None
-            and self.frame_times_s is not None
+            self.replay_result_identity is not None and self.frame_times_s is not None
         )
 
     @classmethod
@@ -878,9 +873,7 @@ def infer_multi_contact_posterior(
     violations = _policy_violations(candidate, bank, admission)
     policy_record = {
         "minimum_retained_prior_mass": admission.minimum_retained_prior_mass,
-        "maximum_omitted_posterior_mass": (
-            admission.maximum_omitted_posterior_mass
-        ),
+        "maximum_omitted_posterior_mass": (admission.maximum_omitted_posterior_mass),
         "require_replay_binding": admission.require_replay_binding,
     }
     if not violations:
