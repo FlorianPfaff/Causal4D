@@ -1,0 +1,130 @@
+name: Temporary finish conditional reproduction runtime
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/temporary-finish-reproduction-runtime.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-finish-reproduction-runtime-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  finish-and-publish:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out exact feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Apply non-workflow cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          old_name = "deform360_source_backend_runtime_erratum_v1.json"
+          new_name = "deform360_source_backend_reproduction_runtime_v1.json"
+          policy = Path("tests/test_deform360_prefix_kinematics_workflow_policy.py")
+          text = policy.read_text(encoding="utf-8")
+          text = text.replace("RUNTIME_ERRATUM", "REPRODUCTION_RUNTIME")
+          text = text.replace(old_name, new_name)
+          text = text.replace(
+              "test_gpu_jobs_reuse_only_the_exact_effective_runtime_lock",
+              "test_gpu_jobs_use_only_the_conditional_reproduction_runtime",
+          )
+          text = text.replace(
+              "assert RUNTIME_ERRATUM.is_file()",
+              "assert REPRODUCTION_RUNTIME.is_file()",
+          )
+          policy.write_text(text, encoding="utf-8")
+          PY
+          rm -f configs/causal4d_public/deform360_source_backend_runtime_erratum_v1.json
+          rm -f requirements/diagnostics/deform360-prefix-kinematics-numpy-overlay.txt
+          rm -f scripts/ci/temporary_reframe_prefix_runtime.py
+          rm -f scripts/ci/temporary_fix_reframe_output.py
+          rm -f scripts/ci/temporary_finish_reproduction_runtime.py
+
+      - name: Format and validate the exact product
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e ".[dev]"
+          files=(
+            scripts/remote/find_deform360_replication_root.py
+            scripts/remote/run_deform360_prefix_kinematics.py
+            scripts/remote/select_deform360_prefix_kinematics_python.py
+            src/causal4d_public/deform360_prefix_kinematics.py
+            src/causal4d_public/deform360_prefix_kinematics_diagnostic.py
+            tests/test_deform360_prefix_kinematics.py
+            tests/test_deform360_prefix_kinematics_diagnostic.py
+            tests/test_deform360_prefix_kinematics_python_selector.py
+            tests/test_deform360_prefix_kinematics_runner.py
+            tests/test_deform360_prefix_kinematics_workflow_policy.py
+          )
+          python -m ruff format "${files[@]}"
+          python -m ruff check "${files[@]}"
+          python -m ruff format --check "${files[@]}"
+          python -m mypy --no-site-packages \
+            src/causal4d_public/deform360_prefix_kinematics.py \
+            src/causal4d_public/deform360_prefix_kinematics_diagnostic.py \
+            scripts/remote/find_deform360_replication_root.py \
+            scripts/remote/run_deform360_prefix_kinematics.py \
+            scripts/remote/select_deform360_prefix_kinematics_python.py
+          python -m pytest -q \
+            tests/test_deform360_prefix_kinematics.py \
+            tests/test_deform360_prefix_kinematics_diagnostic.py \
+            tests/test_deform360_prefix_kinematics_python_selector.py \
+            tests/test_deform360_prefix_kinematics_runner.py \
+            tests/test_deform360_prefix_kinematics_workflow_policy.py \
+            tests/test_deform360_replication_case.py \
+            tests/test_deform360_source_failure_attribution.py
+          bash -n scripts/remote/run_deform360_prefix_kinematics_workflow.sh
+          if grep -R \
+            "runtime_erratum\|Runtime provenance erratum\|additive correction\|additive-provenance-correction" \
+            configs/causal4d_public \
+            docs/causal4d_deform360_prefix_kinematics.md \
+            scripts/remote \
+            tests/test_deform360_prefix_kinematics_*.py; then
+            exit 1
+          fi
+          git diff --check
+
+      - name: Publish verified non-workflow changes
+        env:
+          PUSH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            configs/causal4d_public \
+            requirements/diagnostics \
+            scripts/ci \
+            scripts/remote/run_deform360_prefix_kinematics.py \
+            scripts/remote/select_deform360_prefix_kinematics_python.py \
+            tests/test_deform360_prefix_kinematics_python_selector.py \
+            tests/test_deform360_prefix_kinematics_workflow_policy.py
+          git commit -m "Finish the conditional reproduction-runtime boundary"
+          basic_auth="$(printf 'x-access-token:%s' "${PUSH_TOKEN}" | base64 -w0)"
+          git -c \
+            http.https://github.com/.extraheader="AUTHORIZATION: basic ${basic_auth}" \
+            push origin HEAD:${{ github.event.pull_request.head.ref }}
