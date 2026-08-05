@@ -45,6 +45,75 @@ jobs:
             /tmp/deform360-filament-support.tar.gz \
             | sha256sum --check --strict
           tar -xzf /tmp/deform360-filament-support.tar.gz -C "$GITHUB_WORKSPACE"
+          python - <<'PY'
+          from pathlib import Path
+
+          graph_path = Path("src/causal4d_public/deform360_replication_graph.py")
+          graph = graph_path.read_text(encoding="utf-8")
+          old_edges = (
+              "    edges = {\n"
+              "        tuple(sorted((row, int(column))))\n"
+              "        for row in range(count)\n"
+              "        for column in indices[row, 1:]\n"
+              "        if row != int(column)\n"
+              "    }\n"
+          )
+          new_edges = (
+              "    edges: set[tuple[int, int]] = {\n"
+              "        (min(row, int(column)), max(row, int(column)))\n"
+              "        for row in range(count)\n"
+              "        for column in indices[row, 1:]\n"
+              "        if row != int(column)\n"
+              "    }\n"
+          )
+          if graph.count(old_edges) != 1:
+              raise SystemExit("unexpected kNN edge-construction source")
+          graph = graph.replace(old_edges, new_edges)
+          old_adjacency = "    adjacency = [set() for _ in range(node_count)]\n"
+          if graph.count(old_adjacency) != 1:
+              raise SystemExit("unexpected volumetric adjacency source")
+          graph = graph.replace(
+              old_adjacency,
+              "    adjacency: list[set[int]] = "
+              "[set() for _ in range(node_count)]\n",
+          )
+          graph_path.write_text(graph, encoding="utf-8")
+
+          support_path = Path("src/causal4d_public/deform360_filament_support.py")
+          support = support_path.read_text(encoding="utf-8")
+          old_builder = (
+              "    builder = {\n"
+              "        REGISTERED_POLICY: build_filament_sparse_graph,\n"
+              "        PRIMARY_POLICY: build_filament_sparse_graph_component_bridge,\n"
+              "    }.get(policy)\n"
+              '    _require(builder is not None, "unknown filament graph policy")\n'
+          )
+          new_builder = (
+              "    if policy == REGISTERED_POLICY:\n"
+              "        builder = build_filament_sparse_graph\n"
+              "    elif policy == PRIMARY_POLICY:\n"
+              "        builder = build_filament_sparse_graph_component_bridge\n"
+              "    else:\n"
+              '        raise ValueError("unknown filament graph policy")\n'
+          )
+          if support.count(old_builder) != 1:
+              raise SystemExit("unexpected policy-dispatch source")
+          support = support.replace(old_builder, new_builder)
+          old_reference = (
+              '        _require(values["p95"] and values["length"], '
+              '"object reference is empty")\n'
+          )
+          new_reference = (
+              "        _require(\n"
+              '            bool(values["p95"]) and bool(values["length"]),\n'
+              '            "object reference is empty",\n'
+              "        )\n"
+          )
+          if support.count(old_reference) != 1:
+              raise SystemExit("unexpected object-reference guard source")
+          support = support.replace(old_reference, new_reference)
+          support_path.write_text(support, encoding="utf-8")
+          PY
           rm -f "${parts[@]}"
 
       - name: Set up Python 3.12
