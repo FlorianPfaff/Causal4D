@@ -1,0 +1,92 @@
+name: Horizon-discrepancy self-hosted validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/horizon-discrepancy-self-hosted.yml"
+      - "docs/causal4d_horizon_discrepancy.md"
+      - "src/causal4d/belief_provider_v2_contract.py"
+      - "src/causal4d/horizon_discrepancy.py"
+      - "tests/test_belief_provider_v2_contract.py"
+      - "tests/test_horizon_discrepancy.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: horizon-discrepancy-self-hosted-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Provider-v2 horizon discrepancy contracts
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 25
+    steps:
+      - name: Check out exact Causal4D pull-request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: causal4d
+          persist-credentials: false
+          clean: true
+
+      - name: Check out exact Bayesian-PhysTwin horizon-provider revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/BayesianPhysTwin
+          ref: bfa844798f0ab3ddbc67a0744ae14a221324e504
+          path: bayesian-phystwin
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Build isolated installed-wheel environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv "$RUNNER_TEMP/horizon-discrepancy-self-hosted-venv"
+          py="$RUNNER_TEMP/horizon-discrepancy-self-hosted-venv/bin/python"
+          "$py" -m pip install --upgrade pip build
+          wheelhouse="$RUNNER_TEMP/horizon-discrepancy-self-hosted-wheelhouse"
+          mkdir -p "$wheelhouse"
+          "$py" -m build --wheel --outdir "$wheelhouse" bayesian-phystwin
+          "$py" -m build --wheel --outdir "$wheelhouse" causal4d
+          mapfile -t wheels < <(find "$wheelhouse" -maxdepth 1 -name '*.whl' -print | sort)
+          test "${#wheels[@]}" -eq 2
+          "$py" -m pip install "${wheels[@]}" pytest "ruff>=0.15.22,<0.17"
+          "$py" -m pip check
+
+      - name: Check focused source quality
+        shell: bash
+        run: |
+          set -euo pipefail
+          py="$RUNNER_TEMP/horizon-discrepancy-self-hosted-venv/bin/python"
+          "$py" -m ruff check \
+            causal4d/src/causal4d/belief_provider_v2_contract.py \
+            causal4d/src/causal4d/horizon_discrepancy.py \
+            causal4d/tests/test_belief_provider_v2_contract.py \
+            causal4d/tests/test_horizon_discrepancy.py
+          "$py" -m ruff format --check --diff \
+            causal4d/src/causal4d/belief_provider_v2_contract.py \
+            causal4d/src/causal4d/horizon_discrepancy.py \
+            causal4d/tests/test_belief_provider_v2_contract.py \
+            causal4d/tests/test_horizon_discrepancy.py
+
+      - name: Run installed provider and bank contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          env -u PYTHONPATH \
+            "$RUNNER_TEMP/horizon-discrepancy-self-hosted-venv/bin/python" \
+            -m pytest -q --import-mode=importlib \
+            "$GITHUB_WORKSPACE/causal4d/tests/test_belief_provider_contract.py" \
+            "$GITHUB_WORKSPACE/causal4d/tests/test_belief_provider_v2_contract.py" \
+            "$GITHUB_WORKSPACE/causal4d/tests/test_horizon_discrepancy.py"
