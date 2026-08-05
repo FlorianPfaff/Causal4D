@@ -123,6 +123,7 @@ jobs:
           name: public-provider-ci-patch
           path: ${{ runner.temp }}/public-provider-patch
           if-no-files-found: error
+          include-hidden-files: true
 
   remaining-python-minors:
     name: Core-only / Python ${{ matrix.python-version }}
