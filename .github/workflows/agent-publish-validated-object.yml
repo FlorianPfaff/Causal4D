@@ -1,0 +1,332 @@
+name: Publish validated hardening Git object
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-publish-validated-object
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out implementation branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/harden-evidence-publication
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Overlay validated public-provider integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          provider_commit=9c29988c5c4ce9cef8a0211f8069cca2607daae1
+          git fetch --no-tags origin "$provider_commit"
+          git checkout "$provider_commit" -- \
+            .github/workflows/bayesian-phystwin-provider-compatibility.yml \
+            .github/workflows/ci.yml \
+            docs/ci.md \
+            tests/test_release_workflow_policy.py \
+            tests/test_three_repository_workflow_policy.py
+
+      - name: Materialize the validated integrity patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import base64
+          import gzip
+          from pathlib import Path
+          import subprocess
+
+          source_commit = "c0f3325f0c02c9d188fbd27c0e94b36d7454c840"
+          source_path = ".github/workflows/agent-harden-evidence-publication.yml"
+          text = subprocess.check_output(
+              ["git", "show", f"{source_commit}:{source_path}"],
+              text=True,
+          )
+          marker = "base64 --decode <<'PATCH' | gzip --decompress > /tmp/apply_agent_hardening.py"
+          start = text.index(marker)
+          payload_start = text.index("\n", start) + 1
+          payload_end = text.index("\n          PATCH", payload_start)
+          payload = "".join(
+              line.strip() for line in text[payload_start:payload_end].splitlines()
+          )
+          script = gzip.decompress(base64.b64decode(payload)).decode("utf-8")
+          script = script.replace(
+              "ROOT = Path(__file__).resolve().parents[2]",
+              "ROOT = Path.cwd()",
+          )
+          Path("/tmp/apply_agent_hardening.py").write_text(script, encoding="utf-8")
+          PY
+          python3 /tmp/apply_agent_hardening.py
+
+      - name: Complete static-analysis and metadata contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow_path = Path(".github/workflows/ci.yml")
+          workflow_lines = workflow_path.read_text(encoding="utf-8").splitlines()
+          matches = [
+              index
+              for index, line in enumerate(workflow_lines)
+              if line.strip().startswith("python -m mypy ")
+              and "--python-version" not in line
+          ]
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"expected exactly one CI mypy invocation, found {len(matches)}"
+              )
+          index = matches[0]
+          workflow_lines[index] = workflow_lines[index].replace(
+              "python -m mypy ",
+              "python -m mypy --python-version 3.12 ",
+              1,
+          )
+          workflow_path.write_text(
+              "\n".join(workflow_lines) + "\n",
+              encoding="utf-8",
+          )
+
+          script_path = Path("scripts/ci/run_self_hosted_evaluation.py")
+          script_text = script_path.read_text(encoding="utf-8")
+          old_annotation = "    array = np.asarray(values, dtype=float)\n"
+          new_annotation = "    array: np.ndarray = np.asarray(values, dtype=float)\n"
+          if script_text.count(old_annotation) != 1:
+              raise SystemExit("bootstrap array assignment was not found exactly once")
+          script_path.write_text(
+              script_text.replace(old_annotation, new_annotation, 1),
+              encoding="utf-8",
+          )
+
+          citation_path = Path("tests/test_citation_metadata.py")
+          citation_text = citation_path.read_text(encoding="utf-8")
+          replacements = (
+              (
+                  "import re\nfrom pathlib import Path\n",
+                  "import re\nfrom pathlib import Path\n\n"
+                  "from causal4d import __version__\n",
+              ),
+              (
+                  "    version_match = re.search(r'(?m)^version = \"([^\"]+)\"$', pyproject)\n"
+                  "    assert version_match is not None\n\n",
+                  "",
+              ),
+              (
+                  '    assert _required_scalar(citation, "version") == version_match.group(1)\n',
+                  '    assert _required_scalar(citation, "version") == __version__\n',
+              ),
+              (
+                  '    assert \'license = { file = "LICENSE" }\' in pyproject\n'
+                  '    assert \'"License :: OSI Approved :: MIT License"\' in pyproject\n',
+                  '    assert \'license = "MIT"\' in pyproject\n'
+                  '    assert \'license-files = ["LICENSE"]\' in pyproject\n'
+                  '    assert \'"License :: OSI Approved :: MIT License"\' not in pyproject\n',
+              ),
+          )
+          for old, new in replacements:
+              if citation_text.count(old) != 1:
+                  raise SystemExit(
+                      f"citation metadata contract fragment missing: {old!r}"
+                  )
+              citation_text = citation_text.replace(old, new, 1)
+          citation_path.write_text(citation_text, encoding="utf-8")
+          PY
+
+      - name: Verify exact validated file identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+
+          expected = {
+              ".github/workflows/bayesian-phystwin-provider-compatibility.yml": "dd299ec1aadbca21ed05609a504039fca1ce009c881ab7e72d477a8deb311bdc",
+              ".github/workflows/ci.yml": "4cb0e9b5a0d256aa4ba037fc5cd73e3c76b83b8a59285eb82fd7e83c04c2d5df",
+              "docs/ci.md": "61ff5f180b1aa360f8a2ac21665c5771c0f19fe53c1a7260407975f3a7b5f28d",
+              "pyproject.toml": "849f3bd5baceabd67f61cee0cdcdeb60dbf4a42d76fb0d02d61a9e976d4b1374",
+              "scripts/ci/run_self_hosted_evaluation.py": "d2d26469d21898498be0ed22d8f85f183eb17a117a605065fb7937dd41bdaca8",
+              "src/causal4d/cli/counterfactual_phystwin.py": "756b464da69d37ab9792cbe3412f89e83d302804ab0678d4c646fa3da8ef72de",
+              "src/causal4d/cli/export_bpt_belief.py": "1ce6633ec5a9b1f4d2a5878879397bd88d3091beb1620d7df2adf295ed121691",
+              "src/causal4d/cli/phystwin_rollout_bank.py": "84585cb673447aa0cb0867f3228c02931c643c0c9b38bd10de4b902d13f06a82",
+              "src/causal4d/phystwin_backend.py": "13d610a3df4e9c118ef52606872391146890ff39b9eb8873093dd67e9f6e04a5",
+              "tests/test_citation_metadata.py": "39a1799531eaf4445ca941dff3110175bf4478dcdbf4138d8c05d87c1f4fe286",
+              "tests/test_package_contract.py": "002851fe1319bbf7ac93e796adffb8299d8b6b121c3d076a0e2816c03eba5fe4",
+              "tests/test_release_workflow_policy.py": "e6cea5dbf82f0b57f8959d36a6c3114c60f81cdaed04e0af49fc1e039e8bba8d",
+              "tests/test_three_repository_workflow_policy.py": "82f5998bcc92aa795ce0173c2742c8332b3f077317d6868a75eab894700ccd77",
+              "docs/result_bundle_publication.md": "dc05a3841981b63d6a051a7109221e7dc4c4d34f12fef9b49edefce3c1068bd9",
+              "docs/trusted_pickle_inputs.md": "5ed5207d7362bea8a83a7ec0406e9840118174240fe3124c1ea4aec5e152b2b5",
+              "src/causal4d/result_bundle_publication.py": "62044ef274a9c6e93f6e2e9b52494290255c3b13f508b13cfad0e0db4fab5fd8",
+              "src/causal4d/trusted_pickle.py": "81f74156d8a506a4c7000d0f4ce958434d0f022ae7873b0b890e201155cf8cb0",
+              "tests/test_result_bundle_publication.py": "8a03afe17169f6b03912e8e450648e9c3f2af56de9c82f673e66d95d066f0b21",
+              "tests/test_trusted_pickle.py": "0bd5d98b3018e1373becf388fb1802d10c2d4204c6ee6a2b5521a4c47cbe40f1",
+              "tests/test_trusted_pickle_cli_contract.py": "19422ed8a436a57f4138260f1dbcc994b62e55a295946b6cfcfb05d29d5e259f",
+          }
+          for path_text, expected_digest in expected.items():
+              path = Path(path_text)
+              actual = sha256(path.read_bytes()).hexdigest()
+              if actual != expected_digest:
+                  raise SystemExit(
+                      f"validated tree digest mismatch for {path_text}: "
+                      f"expected {expected_digest}, got {actual}"
+                  )
+          print(f"verified {len(expected)} exact validated file digests")
+          PY
+
+      - name: Remove all one-shot workflow files and stage the final tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/agent-*.yml
+          git add -A
+          git diff --cached --check
+          git diff --cached --name-status --no-renames HEAD
+
+      - name: Create the remote Git tree and commit object without moving a ref
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import base64
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          from typing import Any
+          from urllib.error import HTTPError
+          from urllib.request import Request, urlopen
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          parent_sha = subprocess.check_output(
+              ["git", "rev-parse", "HEAD"], text=True
+          ).strip()
+          base_tree_sha = subprocess.check_output(
+              ["git", "rev-parse", "HEAD^{tree}"], text=True
+          ).strip()
+
+          def post(endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
+              request = Request(
+                  f"https://api.github.com/repos/{repository}{endpoint}",
+                  data=json.dumps(payload, sort_keys=True).encode("utf-8"),
+                  method="POST",
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": f"Bearer {token}",
+                      "Content-Type": "application/json",
+                      "User-Agent": "causal4d-validated-tree-publisher",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              try:
+                  with urlopen(request, timeout=60) as response:
+                      return json.load(response)
+              except HTTPError as error:
+                  body = error.read().decode("utf-8", errors="replace")
+                  raise RuntimeError(
+                      f"GitHub API {endpoint} failed with {error.code}: {body}"
+                  ) from error
+
+          raw_paths = subprocess.check_output(
+              [
+                  "git",
+                  "diff",
+                  "--cached",
+                  "--name-only",
+                  "-z",
+                  "--no-renames",
+                  "HEAD",
+              ]
+          )
+          paths = [
+              part.decode("utf-8")
+              for part in raw_paths.split(b"\0")
+              if part
+          ]
+          entries: list[dict[str, Any]] = []
+          for path_text in paths:
+              path = Path(path_text)
+              if path.exists():
+                  mode = subprocess.check_output(
+                      ["git", "ls-files", "-s", "--", path_text],
+                      text=True,
+                  ).split()[0]
+                  blob = post(
+                      "/git/blobs",
+                      {
+                          "content": base64.b64encode(path.read_bytes()).decode("ascii"),
+                          "encoding": "base64",
+                      },
+                  )
+                  entries.append(
+                      {
+                          "path": path_text,
+                          "mode": mode,
+                          "type": "blob",
+                          "sha": blob["sha"],
+                      }
+                  )
+              else:
+                  tree_line = subprocess.check_output(
+                      ["git", "ls-tree", "HEAD", "--", path_text],
+                      text=True,
+                  ).strip()
+                  if not tree_line:
+                      raise RuntimeError(
+                          f"cannot determine deleted file mode for {path_text}"
+                      )
+                  entries.append(
+                      {
+                          "path": path_text,
+                          "mode": tree_line.split()[0],
+                          "type": "blob",
+                          "sha": None,
+                      }
+                  )
+
+          tree = post(
+              "/git/trees",
+              {"base_tree": base_tree_sha, "tree": entries},
+          )
+          commit = post(
+              "/git/commits",
+              {
+                  "message": "Harden evidence publication and provider inputs",
+                  "tree": tree["sha"],
+                  "parents": [parent_sha],
+              },
+          )
+          Path(os.environ["RUNNER_TEMP"], "remote-commit-sha.txt").write_text(
+              commit["sha"] + "\n",
+              encoding="utf-8",
+          )
+          print(f"PARENT_SHA={parent_sha}")
+          print(f"REMOTE_TREE_SHA={tree['sha']}")
+          print(f"REMOTE_COMMIT_SHA={commit['sha']}")
+          print(f"REMOTE_ENTRY_COUNT={len(entries)}")
+          PY
+
+      - name: Upload the remote commit identity
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: validated-hardening-remote-commit
+          path: ${{ runner.temp }}/remote-commit-sha.txt
+          if-no-files-found: error
+          retention-days: 7
