@@ -3,6 +3,8 @@ name: Apply evidence publication hardening
 on:
   push:
     branches: [agent/harden-evidence-publication]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
