@@ -1,0 +1,44 @@
+name: Agent diagnose PhysTwin patch
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/agent-diagnose-phystwin-patch.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/harden-phystwin-contracts'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Apply and inspect generated patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          source = Path(
+              ".github/workflows/agent-harden-phystwin-contracts.yml"
+          )
+          workflow = source.read_text(encoding="utf-8")
+          opening = "          python - <<'PY'\n"
+          closing = "\n          PY\n"
+          start = workflow.index(opening) + len(opening)
+          stop = workflow.index(closing, start)
+          patch_script = textwrap.dedent(workflow[start:stop])
+          exec(compile(patch_script, str(source), "exec"), {})
+          PY
+          nl -ba src/causal4d/phystwin_backend.py | sed -n '390,440p'
+          python -m py_compile src/causal4d/phystwin_backend.py
