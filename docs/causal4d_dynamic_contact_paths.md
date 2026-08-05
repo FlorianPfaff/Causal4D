@@ -123,3 +123,11 @@ A real integration should:
 The extension should not delay the registered 36-execution acquisition. It is a
 specific candidate for the already observed contact-onset failure, not a reason
 to reopen unrestricted architecture search on exhausted cases.
+
+## Multiple contact channels
+
+The single-contact API remains unchanged. Independently changing left/right or
+support contacts are represented by the factorized joint path support in
+[`causal4d_multi_contact_paths.md`](causal4d_multi_contact_paths.md). That
+extension preserves one-contact behavior, tracks joint retained mass, and
+requires one continuous simulator trajectory for every retained joint schedule.
