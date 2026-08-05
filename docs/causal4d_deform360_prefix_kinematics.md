@@ -84,6 +84,31 @@ visual-hull scoring frames, simulator configuration, and p99 strain threshold
 remain unchanged. This isolates initial velocity rather than rerunning a new
 joint model search.
 
+## Runtime provenance erratum
+
+The original source-backend milestone remains byte-for-byte unchanged. Its
+`verification/environment.json` records NumPy `2.5.1`, but its own validation
+record states that the source suite ran with
+`/home/florianpfaff/.venvs/bpt-gpu/bin/python`. The complete pip freeze captured
+for that same `bpt-gpu` environment on 2026-07-12 records NumPy `1.26.4`, SciPy
+`1.13.1`, Torch `2.4.0+cu121`, and Warp `1.15.0`. Fail-closed workflow run
+`30970401038` independently found NumPy `1.26.4` at that interpreter while all
+other locked numerical versions matched.
+
+The additive correction is recorded in
+[`configs/causal4d_public/deform360_source_backend_runtime_erratum_v1.json`](
+../configs/causal4d_public/deform360_source_backend_runtime_erratum_v1.json).
+It binds the original environment file, the archived command record, the earlier
+full pip freeze, and the failed workflow artifact by SHA-256. It corrects only
+the effective NumPy value from `2.5.1` to `1.26.4`; no frozen milestone file,
+score, decision, threshold, split, or access boundary is rewritten.
+
+The runtime selector verifies all of those identities before accepting an
+interpreter. It does not install or upgrade packages. The correction cannot by
+itself admit a scientific comparison: every archived zero-velocity score and
+p99-strain value must still reproduce within the locked tolerances before any
+velocity policy is interpreted.
+
 ## Decision gate
 
 The graph-harmonic policy is a source-supported repair candidate only when all
@@ -116,20 +141,25 @@ Run the unit and contract checks:
 ```bash
 python -m pytest -q \
   tests/test_deform360_prefix_kinematics.py \
-  tests/test_deform360_prefix_kinematics_diagnostic.py
+  tests/test_deform360_prefix_kinematics_diagnostic.py \
+  tests/test_deform360_prefix_kinematics_python_selector.py \
+  tests/test_deform360_prefix_kinematics_runner.py
 ```
 
-Run the source diagnostic on the research runner with the pinned Deform360,
-BayesianPhysTwin, and official PhysTwin environments:
+Run the source diagnostic through the wrapper so the selected interpreter,
+runtime erratum, repository revisions, result, and runtime sidecar are bound in
+one checksummed output directory:
 
 ```bash
-python scripts/remote/run_deform360_prefix_kinematics.py \
-  --data-root /path/to/deform360-replication-derived \
-  --bayesian-phystwin-repo /path/to/BayesianPhysTwin \
-  --deform360-repo /path/to/deform360 \
-  --official-phystwin-repo /path/to/PhysTwin \
-  --output runs/deform360-prefix-kinematics/result.json
+export PREFIX_KINEMATICS_PYTHON=/home/florianpfaff/.venvs/bpt-gpu/bin/python
+bash scripts/remote/run_deform360_prefix_kinematics_workflow.sh \
+  "$PWD" \
+  /path/to/BayesianPhysTwin \
+  /path/to/deform360 \
+  /path/to/PhysTwin \
+  "$PWD/runs/deform360-prefix-kinematics"
 ```
 
 The `Deform360 source prefix kinematics` workflow provides the same locked
-execution and uploads the result, runtime sidecar, log, and checksums.
+execution and uploads the result, runtime-selection report, runtime sidecar,
+log, and checksums.
