@@ -6,9 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "deform360-prefix-kinematics.yml"
-PROTOCOL = (
-    ROOT / "configs" / "causal4d_public" / "deform360_replication_v1.json"
-)
+PROTOCOL = ROOT / "configs" / "causal4d_public" / "deform360_replication_v1.json"
 
 
 def test_prefix_kinematics_workflow_is_read_only_and_review_safe() -> None:
@@ -43,9 +41,7 @@ def test_prefix_kinematics_workflow_separates_code_and_dataset_pins() -> None:
     assert protocol["deform360_code_commit"] == (
         "0fe36f0b7a7a917ba62b5f8cee707299a9a4a317"
     )
-    assert protocol["dataset_revision"] == (
-        "7fea8e20231a47641d1d2bc8791920ec4e62ec5e"
-    )
+    assert protocol["dataset_revision"] == ("7fea8e20231a47641d1d2bc8791920ec4e62ec5e")
     assert protocol["deform360_code_commit"] != protocol["dataset_revision"]
     assert protocol["official_phystwin_commit"] == (
         "2b6630528141b9cba5a7677c8b88b2129b4a8390"
