@@ -6,6 +6,7 @@ from causal4d.belief_provider_v2_contract import (
     BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_V2_API,
     BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_V2_API_VERSION,
     BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_V2_CAPABILITIES,
+    BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_V2_SCHEMA_VERSIONS,
     BAYESIAN_PHYSTWIN_BELIEF_V2_ARTIFACT_SCHEMA_VERSIONS,
     BAYESIAN_PHYSTWIN_BELIEF_V2_COMPATIBILITY,
     BAYESIAN_PHYSTWIN_BELIEF_V2_INFERENCE_ROLE,
@@ -17,6 +18,7 @@ from causal4d.provider_contract import PhysicalBeliefProviderManifest
 
 def _manifest(
     *,
+    schema_version: int = 2,
     capabilities: tuple[str, ...] = (
         BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_V2_CAPABILITIES
     ),
@@ -27,7 +29,7 @@ def _manifest(
         provider_name="bayesian-phystwin",
         provider_version="0.4.0",
         provider_revision="a" * 40,
-        schema_version=2,
+        schema_version=schema_version,
         capabilities=capabilities,
         artifact_schema_versions=(
             BAYESIAN_PHYSTWIN_BELIEF_V2_ARTIFACT_SCHEMA_VERSIONS
@@ -55,9 +57,23 @@ def _manifest(
 def test_belief_provider_v2_accepts_complete_additive_manifest() -> None:
     result = validate_bayesian_phystwin_belief_provider_v2(_manifest())
 
+    assert BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_V2_SCHEMA_VERSIONS == (2,)
     assert result.compatible
+    assert result.unsupported_schema_version is None
     assert result.missing_capabilities == ()
     assert result.artifact_version_mismatches == ()
+
+
+@pytest.mark.parametrize("schema_version", [1, 3])
+def test_belief_provider_v2_rejects_other_manifest_schemas(
+    schema_version: int,
+) -> None:
+    result = validate_bayesian_phystwin_belief_provider_v2(
+        _manifest(schema_version=schema_version)
+    )
+
+    assert not result.compatible
+    assert result.unsupported_schema_version == schema_version
 
 
 def test_belief_provider_v2_rejects_missing_horizon_capability() -> None:

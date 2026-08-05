@@ -15,6 +15,7 @@ BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_V2_API = (
     "bayesian_phystwin.causal4d_belief_provider_v2"
 )
 BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_V2_API_VERSION = 2
+BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_V2_SCHEMA_VERSIONS = (2,)
 BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_V2_CAPABILITIES = (
     "causal_prefix_endpoint_inference",
     "evidence_weighted_endpoint_model_average",
@@ -111,6 +112,9 @@ def validate_bayesian_phystwin_belief_provider_v2(
     return validate_provider_compatibility(
         candidate,
         required_capabilities=BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_V2_CAPABILITIES,
+        supported_schema_versions=(
+            BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_V2_SCHEMA_VERSIONS
+        ),
         supported_provider_versions=BAYESIAN_PHYSTWIN_COMPATIBILITY_RANGE,
         required_artifact_versions=(
             BAYESIAN_PHYSTWIN_BELIEF_V2_ARTIFACT_SCHEMA_VERSIONS
@@ -140,6 +144,7 @@ __all__ = [
     "BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_V2_API",
     "BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_V2_API_VERSION",
     "BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_V2_CAPABILITIES",
+    "BAYESIAN_PHYSTWIN_BELIEF_PROVIDER_V2_SCHEMA_VERSIONS",
     "BAYESIAN_PHYSTWIN_BELIEF_V2_ARTIFACT_SCHEMA_VERSIONS",
     "BAYESIAN_PHYSTWIN_BELIEF_V2_COMPATIBILITY",
     "BAYESIAN_PHYSTWIN_BELIEF_V2_INFERENCE_ROLE",

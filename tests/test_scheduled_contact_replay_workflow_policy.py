@@ -5,6 +5,7 @@ from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/scheduled-contact-replay-integration.yml")
 BPT_CONTRACT_REVISION = "58bf6a6f06ad27fce525060190cff787cde58fa4"
+CAUSAL4D_HEAD_REF = "${{ github.event.pull_request.head.sha || github.sha }}"
 
 
 def test_scheduled_replay_workflow_uses_exact_public_provider_revision() -> None:
@@ -14,6 +15,15 @@ def test_scheduled_replay_workflow_uses_exact_public_provider_revision() -> None
     assert f"ref: {BPT_CONTRACT_REVISION}" in text
     assert "persist-credentials: false" in text
     assert "BPT_READ_SSH_KEY" not in text
+
+
+def test_scheduled_replay_workflow_records_exact_causal4d_revision() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    assert f"ref: {CAUSAL4D_HEAD_REF}" in text
+    assert f"EXPECTED_CAUSAL4D_SHA: {CAUSAL4D_HEAD_REF}" in text
+    assert 'actual_sha="$(git rev-parse HEAD)"' in text
+    assert 'test "$actual_sha" = "$EXPECTED_CAUSAL4D_SHA"' in text
 
 
 def test_scheduled_replay_workflow_exercises_installed_wheels() -> None:
@@ -27,6 +37,22 @@ def test_scheduled_replay_workflow_exercises_installed_wheels() -> None:
     assert "test_scheduled_contact_replay_contract.py" in text
     assert "test_scheduled_contact_replay_adapter.py" in text
     assert "test_multi_contact_hardening.py" in text
+
+
+def test_scheduled_replay_workflow_runs_contract_before_local_quality() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    contract_index = text.index(
+        "- name: Exercise the installed cross-repository contract"
+    )
+    quality_index = text.index("- name: Check Causal4D source quality")
+
+    assert contract_index < quality_index
+    assert "if: always()" in text[quality_index:]
+    assert (
+        "bayesian-phystwin/src/bayesian_phystwin/contracts/scheduled_replay.py"
+        not in text
+    )
 
 
 def test_scheduled_replay_workflow_pins_external_actions() -> None:
