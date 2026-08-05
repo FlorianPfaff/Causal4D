@@ -28,7 +28,7 @@ _EXPECTED_KEYS = (
     "torch_cuda",
     "warp",
 )
-_PROBE = r'''
+_PROBE = r"""
 from __future__ import annotations
 
 import importlib.metadata
@@ -57,7 +57,7 @@ print(
         sort_keys=True,
     )
 )
-'''
+"""
 
 
 def _parse_args() -> argparse.Namespace:
