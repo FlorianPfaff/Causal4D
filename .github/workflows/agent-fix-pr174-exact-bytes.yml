@@ -29,169 +29,210 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
+          from textwrap import dedent
 
-          source = Path('src/causal4d/observation_factor_lineage.py')
-          text = source.read_text(encoding='utf-8')
-          text = text.replace(
-              'import hashlib\nimport json\nimport math\n',
-              'import hashlib\nimport io\nimport json\nimport math\n',
-              1,
+          def block(value: str) -> str:
+              return dedent(value).lstrip("\n")
+
+          def replace_once(text: str, old: str, new: str, *, marker: str) -> str:
+              if old not in text:
+                  raise SystemExit(f"repair marker changed: {marker}")
+              return text.replace(old, new, 1)
+
+          source = Path("src/causal4d/observation_factor_lineage.py")
+          text = source.read_text(encoding="utf-8")
+          text = replace_once(
+              text,
+              "import hashlib\nimport json\nimport math\n",
+              "import hashlib\nimport io\nimport json\nimport math\n",
+              marker="io import",
           )
-          old = '''def _load_json_object(path: Path, *, name: str) -> dict[str, Any]:
-              def object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-                  result: dict[str, Any] = {}
-                  for key, item in pairs:
-                      if key in result:
-                          raise _StrictJsonValueError(
-                              f"{name} contains duplicate JSON object key {key!r}"
-                          )
-                      result[key] = item
-                  return result
+          old_loader = block(
+              '''
+              def _load_json_object(path: Path, *, name: str) -> dict[str, Any]:
+                  def object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+                      result: dict[str, Any] = {}
+                      for key, item in pairs:
+                          if key in result:
+                              raise _StrictJsonValueError(
+                                  f"{name} contains duplicate JSON object key {key!r}"
+                              )
+                          result[key] = item
+                      return result
 
-              def reject_constant(token: str) -> Any:
-                  raise _StrictJsonValueError(
-                      f"{name} contains non-finite JSON number {token!r}"
-                  )
+                  def reject_constant(token: str) -> Any:
+                      raise _StrictJsonValueError(
+                          f"{name} contains non-finite JSON number {token!r}"
+                      )
 
-              try:
-                  value = json.loads(
-                      path.read_text(encoding="utf-8"),
-                      object_pairs_hook=object_pairs,
-                      parse_constant=reject_constant,
-                  )
-              except _StrictJsonValueError:
-                  raise
-              except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-                  raise ValueError(f"{name} is not valid UTF-8 JSON") from error
-              if not isinstance(value, dict):
-                  raise ValueError(f"{name} must contain one JSON object")
-              return value
-          '''
-          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines()) + '\n'
-          new = '''def _load_json_object_bytes(content: bytes, *, name: str) -> dict[str, Any]:
-              def object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-                  result: dict[str, Any] = {}
-                  for key, item in pairs:
-                      if key in result:
-                          raise _StrictJsonValueError(
-                              f"{name} contains duplicate JSON object key {key!r}"
-                          )
-                      result[key] = item
-                  return result
-
-              def reject_constant(token: str) -> Any:
-                  raise _StrictJsonValueError(
-                      f"{name} contains non-finite JSON number {token!r}"
-                  )
-
-              try:
-                  value = json.loads(
-                      content.decode("utf-8"),
-                      object_pairs_hook=object_pairs,
-                      parse_constant=reject_constant,
-                  )
-              except _StrictJsonValueError:
-                  raise
-              except (UnicodeDecodeError, json.JSONDecodeError) as error:
-                  raise ValueError(f"{name} is not valid UTF-8 JSON") from error
-              if not isinstance(value, dict):
-                  raise ValueError(f"{name} must contain one JSON object")
-              return value
-          '''
-          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines()) + '\n'
-          if old not in text:
-              raise SystemExit('strict JSON loader marker changed')
-          text = text.replace(old, new, 1)
-
-          old = '''    manifest = Path(manifest_path)
-              if not manifest.is_file():
-                  raise ValueError("factor-bundle manifest file is missing")
-              manifest_sha = file_sha256(manifest)
-              record = _load_json_object(manifest, name="factor-bundle manifest")
-          '''
-          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines())
-          new = '''    manifest = Path(manifest_path)
-              if not manifest.is_file():
-                  raise ValueError("factor-bundle manifest file is missing")
-              try:
-                  manifest_bytes = manifest.read_bytes()
-              except OSError as error:
-                  raise ValueError("factor-bundle manifest file is unreadable") from error
-              manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
-              record = _load_json_object_bytes(
-                  manifest_bytes,
-                  name="factor-bundle manifest",
-              )
-          '''
-          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines())
-          if old not in text:
-              raise SystemExit('manifest load marker changed')
-          text = text.replace(old, new, 1)
-
-          old = '''    payload = _safe_payload_path(manifest, payload_record["path"])
-              actual_payload_sha = file_sha256(payload)
-              if actual_payload_sha != declared_payload_sha:
-                  raise ValueError("factor-bundle payload checksum mismatch")
-          '''
-          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines())
-          new = '''    payload = _safe_payload_path(manifest, payload_record["path"])
-              try:
-                  payload_bytes = payload.read_bytes()
-              except OSError as error:
-                  raise ValueError("factor-bundle payload file is unreadable") from error
-              actual_payload_sha = hashlib.sha256(payload_bytes).hexdigest()
-              if actual_payload_sha != declared_payload_sha:
-                  raise ValueError("factor-bundle payload checksum mismatch")
-          '''
-          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines())
-          if old not in text:
-              raise SystemExit('payload hash marker changed')
-          text = text.replace(old, new, 1)
-          if 'archive = np.load(payload, allow_pickle=False)' not in text:
-              raise SystemExit('NPZ load marker changed')
-          text = text.replace(
-              'archive = np.load(payload, allow_pickle=False)',
-              'archive = np.load(io.BytesIO(payload_bytes), allow_pickle=False)',
-              1,
+                  try:
+                      value = json.loads(
+                          path.read_text(encoding="utf-8"),
+                          object_pairs_hook=object_pairs,
+                          parse_constant=reject_constant,
+                      )
+                  except _StrictJsonValueError:
+                      raise
+                  except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+                      raise ValueError(f"{name} is not valid UTF-8 JSON") from error
+                  if not isinstance(value, dict):
+                      raise ValueError(f"{name} must contain one JSON object")
+                  return value
+              '''
           )
-          source.write_text(text, encoding='utf-8')
+          new_loader = block(
+              '''
+              def _load_json_object_bytes(content: bytes, *, name: str) -> dict[str, Any]:
+                  def object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+                      result: dict[str, Any] = {}
+                      for key, item in pairs:
+                          if key in result:
+                              raise _StrictJsonValueError(
+                                  f"{name} contains duplicate JSON object key {key!r}"
+                              )
+                          result[key] = item
+                      return result
 
-          tests = Path('tests/test_observation_factor_lineage_v4.py')
-          text = tests.read_text(encoding='utf-8')
-          text = text.replace(
-              'import hashlib\nimport json\n',
-              'import hashlib\nimport io\nimport json\n',
-              1,
+                  def reject_constant(token: str) -> Any:
+                      raise _StrictJsonValueError(
+                          f"{name} contains non-finite JSON number {token!r}"
+                      )
+
+                  try:
+                      value = json.loads(
+                          content.decode("utf-8"),
+                          object_pairs_hook=object_pairs,
+                          parse_constant=reject_constant,
+                      )
+                  except _StrictJsonValueError:
+                      raise
+                  except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                      raise ValueError(f"{name} is not valid UTF-8 JSON") from error
+                  if not isinstance(value, dict):
+                      raise ValueError(f"{name} must contain one JSON object")
+                  return value
+              '''
           )
-          marker = 'def test_schema_v4_rejects_joint_covariance_order_drift(tmp_path: Path) -> None:\n'
-          addition = '''def test_payload_is_evaluated_from_the_exact_hashed_bytes(
-              tmp_path: Path,
-              monkeypatch: pytest.MonkeyPatch,
-          ) -> None:
-              manifest = _write_bundle(tmp_path)
-              observed_sources: list[object] = []
-              original_load = np.load
+          text = replace_once(
+              text,
+              old_loader,
+              new_loader,
+              marker="strict JSON bytes loader",
+          )
+          text = replace_once(
+              text,
+              block(
+                  '''
+                      manifest = Path(manifest_path)
+                      if not manifest.is_file():
+                          raise ValueError("factor-bundle manifest file is missing")
+                      manifest_sha = file_sha256(manifest)
+                      record = _load_json_object(manifest, name="factor-bundle manifest")
+                  '''
+              ),
+              block(
+                  '''
+                      manifest = Path(manifest_path)
+                      if not manifest.is_file():
+                          raise ValueError("factor-bundle manifest file is missing")
+                      try:
+                          manifest_bytes = manifest.read_bytes()
+                      except OSError as error:
+                          raise ValueError(
+                              "factor-bundle manifest file is unreadable"
+                          ) from error
+                      manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
+                      record = _load_json_object_bytes(
+                          manifest_bytes,
+                          name="factor-bundle manifest",
+                      )
+                  '''
+              ),
+              marker="manifest exact bytes",
+          )
+          text = replace_once(
+              text,
+              block(
+                  '''
+                      payload = _safe_payload_path(manifest, payload_record["path"])
+                      actual_payload_sha = file_sha256(payload)
+                      if actual_payload_sha != declared_payload_sha:
+                          raise ValueError("factor-bundle payload checksum mismatch")
+                  '''
+              ),
+              block(
+                  '''
+                      payload = _safe_payload_path(manifest, payload_record["path"])
+                      try:
+                          payload_bytes = payload.read_bytes()
+                      except OSError as error:
+                          raise ValueError(
+                              "factor-bundle payload file is unreadable"
+                          ) from error
+                      actual_payload_sha = hashlib.sha256(payload_bytes).hexdigest()
+                      if actual_payload_sha != declared_payload_sha:
+                          raise ValueError("factor-bundle payload checksum mismatch")
+                  '''
+              ),
+              marker="payload exact bytes",
+          )
+          text = replace_once(
+              text,
+              "archive = np.load(payload, allow_pickle=False)",
+              "archive = np.load(io.BytesIO(payload_bytes), allow_pickle=False)",
+              marker="NPZ exact bytes",
+          )
+          source.write_text(text, encoding="utf-8")
 
-              def tracked_load(source: object, *args: object, **kwargs: object) -> object:
-                  observed_sources.append(source)
-                  return original_load(source, *args, **kwargs)
+          tests = Path("tests/test_observation_factor_lineage_v4.py")
+          test_text = tests.read_text(encoding="utf-8")
+          test_text = replace_once(
+              test_text,
+              "import hashlib\nimport json\n",
+              "import hashlib\nimport io\nimport json\n",
+              marker="test io import",
+          )
+          test_marker = (
+              "def test_schema_v4_rejects_joint_covariance_order_drift("
+              "tmp_path: Path) -> None:\n"
+          )
+          regression = block(
+              '''
+              def test_payload_is_evaluated_from_the_exact_hashed_bytes(
+                  tmp_path: Path,
+                  monkeypatch: pytest.MonkeyPatch,
+              ) -> None:
+                  manifest = _write_bundle(tmp_path)
+                  observed_sources: list[object] = []
+                  original_load = np.load
 
-              monkeypatch.setattr(
-                  "causal4d.observation_factor_lineage.np.load",
-                  tracked_load,
-              )
-              load_observation_factor_lineage(manifest)
+                  def tracked_load(
+                      source: object,
+                      *args: object,
+                      **kwargs: object,
+                  ) -> object:
+                      observed_sources.append(source)
+                      return original_load(source, *args, **kwargs)
 
-              assert observed_sources
-              assert isinstance(observed_sources[0], io.BytesIO)
+                  monkeypatch.setattr(
+                      "causal4d.observation_factor_lineage.np.load",
+                      tracked_load,
+                  )
+                  load_observation_factor_lineage(manifest)
+
+                  assert observed_sources
+                  assert isinstance(observed_sources[0], io.BytesIO)
 
 
-          '''
-          addition = '\n'.join(line[10:] if line.startswith('          ') else line for line in addition.splitlines())
-          if marker not in text:
-              raise SystemExit('test insertion marker changed')
-          text = text.replace(marker, addition + marker, 1)
-          tests.write_text(text, encoding='utf-8')
+              '''
+          )
+          test_text = replace_once(
+              test_text,
+              test_marker,
+              regression + test_marker,
+              marker="exact-byte regression",
+          )
+          tests.write_text(test_text, encoding="utf-8")
           PY
           python -m pip install -e '.[dev]'
           python -m ruff format \
