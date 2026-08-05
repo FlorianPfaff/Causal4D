@@ -139,10 +139,7 @@ def _require_exact_fields(
 
 
 def _require_sha256(value: Any, *, name: str) -> str:
-    if (
-        type(value) is not str
-        or re.fullmatch(r"[0-9a-f]{64}", value) is None
-    ):
+    if type(value) is not str or re.fullmatch(r"[0-9a-f]{64}", value) is None:
         raise ValueError(f"{name} must be a lowercase SHA-256 digest")
     return value
 
