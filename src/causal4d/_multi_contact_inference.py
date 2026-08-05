@@ -41,9 +41,7 @@ class MultiContactPathBank:
     retained_prior_mass: float = 1.0
 
     def __post_init__(self) -> None:
-        trajectories = readonly(
-            real_array(self.trajectories_m, name="trajectories_m")
-        )
+        trajectories = readonly(real_array(self.trajectories_m, name="trajectories_m"))
         paths = integer_array(
             self.regime_paths,
             name="regime_paths",
@@ -322,9 +320,7 @@ def multi_contact_conditioned_variance(
     cumulative_switches = np.cumsum(np.sum(switches, axis=1), axis=1)
     command_change = np.zeros_like(activation)
     command_change[:, 1:] = np.diff(activation, axis=1)
-    cumulative_command_energy = np.cumsum(
-        np.sum(np.square(command_change), axis=0)
-    )
+    cumulative_command_energy = np.cumsum(np.sum(np.square(command_change), axis=0))
     cumulative_ood_energy = np.cumsum(ood_frame_energy)
     increment = (
         settings.switch_variance_m2 * cumulative_switches
@@ -364,8 +360,10 @@ def _student_t_mean_log_score(
     degrees_of_freedom: float,
 ) -> np.ndarray:
     standardized = residual / scale_m
-    terms = -0.5 * (degrees_of_freedom + 1.0) * np.log1p(
-        np.square(standardized) / degrees_of_freedom
+    terms = (
+        -0.5
+        * (degrees_of_freedom + 1.0)
+        * np.log1p(np.square(standardized) / degrees_of_freedom)
     )
     valid_float = np.asarray(valid, dtype=float)[None]
     count = np.sum(valid_float, axis=(1, 2, 3))
@@ -434,12 +432,10 @@ def infer_multi_contact_posterior(
         config=settings,
     )
     position_scale = np.sqrt(
-        settings.observation_scale_m**2
-        + conditional_variance[:, :prefix_frame_count]
+        settings.observation_scale_m**2 + conditional_variance[:, :prefix_frame_count]
     )
     position_score = _student_t_mean_log_score(
-        bank.trajectories_m[:, :prefix_frame_count]
-        - prefix_observations[None],
+        bank.trajectories_m[:, :prefix_frame_count] - prefix_observations[None],
         prefix_valid,
         position_scale,
         settings.degrees_of_freedom,
@@ -470,9 +466,7 @@ def infer_multi_contact_posterior(
         bank.prior_weights,
         name="multi-contact prior",
     )
-    weights = _normalized_log_weights(
-        log_prior + settings.likelihood_power * score
-    )
+    weights = _normalized_log_weights(log_prior + settings.likelihood_power * score)
     components = bank.trajectories_m
     mean = np.einsum("k,ktnc->tnc", weights, components)
     centered = components - mean[None]
@@ -494,9 +488,7 @@ def infer_multi_contact_posterior(
             bank.regime_paths == regime,
         )
     switches = np.zeros_like(bank.regime_paths, dtype=bool)
-    switches[:, :, 1:] = (
-        bank.regime_paths[:, :, 1:] != bank.regime_paths[:, :, :-1]
-    )
+    switches[:, :, 1:] = bank.regime_paths[:, :, 1:] != bank.regime_paths[:, :, :-1]
     switch_probability = np.einsum("k,kgt->gt", weights, switches)
     any_switch_probability = np.einsum(
         "k,kt->t",
