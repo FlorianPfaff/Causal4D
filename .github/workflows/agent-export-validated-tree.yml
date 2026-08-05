@@ -1,0 +1,177 @@
+name: Export validated evidence-hardening tree
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-export-validated-tree
+  cancel-in-progress: true
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out implementation branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/harden-evidence-publication
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Overlay validated public-provider integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          provider_commit=9c29988c5c4ce9cef8a0211f8069cca2607daae1
+          git fetch --no-tags origin "$provider_commit"
+          git checkout "$provider_commit" -- \
+            .github/workflows/bayesian-phystwin-provider-compatibility.yml \
+            .github/workflows/ci.yml \
+            docs/ci.md \
+            tests/test_release_workflow_policy.py \
+            tests/test_three_repository_workflow_policy.py
+
+      - name: Materialize the validated integrity patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import base64
+          import gzip
+          from pathlib import Path
+          import subprocess
+
+          source_commit = "c0f3325f0c02c9d188fbd27c0e94b36d7454c840"
+          source_path = ".github/workflows/agent-harden-evidence-publication.yml"
+          text = subprocess.check_output(
+              ["git", "show", f"{source_commit}:{source_path}"],
+              text=True,
+          )
+          marker = "base64 --decode <<'PATCH' | gzip --decompress > /tmp/apply_agent_hardening.py"
+          start = text.index(marker)
+          payload_start = text.index("\n", start) + 1
+          payload_end = text.index("\n          PATCH", payload_start)
+          payload = "".join(
+              line.strip() for line in text[payload_start:payload_end].splitlines()
+          )
+          script = gzip.decompress(base64.b64decode(payload)).decode("utf-8")
+          script = script.replace(
+              "ROOT = Path(__file__).resolve().parents[2]",
+              "ROOT = Path.cwd()",
+          )
+          Path("/tmp/apply_agent_hardening.py").write_text(script, encoding="utf-8")
+          PY
+          python3 /tmp/apply_agent_hardening.py
+
+      - name: Complete static-analysis and metadata contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow_path = Path(".github/workflows/ci.yml")
+          workflow_lines = workflow_path.read_text(encoding="utf-8").splitlines()
+          matches = [
+              index
+              for index, line in enumerate(workflow_lines)
+              if line.strip().startswith("python -m mypy ")
+              and "--python-version" not in line
+          ]
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"expected exactly one CI mypy invocation, found {len(matches)}"
+              )
+          index = matches[0]
+          workflow_lines[index] = workflow_lines[index].replace(
+              "python -m mypy ",
+              "python -m mypy --python-version 3.12 ",
+              1,
+          )
+          workflow_path.write_text(
+              "\n".join(workflow_lines) + "\n",
+              encoding="utf-8",
+          )
+
+          script_path = Path("scripts/ci/run_self_hosted_evaluation.py")
+          script_text = script_path.read_text(encoding="utf-8")
+          old_annotation = "    array = np.asarray(values, dtype=float)\n"
+          new_annotation = "    array: np.ndarray = np.asarray(values, dtype=float)\n"
+          if script_text.count(old_annotation) != 1:
+              raise SystemExit("bootstrap array assignment was not found exactly once")
+          script_path.write_text(
+              script_text.replace(old_annotation, new_annotation, 1),
+              encoding="utf-8",
+          )
+
+          citation_path = Path("tests/test_citation_metadata.py")
+          citation_text = citation_path.read_text(encoding="utf-8")
+          replacements = (
+              (
+                  "import re\nfrom pathlib import Path\n",
+                  "import re\nfrom pathlib import Path\n\n"
+                  "from causal4d import __version__\n",
+              ),
+              (
+                  "    version_match = re.search(r'(?m)^version = \"([^\"]+)\"$', pyproject)\n"
+                  "    assert version_match is not None\n\n",
+                  "",
+              ),
+              (
+                  '    assert _required_scalar(citation, "version") == version_match.group(1)\n',
+                  '    assert _required_scalar(citation, "version") == __version__\n',
+              ),
+              (
+                  '    assert \'license = { file = "LICENSE" }\' in pyproject\n'
+                  '    assert \'"License :: OSI Approved :: MIT License"\' in pyproject\n',
+                  '    assert \'license = "MIT"\' in pyproject\n'
+                  '    assert \'license-files = ["LICENSE"]\' in pyproject\n'
+                  '    assert \'"License :: OSI Approved :: MIT License"\' not in pyproject\n',
+              ),
+          )
+          for old, new in replacements:
+              if citation_text.count(old) != 1:
+                  raise SystemExit(
+                      f"citation metadata contract fragment missing: {old!r}"
+                  )
+              citation_text = citation_text.replace(old, new, 1)
+          citation_path.write_text(citation_text, encoding="utf-8")
+          PY
+
+      - name: Remove one-shot workflow files from the exported tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/agent-harden-evidence-publication*.yml
+          rm -f .github/workflows/agent-export-validated-tree.yml
+
+      - name: Verify and package the exact tree delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --name-status HEAD > "$RUNNER_TEMP/changed-files.txt"
+          git diff --binary --full-index HEAD > "$RUNNER_TEMP/validated-hardening.patch"
+          tar --exclude=.git -czf "$RUNNER_TEMP/validated-tree.tar.gz" .
+          test -s "$RUNNER_TEMP/changed-files.txt"
+          test -s "$RUNNER_TEMP/validated-hardening.patch"
+          test -s "$RUNNER_TEMP/validated-tree.tar.gz"
+          cat "$RUNNER_TEMP/changed-files.txt"
+
+      - name: Upload validated tree transfer bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: validated-evidence-hardening-tree
+          path: |
+            ${{ runner.temp }}/changed-files.txt
+            ${{ runner.temp }}/validated-hardening.patch
+            ${{ runner.temp }}/validated-tree.tar.gz
+          if-no-files-found: error
+          retention-days: 7
