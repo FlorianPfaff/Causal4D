@@ -30,20 +30,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s\n' "${{ github.event.pull_request.head.sha }}" > SOURCE_HEAD_SHA
-          tar \
-            --exclude=.git \
-            --exclude=causal4d-current-source.tar.gz \
-            -czf causal4d-current-source.tar.gz .
-          sha256sum causal4d-current-source.tar.gz > causal4d-current-source.tar.gz.sha256
+          snapshot="$RUNNER_TEMP/causal4d-current-source.tar.gz"
+          printf '%s\n' "${{ github.event.pull_request.head.sha }}" \
+            > "$RUNNER_TEMP/SOURCE_HEAD_SHA"
+          tar --exclude=.git -czf "$snapshot" .
+          sha256sum "$snapshot" \
+            > "$RUNNER_TEMP/causal4d-current-source.tar.gz.sha256"
 
       - name: Upload exact source snapshot
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: causal4d-current-source
           path: |
-            causal4d-current-source.tar.gz
-            causal4d-current-source.tar.gz.sha256
-            SOURCE_HEAD_SHA
+            ${{ runner.temp }}/causal4d-current-source.tar.gz
+            ${{ runner.temp }}/causal4d-current-source.tar.gz.sha256
+            ${{ runner.temp }}/SOURCE_HEAD_SHA
           if-no-files-found: error
           retention-days: 1
