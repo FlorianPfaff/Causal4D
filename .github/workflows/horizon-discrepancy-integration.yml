@@ -1,0 +1,106 @@
+name: Horizon-discrepancy installed-wheel integration
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/horizon-discrepancy-integration.yml"
+      - "docs/causal4d_horizon_discrepancy.md"
+      - "src/causal4d/belief_provider_v2_contract.py"
+      - "src/causal4d/horizon_discrepancy.py"
+      - "tests/test_belief_provider_v2_contract.py"
+      - "tests/test_horizon_discrepancy.py"
+      - "tests/test_horizon_discrepancy_workflow_policy.py"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/horizon-discrepancy-integration.yml"
+      - "docs/causal4d_horizon_discrepancy.md"
+      - "src/causal4d/belief_provider_v2_contract.py"
+      - "src/causal4d/horizon_discrepancy.py"
+      - "tests/test_belief_provider_v2_contract.py"
+      - "tests/test_horizon_discrepancy.py"
+      - "tests/test_horizon_discrepancy_workflow_policy.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: horizon-discrepancy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  installed-wheel-contract:
+    name: BPT horizon provider -> Causal4D discrepancy bank
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out Causal4D
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: causal4d
+          persist-credentials: false
+
+      - name: Check out exact Bayesian-PhysTwin horizon-provider revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/BayesianPhysTwin
+          ref: bfa844798f0ab3ddbc67a0744ae14a221324e504
+          path: bayesian-phystwin
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            causal4d/pyproject.toml
+            bayesian-phystwin/pyproject.toml
+
+      - name: Check changed source quality
+        run: |
+          python -m pip install "ruff>=0.15.22,<0.17"
+          python -m ruff check \
+            causal4d/src/causal4d/belief_provider_v2_contract.py \
+            causal4d/src/causal4d/horizon_discrepancy.py \
+            causal4d/tests/test_belief_provider_v2_contract.py \
+            causal4d/tests/test_horizon_discrepancy.py \
+            causal4d/tests/test_horizon_discrepancy_workflow_policy.py
+          python -m ruff format --check --diff \
+            causal4d/src/causal4d/belief_provider_v2_contract.py \
+            causal4d/src/causal4d/horizon_discrepancy.py \
+            causal4d/tests/test_belief_provider_v2_contract.py \
+            causal4d/tests/test_horizon_discrepancy.py \
+            causal4d/tests/test_horizon_discrepancy_workflow_policy.py
+
+      - name: Build both wheels
+        run: |
+          python -m pip install --upgrade build pip
+          wheelhouse="$RUNNER_TEMP/horizon-discrepancy-wheelhouse"
+          mkdir -p "$wheelhouse"
+          python -m build --wheel --outdir "$wheelhouse" bayesian-phystwin
+          python -m build --wheel --outdir "$wheelhouse" causal4d
+          test "$(find "$wheelhouse" -maxdepth 1 -name '*.whl' | wc -l)" -eq 2
+
+      - name: Install wheels in an isolated environment
+        run: |
+          venv="$RUNNER_TEMP/horizon-discrepancy-venv"
+          wheelhouse="$RUNNER_TEMP/horizon-discrepancy-wheelhouse"
+          python -m venv "$venv"
+          "$venv/bin/python" -m pip install --upgrade pip
+          mapfile -t wheels < <(find "$wheelhouse" -maxdepth 1 -name '*.whl' -print | sort)
+          "$venv/bin/python" -m pip install "${wheels[@]}" pytest
+          "$venv/bin/python" -m pip check
+
+      - name: Exercise the installed cross-repository contract
+        run: |
+          cd "$RUNNER_TEMP"
+          env -u PYTHONPATH \
+            "$RUNNER_TEMP/horizon-discrepancy-venv/bin/python" -m pytest -q \
+              --import-mode=importlib \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_belief_provider_contract.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_belief_provider_v2_contract.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_horizon_discrepancy.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_horizon_discrepancy_workflow_policy.py"
