@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/temporary-deform360-prefix-kinematics-evidence.yml"
       - "configs/causal4d_public/deform360_prefix_kinematics_v1.json"
+      - "configs/causal4d_public/deform360_source_backend_runtime_erratum_v1.json"
       - "scripts/remote/find_deform360_replication_root.py"
       - "scripts/remote/run_deform360_prefix_kinematics.py"
       - "scripts/remote/run_deform360_prefix_kinematics_workflow.sh"
@@ -15,6 +16,7 @@ on:
       - "tests/test_deform360_prefix_kinematics.py"
       - "tests/test_deform360_prefix_kinematics_diagnostic.py"
       - "tests/test_deform360_prefix_kinematics_python_selector.py"
+      - "tests/test_deform360_prefix_kinematics_runner.py"
 
 permissions:
   contents: read
