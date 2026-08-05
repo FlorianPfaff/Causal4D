@@ -4,25 +4,90 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from pathlib import Path
-from typing import Any, Mapping
+from pathlib import Path, PurePosixPath
+from typing import Any
 
 import numpy as np
 
 from .contracts import TwinBelief
 
 OBSERVATION_FACTOR_SCHEMA = "prob4d.observation-factor-bundle"
-OBSERVATION_FACTOR_SCHEMA_VERSION = 3
+PREVIOUS_OBSERVATION_FACTOR_SCHEMA_VERSION = 3
+OBSERVATION_FACTOR_SCHEMA_VERSION = 4
+SUPPORTED_OBSERVATION_FACTOR_SCHEMA_VERSIONS = frozenset(
+    {
+        PREVIOUS_OBSERVATION_FACTOR_SCHEMA_VERSION,
+        OBSERVATION_FACTOR_SCHEMA_VERSION,
+    }
+)
 GAUGE_PARAMETERIZATION = "log-scale-rotvec-translation-v1"
-_REQUIRED_FACTOR_ARRAYS = {
-    "point_ids",
-    "points_local_m",
-    "valid_mask",
-    "local_covariance_m2",
-    "association_probability",
-    "prior_reliability",
-}
+MARGINAL_GAUGE_COVARIANCE = "marginal-blocks-only"
+JOINT_GAUGE_COVARIANCE = "joint-cross-window"
+GAUGE_COVARIANCE_SEMANTICS = frozenset(
+    {MARGINAL_GAUGE_COVARIANCE, JOINT_GAUGE_COVARIANCE}
+)
+_REQUIRED_FACTOR_ARRAYS = frozenset(
+    {
+        "point_ids",
+        "points_local_m",
+        "valid_mask",
+        "local_covariance_m2",
+        "association_probability",
+        "prior_reliability",
+    }
+)
+_TOP_LEVEL_FIELDS_V3 = frozenset(
+    {
+        "schema",
+        "schema_version",
+        "gauge_parameterization",
+        "sequence_id",
+        "case_id",
+        "stream_id",
+        "source_repository",
+        "source_revision",
+        "causal_frame_stop",
+        "causal_frame_stop_convention",
+        "metadata",
+        "payload",
+        "gauges",
+        "factors",
+    }
+)
+_TOP_LEVEL_FIELDS_V4 = _TOP_LEVEL_FIELDS_V3 | {"gauge_covariance"}
+_PAYLOAD_FIELDS = frozenset({"path", "sha256", "allow_pickle"})
+_GAUGE_FIELDS = frozenset({"gauge_id", "mean_key", "covariance_key"})
+_FACTOR_FIELDS = frozenset(
+    {
+        "factor_id",
+        "frame_index",
+        "view_id",
+        "window_id",
+        "gauge_id",
+        "correlation_group_id",
+        "causal_frame_stop",
+        "prior_nominal_probability",
+        "composite_weight",
+        "arrays",
+        "ray_directions_local_key",
+    }
+)
+_GAUGE_COVARIANCE_FIELDS = frozenset(
+    {
+        "semantics",
+        "joint_covariance_key",
+        "ordered_gauge_ids",
+        "cross_window_covariance_preserved",
+        "diagonal_blocks_match_gauge_marginals",
+    }
+)
+
+
+class _StrictJsonValueError(ValueError):
+    """Internal marker for already contextualized strict-JSON failures."""
 
 
 def file_sha256(path: str | Path) -> str:
@@ -35,54 +100,137 @@ def file_sha256(path: str | Path) -> str:
     return digest.hexdigest()
 
 
-def _validate_sha256(value: str, *, name: str) -> None:
-    if len(value) != 64 or any(
+def _require_mapping(value: Any, *, name: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{name} must be a JSON object")
+    if any(type(key) is not str for key in value):
+        raise ValueError(f"{name} keys must be strings")
+    return value
+
+
+def _require_exact_fields(
+    value: Mapping[str, Any], expected: frozenset[str], *, name: str
+) -> None:
+    missing = sorted(expected - value.keys())
+    extra = sorted(value.keys() - expected)
+    if missing or extra:
+        raise ValueError(
+            f"{name} fields changed; missing={missing}, extra={extra}"
+        )
+
+
+def _load_json_object(path: Path, *, name: str) -> dict[str, Any]:
+    def object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in result:
+                raise _StrictJsonValueError(
+                    f"{name} contains duplicate JSON object key {key!r}"
+                )
+            result[key] = item
+        return result
+
+    def reject_constant(token: str) -> Any:
+        raise _StrictJsonValueError(
+            f"{name} contains non-finite JSON number {token!r}"
+        )
+
+    try:
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=object_pairs,
+            parse_constant=reject_constant,
+        )
+    except _StrictJsonValueError:
+        raise
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"{name} is not valid UTF-8 JSON") from error
+    if not isinstance(value, dict):
+        raise ValueError(f"{name} must contain one JSON object")
+    return value
+
+
+def _validate_sha256(value: Any, *, name: str) -> str:
+    if type(value) is not str or len(value) != 64 or any(
         character not in "0123456789abcdef" for character in value
     ):
         raise ValueError(f"{name} must be a lowercase SHA-256 digest")
+    return value
+
+
+def _schema_version(value: Any) -> int:
+    if type(value) is not int:
+        raise ValueError("observation-factor schema version must be an integer")
+    if value not in SUPPORTED_OBSERVATION_FACTOR_SCHEMA_VERSIONS:
+        raise ValueError("unsupported observation-factor schema version")
+    return value
 
 
 def compute_observation_factor_bundle_id(
     manifest_sha256: str,
     payload_sha256: str,
+    *,
+    schema_version: int = PREVIOUS_OBSERVATION_FACTOR_SCHEMA_VERSION,
 ) -> str:
     """Content-address the exact manifest and payload byte pair."""
 
-    _validate_sha256(manifest_sha256, name="manifest_sha256")
-    _validate_sha256(payload_sha256, name="payload_sha256")
+    manifest_digest = _validate_sha256(manifest_sha256, name="manifest_sha256")
+    payload_digest = _validate_sha256(payload_sha256, name="payload_sha256")
+    version = _schema_version(schema_version)
     digest = hashlib.sha256()
     digest.update(f"{OBSERVATION_FACTOR_SCHEMA}\0".encode("utf-8"))
-    digest.update(str(OBSERVATION_FACTOR_SCHEMA_VERSION).encode("ascii"))
+    digest.update(str(version).encode("ascii"))
     digest.update(b"\0")
-    digest.update(manifest_sha256.encode("ascii"))
+    digest.update(manifest_digest.encode("ascii"))
     digest.update(b"\0")
-    digest.update(payload_sha256.encode("ascii"))
+    digest.update(payload_digest.encode("ascii"))
     return digest.hexdigest()
 
 
 def _nonempty_string(value: Any, *, name: str) -> str:
-    result = str(value)
-    if not result:
-        raise ValueError(f"{name} must be nonempty")
+    if type(value) is not str or not value:
+        raise ValueError(f"{name} must be a nonempty string")
+    return value
+
+
+def _nonnegative_integer(value: Any, *, name: str) -> int:
+    if type(value) is not int or value < 0:
+        raise ValueError(f"{name} must be a nonnegative integer")
+    return value
+
+
+def _positive_integer(value: Any, *, name: str) -> int:
+    result = _nonnegative_integer(value, name=name)
+    if result < 1:
+        raise ValueError(f"{name} must be positive")
     return result
 
 
 def _bounded_probability(value: Any, *, name: str) -> float:
+    if type(value) not in {int, float}:
+        raise ValueError(f"{name} must be a JSON number")
     result = float(value)
-    if not np.isfinite(result) or not 0.0 <= result <= 1.0:
+    if not math.isfinite(result) or not 0.0 <= result <= 1.0:
         raise ValueError(f"{name} must lie in [0, 1]")
     return result
 
 
 def _composite_weight(value: Any) -> float:
-    result = float(value)
-    if not np.isfinite(result) or not 0.0 < result <= 1.0:
+    result = _bounded_probability(value, name="factor composite_weight")
+    if result <= 0.0:
         raise ValueError("factor composite_weight must lie in (0, 1]")
     return result
 
 
+def _require_float64_array(values: np.ndarray, *, name: str) -> np.ndarray:
+    result = np.asarray(values)
+    if result.dtype != np.dtype(np.float64):
+        raise ValueError(f"{name} must use float64")
+    return result
+
+
 def _probability_vector(values: np.ndarray, *, name: str) -> np.ndarray:
-    result = np.asarray(values, dtype=np.float64)
+    result = _require_float64_array(values, name=name)
     if not np.all(np.isfinite(result)) or np.any(
         (result < 0.0) | (result > 1.0)
     ):
@@ -105,21 +253,36 @@ def _require_psd(
 
 
 def _safe_payload_path(manifest: Path, relative: Any) -> Path:
-    relative_path = Path(str(relative))
-    if relative_path.is_absolute() or ".." in relative_path.parts:
-        raise ValueError("factor-bundle payload path must stay below the manifest")
+    if type(relative) is not str or not relative or "\\" in relative:
+        raise ValueError("factor-bundle payload path must be a safe POSIX relative path")
+    pure = PurePosixPath(relative)
+    if pure.is_absolute() or any(part in {"", ".", ".."} for part in pure.parts):
+        raise ValueError("factor-bundle payload path must be a safe POSIX relative path")
     root = manifest.parent.resolve()
-    payload = (root / relative_path).resolve()
-    if payload != root and root not in payload.parents:
-        raise ValueError("factor-bundle payload path escapes the manifest directory")
+    payload = (root / Path(*pure.parts)).resolve()
+    try:
+        payload.relative_to(root)
+    except ValueError as error:
+        raise ValueError("factor-bundle payload path escapes the manifest directory") from error
     if not payload.is_file():
         raise ValueError("factor-bundle payload file is missing")
     return payload
 
 
+def _block_diagonal(values: list[np.ndarray]) -> np.ndarray:
+    dimension = sum(value.shape[0] for value in values)
+    result = np.zeros((dimension, dimension), dtype=np.float64)
+    offset = 0
+    for value in values:
+        width = value.shape[0]
+        result[offset : offset + width, offset : offset + width] = value
+        offset += width
+    return result
+
+
 @dataclass(frozen=True)
 class ObservationFactorLineage:
-    """Immutable summary of a validated Prob4D schema-v3 factor bundle."""
+    """Immutable summary of a validated Prob4D schema-v3/v4 factor bundle."""
 
     artifact_id: str
     manifest_sha256: str
@@ -137,11 +300,15 @@ class ObservationFactorLineage:
     correlation_group_count: int
     source_repository: str
     source_revision: str
+    schema_version: int = PREVIOUS_OBSERVATION_FACTOR_SCHEMA_VERSION
+    gauge_covariance_semantics: str = MARGINAL_GAUGE_COVARIANCE
+    cross_window_gauge_covariance_preserved: bool = False
 
     def __post_init__(self) -> None:
         _validate_sha256(self.artifact_id, name="artifact_id")
         _validate_sha256(self.manifest_sha256, name="manifest_sha256")
         _validate_sha256(self.payload_sha256, name="payload_sha256")
+        version = _schema_version(self.schema_version)
         for name, value in (
             ("case_id", self.case_id),
             ("stream_id", self.stream_id),
@@ -149,159 +316,299 @@ class ObservationFactorLineage:
             ("source_repository", self.source_repository),
             ("source_revision", self.source_revision),
         ):
-            if not value:
-                raise ValueError(f"{name} must be nonempty")
-        if self.causal_frame_stop < 1:
-            raise ValueError("factor-bundle causal frame stop must be positive")
-        if not 0 <= self.minimum_frame_id <= self.maximum_frame_id:
+            _nonempty_string(value, name=name)
+        causal_stop = _positive_integer(
+            self.causal_frame_stop,
+            name="factor-bundle causal frame stop",
+        )
+        minimum_frame = _nonnegative_integer(
+            self.minimum_frame_id,
+            name="factor-bundle minimum frame",
+        )
+        maximum_frame = _nonnegative_integer(
+            self.maximum_frame_id,
+            name="factor-bundle maximum frame",
+        )
+        if minimum_frame > maximum_frame:
             raise ValueError("factor-bundle frame range is invalid")
-        if self.maximum_frame_id >= self.causal_frame_stop:
+        if maximum_frame >= causal_stop:
             raise ValueError("factor-bundle lineage crosses its causal stop")
-        if min(
-            self.factor_count,
-            self.observation_count,
-            self.active_observation_count,
-            self.gauge_count,
-            self.correlation_group_count,
-        ) < 1:
-            raise ValueError("factor-bundle lineage counts must be positive")
+        for name, value in (
+            ("factor_count", self.factor_count),
+            ("observation_count", self.observation_count),
+            ("active_observation_count", self.active_observation_count),
+            ("gauge_count", self.gauge_count),
+            ("correlation_group_count", self.correlation_group_count),
+        ):
+            _positive_integer(value, name=name)
         if self.active_observation_count > self.observation_count:
             raise ValueError("active observation count exceeds total observations")
+        semantics = _nonempty_string(
+            self.gauge_covariance_semantics,
+            name="gauge_covariance_semantics",
+        )
+        if semantics not in GAUGE_COVARIANCE_SEMANTICS:
+            raise ValueError("unsupported gauge covariance semantics")
+        if type(self.cross_window_gauge_covariance_preserved) is not bool:
+            raise ValueError("cross-window gauge covariance flag must be Boolean")
+        preserved = self.cross_window_gauge_covariance_preserved
+        if preserved != (semantics == JOINT_GAUGE_COVARIANCE):
+            raise ValueError(
+                "gauge covariance semantics contradict the preservation flag"
+            )
+        if version == PREVIOUS_OBSERVATION_FACTOR_SCHEMA_VERSION and preserved:
+            raise ValueError("schema-v3 lineage cannot preserve joint gauge covariance")
+        object.__setattr__(self, "schema_version", version)
+        object.__setattr__(self, "causal_frame_stop", causal_stop)
+        object.__setattr__(self, "minimum_frame_id", minimum_frame)
+        object.__setattr__(self, "maximum_frame_id", maximum_frame)
+        object.__setattr__(self, "gauge_covariance_semantics", semantics)
 
     def metadata(self) -> dict[str, Any]:
-        return {
+        result = {
             "source_observation_factor_bundle_id": self.artifact_id,
             "source_observation_factor_schema": OBSERVATION_FACTOR_SCHEMA,
-            "source_observation_factor_schema_version": (
-                OBSERVATION_FACTOR_SCHEMA_VERSION
-            ),
+            "source_observation_factor_schema_version": self.schema_version,
             "source_observation_factor_case_id": self.case_id,
             "source_observation_factor_stream_id": self.stream_id,
             "source_observation_factor_sequence_id": self.sequence_id,
-            "source_observation_factor_causal_frame_stop": (
-                self.causal_frame_stop
-            ),
+            "source_observation_factor_causal_frame_stop": self.causal_frame_stop,
             "source_observation_factor_repository": self.source_repository,
             "source_observation_factor_revision": self.source_revision,
-            "source_observation_factor_manifest_sha256": (
-                self.manifest_sha256
-            ),
+            "source_observation_factor_manifest_sha256": self.manifest_sha256,
             "source_observation_factor_payload_sha256": self.payload_sha256,
         }
+        if self.schema_version == OBSERVATION_FACTOR_SCHEMA_VERSION:
+            result.update(
+                {
+                    "source_observation_factor_gauge_covariance_semantics": (
+                        self.gauge_covariance_semantics
+                    ),
+                    "source_observation_factor_cross_window_gauge_covariance_preserved": (
+                        self.cross_window_gauge_covariance_preserved
+                    ),
+                }
+            )
+        return result
 
 
 def load_observation_factor_lineage(
     manifest_path: str | Path,
 ) -> ObservationFactorLineage:
-    """Validate a Prob4D factor bundle without importing its producer."""
+    """Validate a Prob4D schema-v3/v4 bundle without importing its producer."""
 
     manifest = Path(manifest_path)
     if not manifest.is_file():
         raise ValueError("factor-bundle manifest file is missing")
     manifest_sha = file_sha256(manifest)
-    try:
-        record = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise ValueError("factor-bundle manifest is not valid UTF-8 JSON") from error
+    record = _load_json_object(manifest, name="factor-bundle manifest")
     if record.get("schema") != OBSERVATION_FACTOR_SCHEMA:
         raise ValueError("unsupported observation-factor schema")
-    if int(record.get("schema_version", -1)) != (
-        OBSERVATION_FACTOR_SCHEMA_VERSION
-    ):
-        raise ValueError("unsupported observation-factor schema version")
+    schema_version = _schema_version(record.get("schema_version"))
+    _require_exact_fields(
+        record,
+        _TOP_LEVEL_FIELDS_V4
+        if schema_version == OBSERVATION_FACTOR_SCHEMA_VERSION
+        else _TOP_LEVEL_FIELDS_V3,
+        name="factor-bundle manifest",
+    )
     if record.get("gauge_parameterization") != GAUGE_PARAMETERIZATION:
         raise ValueError("unsupported observation-factor gauge parameterization")
     if record.get("causal_frame_stop_convention") != "exclusive":
         raise ValueError("factor-bundle causal frame stop must be exclusive")
 
-    sequence_id = _nonempty_string(
-        record.get("sequence_id", ""),
-        name="sequence_id",
-    )
-    case_id = _nonempty_string(record.get("case_id", ""), name="case_id")
-    stream_id = _nonempty_string(record.get("stream_id", ""), name="stream_id")
+    sequence_id = _nonempty_string(record["sequence_id"], name="sequence_id")
+    case_id = _nonempty_string(record["case_id"], name="case_id")
+    stream_id = _nonempty_string(record["stream_id"], name="stream_id")
     source_repository = _nonempty_string(
-        record.get("source_repository", ""),
+        record["source_repository"],
         name="source_repository",
     )
     source_revision = _nonempty_string(
-        record.get("source_revision", ""),
+        record["source_revision"],
         name="source_revision",
     )
-    causal_stop = int(record.get("causal_frame_stop", -1))
-    if causal_stop < 1:
-        raise ValueError("factor-bundle causal frame stop must be positive")
+    causal_stop = _positive_integer(
+        record["causal_frame_stop"],
+        name="factor-bundle causal frame stop",
+    )
+    _require_mapping(record["metadata"], name="factor-bundle metadata")
 
-    payload_record = record.get("payload")
-    if not isinstance(payload_record, Mapping):
-        raise ValueError("factor-bundle payload descriptor is missing")
-    if payload_record.get("allow_pickle") is not False:
+    payload_record = _require_mapping(
+        record["payload"],
+        name="factor-bundle payload descriptor",
+    )
+    _require_exact_fields(payload_record, _PAYLOAD_FIELDS, name="payload descriptor")
+    if payload_record["allow_pickle"] is not False:
         raise ValueError("factor-bundle payload must disable pickle")
-    declared_payload_sha = str(payload_record.get("sha256", ""))
-    _validate_sha256(declared_payload_sha, name="payload sha256")
-    payload = _safe_payload_path(manifest, payload_record.get("path", ""))
+    declared_payload_sha = _validate_sha256(
+        payload_record["sha256"],
+        name="payload sha256",
+    )
+    payload = _safe_payload_path(manifest, payload_record["path"])
     actual_payload_sha = file_sha256(payload)
     if actual_payload_sha != declared_payload_sha:
         raise ValueError("factor-bundle payload checksum mismatch")
 
-    gauge_records = record.get("gauges")
-    factor_records = record.get("factors")
-    if not isinstance(gauge_records, list) or not gauge_records:
+    gauge_records = record["gauges"]
+    factor_records = record["factors"]
+    if type(gauge_records) is not list or not gauge_records:
         raise ValueError("factor bundle must contain gauge records")
-    if not isinstance(factor_records, list) or not factor_records:
+    if type(factor_records) is not list or not factor_records:
         raise ValueError("factor bundle must contain factor records")
 
     expected_array_names: list[str] = []
-    gauge_ids: set[str] = set()
+    gauge_ids: list[str] = []
+    gauge_covariances: list[np.ndarray] = []
     factor_ids: set[str] = set()
     group_parameters: dict[str, tuple[float, float]] = {}
     frame_ids: list[int] = []
     total_observations = 0
     active_observations = 0
+    covariance_semantics = MARGINAL_GAUGE_COVARIANCE
+    cross_window_preserved = False
 
-    with np.load(payload, allow_pickle=False) as arrays:
-        for position, gauge_record in enumerate(gauge_records):
-            if not isinstance(gauge_record, Mapping):
-                raise ValueError("factor-bundle gauge record must be a mapping")
+    try:
+        archive = np.load(payload, allow_pickle=False)
+    except (OSError, ValueError) as error:
+        raise ValueError("factor-bundle payload is not a valid non-pickled NPZ") from error
+    with archive as arrays:
+        for position, raw_gauge_record in enumerate(gauge_records):
+            gauge_record = _require_mapping(
+                raw_gauge_record,
+                name=f"gauge record {position}",
+            )
+            _require_exact_fields(gauge_record, _GAUGE_FIELDS, name=f"gauge {position}")
             gauge_id = _nonempty_string(
-                gauge_record.get("gauge_id", ""),
+                gauge_record["gauge_id"],
                 name=f"gauge {position} ID",
             )
             if gauge_id in gauge_ids:
                 raise ValueError("factor-bundle gauge IDs must be unique")
-            gauge_ids.add(gauge_id)
+            gauge_ids.append(gauge_id)
             mean_key = _nonempty_string(
-                gauge_record.get("mean_key", ""),
+                gauge_record["mean_key"],
                 name=f"gauge {position} mean key",
             )
             covariance_key = _nonempty_string(
-                gauge_record.get("covariance_key", ""),
+                gauge_record["covariance_key"],
                 name=f"gauge {position} covariance key",
             )
             expected_array_names.extend((mean_key, covariance_key))
             if mean_key not in arrays or covariance_key not in arrays:
                 raise ValueError("factor-bundle gauge payload arrays are missing")
-            mean = np.asarray(arrays[mean_key], dtype=np.float64)
-            covariance = np.asarray(
+            mean = _require_float64_array(
+                arrays[mean_key],
+                name="factor-bundle gauge mean",
+            )
+            covariance = _require_float64_array(
                 arrays[covariance_key],
-                dtype=np.float64,
+                name="factor-bundle gauge covariance",
             )
             if mean.shape != (7,) or not np.all(np.isfinite(mean)):
                 raise ValueError("factor-bundle gauge mean must have shape (7,)")
-            if covariance.shape != (7, 7) or not np.all(
-                np.isfinite(covariance)
-            ):
+            if covariance.shape != (7, 7) or not np.all(np.isfinite(covariance)):
                 raise ValueError(
                     "factor-bundle gauge covariance must have shape (7, 7)"
                 )
             _require_psd(covariance, name="factor-bundle gauge covariance")
+            gauge_covariances.append(covariance)
 
-        for position, factor_record in enumerate(factor_records):
-            if not isinstance(factor_record, Mapping):
-                raise ValueError("factor-bundle factor record must be a mapping")
+        if schema_version == OBSERVATION_FACTOR_SCHEMA_VERSION:
+            covariance_record = _require_mapping(
+                record["gauge_covariance"],
+                name="gauge_covariance",
+            )
+            _require_exact_fields(
+                covariance_record,
+                _GAUGE_COVARIANCE_FIELDS,
+                name="gauge_covariance",
+            )
+            covariance_semantics = _nonempty_string(
+                covariance_record["semantics"],
+                name="gauge covariance semantics",
+            )
+            if covariance_semantics not in GAUGE_COVARIANCE_SEMANTICS:
+                raise ValueError("unsupported gauge covariance semantics")
+            preserved = covariance_record["cross_window_covariance_preserved"]
+            if type(preserved) is not bool:
+                raise ValueError(
+                    "schema-v4 cross_window_covariance_preserved must be Boolean"
+                )
+            if preserved != (covariance_semantics == JOINT_GAUGE_COVARIANCE):
+                raise ValueError(
+                    "schema-v4 gauge covariance semantics contradict the preservation flag"
+                )
+            if covariance_record["diagonal_blocks_match_gauge_marginals"] is not True:
+                raise ValueError(
+                    "schema-v4 gauge covariance must declare matching marginal blocks"
+                )
+            ordered_gauge_ids = covariance_record["ordered_gauge_ids"]
+            if type(ordered_gauge_ids) is not list or any(
+                type(value) is not str or not value for value in ordered_gauge_ids
+            ):
+                raise ValueError("schema-v4 ordered_gauge_ids must contain strings")
+            if ordered_gauge_ids != gauge_ids:
+                raise ValueError(
+                    "schema-v4 joint gauge covariance order differs from gauge records"
+                )
+            joint_key = _nonempty_string(
+                covariance_record["joint_covariance_key"],
+                name="schema-v4 joint_covariance_key",
+            )
+            expected_array_names.append(joint_key)
+            if joint_key not in arrays:
+                raise ValueError("schema-v4 joint gauge covariance array is missing")
+            joint_covariance = _require_float64_array(
+                arrays[joint_key],
+                name="schema-v4 joint gauge covariance",
+            )
+            dimension = 7 * len(gauge_ids)
+            if joint_covariance.shape != (dimension, dimension):
+                raise ValueError(
+                    "schema-v4 joint gauge covariance has the wrong shape"
+                )
+            if not np.all(np.isfinite(joint_covariance)):
+                raise ValueError("schema-v4 joint gauge covariance must be finite")
+            _require_psd(
+                joint_covariance,
+                name="schema-v4 joint gauge covariance",
+            )
+            for index, gauge_covariance in enumerate(gauge_covariances):
+                block = joint_covariance[
+                    7 * index : 7 * (index + 1),
+                    7 * index : 7 * (index + 1),
+                ]
+                if not np.allclose(
+                    block,
+                    gauge_covariance,
+                    atol=1e-12,
+                    rtol=1e-10,
+                ):
+                    raise ValueError(
+                        "schema-v4 joint gauge covariance diagonal blocks differ "
+                        "from gauge marginals"
+                    )
+            if covariance_semantics == MARGINAL_GAUGE_COVARIANCE and not np.allclose(
+                joint_covariance,
+                _block_diagonal(gauge_covariances),
+                atol=1e-12,
+                rtol=1e-10,
+            ):
+                raise ValueError(
+                    "marginal-blocks-only semantics require zero cross-window covariance"
+                )
+            cross_window_preserved = preserved
+
+        for position, raw_factor_record in enumerate(factor_records):
+            factor_record = _require_mapping(
+                raw_factor_record,
+                name=f"factor record {position}",
+            )
+            _require_exact_fields(factor_record, _FACTOR_FIELDS, name=f"factor {position}")
             identifiers = {
                 name: _nonempty_string(
-                    factor_record.get(name, ""),
+                    factor_record[name],
                     name=f"factor {position} {name}",
                 )
                 for name in (
@@ -318,21 +625,25 @@ def load_observation_factor_lineage(
             factor_ids.add(factor_id)
             if identifiers["gauge_id"] not in gauge_ids:
                 raise ValueError("factor references an unavailable gauge")
-            frame_index = int(factor_record.get("frame_index", -1))
-            factor_stop = int(factor_record.get("causal_frame_stop", -1))
-            if frame_index < 0 or frame_index >= causal_stop:
+            frame_index = _nonnegative_integer(
+                factor_record["frame_index"],
+                name="factor frame_index",
+            )
+            factor_stop = _positive_integer(
+                factor_record["causal_frame_stop"],
+                name="factor causal_frame_stop",
+            )
+            if frame_index >= causal_stop:
                 raise ValueError("factor frame crosses the bundle causal stop")
             if factor_stop != causal_stop:
                 raise ValueError("factor and bundle causal frame stops differ")
             frame_ids.append(frame_index)
 
             nominal_probability = _bounded_probability(
-                factor_record.get("prior_nominal_probability"),
+                factor_record["prior_nominal_probability"],
                 name="factor prior_nominal_probability",
             )
-            composite_weight = _composite_weight(
-                factor_record.get("composite_weight")
-            )
+            composite_weight = _composite_weight(factor_record["composite_weight"])
             group_id = identifiers["correlation_group_id"]
             parameters = (nominal_probability, composite_weight)
             previous = group_parameters.setdefault(group_id, parameters)
@@ -341,17 +652,15 @@ def load_observation_factor_lineage(
                     "one correlation group has inconsistent factor metadata"
                 )
 
-            key_record = factor_record.get("arrays")
-            if not isinstance(key_record, Mapping):
-                raise ValueError("factor payload array mapping is missing")
-            missing_keys = _REQUIRED_FACTOR_ARRAYS - key_record.keys()
-            extra_keys = key_record.keys() - _REQUIRED_FACTOR_ARRAYS
-            if missing_keys or extra_keys:
-                raise ValueError(
-                    "factor payload array contract changed; "
-                    f"missing={sorted(missing_keys)}, "
-                    f"extra={sorted(extra_keys)}"
-                )
+            key_record = _require_mapping(
+                factor_record["arrays"],
+                name="factor payload array mapping",
+            )
+            _require_exact_fields(
+                key_record,
+                _REQUIRED_FACTOR_ARRAYS,
+                name="factor payload array mapping",
+            )
             factor_keys = {
                 name: _nonempty_string(
                     key_record[name],
@@ -360,7 +669,7 @@ def load_observation_factor_lineage(
                 for name in _REQUIRED_FACTOR_ARRAYS
             }
             expected_array_names.extend(factor_keys.values())
-            ray_key_value = factor_record.get("ray_directions_local_key")
+            ray_key_value = factor_record["ray_directions_local_key"]
             ray_key = None
             if ray_key_value is not None:
                 ray_key = _nonempty_string(
@@ -374,14 +683,14 @@ def load_observation_factor_lineage(
                 raise ValueError("factor ray payload array is missing")
 
             point_ids = np.asarray(arrays[factor_keys["point_ids"]])
-            points = np.asarray(
+            points = _require_float64_array(
                 arrays[factor_keys["points_local_m"]],
-                dtype=np.float64,
+                name="factor points",
             )
             valid = np.asarray(arrays[factor_keys["valid_mask"]])
-            covariance = np.asarray(
+            covariance = _require_float64_array(
                 arrays[factor_keys["local_covariance_m2"]],
-                dtype=np.float64,
+                name="factor local covariance",
             )
             association = _probability_vector(
                 arrays[factor_keys["association_probability"]],
@@ -391,17 +700,12 @@ def load_observation_factor_lineage(
                 arrays[factor_keys["prior_reliability"]],
                 name="factor prior reliability",
             )
+            if point_ids.dtype != np.dtype(np.int64):
+                raise ValueError("factor point IDs must use int64")
             if point_ids.ndim != 1 or len(point_ids) == 0:
                 raise ValueError("factor point IDs must be a nonempty vector")
-            if not np.issubdtype(point_ids.dtype, np.integer):
-                raise ValueError("factor point IDs must use an integer dtype")
-            point_ids = np.asarray(point_ids, dtype=np.int64)
-            if np.any(point_ids < 0) or len(np.unique(point_ids)) != len(
-                point_ids
-            ):
-                raise ValueError(
-                    "factor point IDs must be nonnegative and unique"
-                )
+            if np.any(point_ids < 0) or len(np.unique(point_ids)) != len(point_ids):
+                raise ValueError("factor point IDs must be nonnegative and unique")
             count = len(point_ids)
             if points.shape != (count, 3):
                 raise ValueError("factor points must have shape (N, 3)")
@@ -426,7 +730,10 @@ def load_observation_factor_lineage(
                     name="active factor covariance",
                 )
             if ray_key is not None:
-                rays = np.asarray(arrays[ray_key], dtype=np.float64)
+                rays = _require_float64_array(
+                    arrays[ray_key],
+                    name="factor rays",
+                )
                 if rays.shape != (count, 3):
                     raise ValueError("factor rays must have shape (N, 3)")
                 if not np.all(np.isfinite(rays[active])):
@@ -451,8 +758,7 @@ def load_observation_factor_lineage(
         if missing_arrays or extra_arrays:
             raise ValueError(
                 "factor-bundle payload array set changed; "
-                f"missing={sorted(missing_arrays)}, "
-                f"extra={sorted(extra_arrays)}"
+                f"missing={sorted(missing_arrays)}, extra={sorted(extra_arrays)}"
             )
 
     if active_observations < 1:
@@ -460,6 +766,7 @@ def load_observation_factor_lineage(
     artifact_id = compute_observation_factor_bundle_id(
         manifest_sha,
         actual_payload_sha,
+        schema_version=schema_version,
     )
     return ObservationFactorLineage(
         artifact_id=artifact_id,
@@ -478,6 +785,9 @@ def load_observation_factor_lineage(
         correlation_group_count=len(group_parameters),
         source_repository=source_repository,
         source_revision=source_revision,
+        schema_version=schema_version,
+        gauge_covariance_semantics=covariance_semantics,
+        cross_window_gauge_covariance_preserved=cross_window_preserved,
     )
 
 
@@ -514,6 +824,11 @@ def validate_twin_belief_observation_factor_lineage(
         "status": "valid",
         "twin_belief_id": twin_belief.artifact_id,
         "observation_factor_bundle_id": lineage.artifact_id,
+        "observation_factor_schema_version": lineage.schema_version,
+        "gauge_covariance_semantics": lineage.gauge_covariance_semantics,
+        "cross_window_gauge_covariance_preserved": (
+            lineage.cross_window_gauge_covariance_preserved
+        ),
         "case_id": lineage.case_id,
         "stream_id": lineage.stream_id,
         "sequence_id": lineage.sequence_id,
@@ -557,9 +872,14 @@ def bind_twin_belief_observation_factor_lineage(
 
 
 __all__ = [
+    "GAUGE_COVARIANCE_SEMANTICS",
     "GAUGE_PARAMETERIZATION",
+    "JOINT_GAUGE_COVARIANCE",
+    "MARGINAL_GAUGE_COVARIANCE",
     "OBSERVATION_FACTOR_SCHEMA",
     "OBSERVATION_FACTOR_SCHEMA_VERSION",
+    "PREVIOUS_OBSERVATION_FACTOR_SCHEMA_VERSION",
+    "SUPPORTED_OBSERVATION_FACTOR_SCHEMA_VERSIONS",
     "ObservationFactorLineage",
     "bind_twin_belief_observation_factor_lineage",
     "compute_observation_factor_bundle_id",
