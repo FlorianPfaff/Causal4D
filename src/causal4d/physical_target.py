@@ -218,9 +218,7 @@ class PhysicalTargetBundle:
         o_plus_offset = self.context.o_plus.frame_start - anchor_frame
         if not 0 <= o_plus_offset < len(points):
             raise ValueError("O+ does not lie inside the aligned physical target")
-        if array_sha256(points[o_plus_offset:]) != (
-            self.context.o_plus.content_sha256
-        ):
+        if array_sha256(points[o_plus_offset:]) != (self.context.o_plus.content_sha256):
             raise ValueError("physical target does not match the declared O+ digest")
         if np.any(valid & ~np.all(np.isfinite(points), axis=2)):
             raise ValueError("valid physical target points must be finite")
@@ -375,13 +373,15 @@ def build_physical_target(
     anchor = context.o_minus.frame_stop - 1
     if anchor < 0 or context.o_plus.frame_stop > len(points):
         raise ValueError("source object_points do not cover the Causal4D context")
-    if array_sha256(
-        points[context.o_minus.frame_start : context.o_minus.frame_stop]
-    ) != context.o_minus.content_sha256:
+    if (
+        array_sha256(points[context.o_minus.frame_start : context.o_minus.frame_stop])
+        != context.o_minus.content_sha256
+    ):
         raise ValueError("source object_points do not match the declared O- digest")
-    if array_sha256(
-        points[context.o_plus.frame_start : context.o_plus.frame_stop]
-    ) != context.o_plus.content_sha256:
+    if (
+        array_sha256(points[context.o_plus.frame_start : context.o_plus.frame_stop])
+        != context.o_plus.content_sha256
+    ):
         raise ValueError("source object_points do not match the declared O+ digest")
     return PhysicalTargetBundle(
         context=context,
@@ -494,9 +494,7 @@ def load_physical_target(path: str | Path) -> PhysicalTargetBundle:
         name="physical target alignment",
         required=_ALIGNMENT_FIELDS,
     )
-    if type(alignment["anchor_frame"]) is not int or (
-        alignment["anchor_frame"] < 0
-    ):
+    if type(alignment["anchor_frame"]) is not int or (alignment["anchor_frame"] < 0):
         raise ValueError("physical target anchor_frame must be a nonnegative integer")
     if type(alignment["frame_stop"]) is not int or alignment["frame_stop"] < 1:
         raise ValueError("physical target frame_stop must be a positive integer")
