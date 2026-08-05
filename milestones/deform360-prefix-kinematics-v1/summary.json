@@ -1,0 +1,113 @@
+{
+  "artifact_kind": "Deform360SourcePrefixKinematicsSummary",
+  "schema_version": 1,
+  "status": "source-only-diagnostic-complete-negative",
+  "workflow": {
+    "repository": "IPS-Stuttgart/Causal4D",
+    "run_id": 30972643551,
+    "head_sha": "77caf44dbd749e37b34dbecf47cba03799d4289f",
+    "artifact_id": 8917112270,
+    "artifact_name": "deform360-prefix-kinematics-evidence-77caf44dbd749e37b34dbecf47cba03799d4289f",
+    "artifact_archive_sha256": "77955b80f4ef5ff1b9d796d3d816a9dde1342f471120d4d9724d1d82454ba9f4"
+  },
+  "artifacts": {
+    "result_sha256": "3f1eaa75800cd7bb24d3be82da112ec5c6ab93d2873508cb147a1e2de3a323b3",
+    "result_file_sha256": "78dc6c00a187451a76e8e2a811d626d9332f05f5abd34cd83426ab297711d93b",
+    "runtime_file_sha256": "d6e218b64640dd2efb3c9ab9e56411e0bff058bbdf8a02ad25c9b0ad30f409ea",
+    "runtime_selection_file_sha256": "e3d1e48086ff6d16c549c74896715eef3ea25a61b87f063249b66380abfe15af",
+    "reproduction_runtime_contract_path": "configs/causal4d_public/deform360_source_backend_reproduction_runtime_v1.json",
+    "reproduction_runtime_contract_sha256": "144ea36f828703a713ff3bc3afe49ff0518926d73544bf7b477bdf9eb5f17f98"
+  },
+  "repository_revisions": {
+    "causal4d": "77caf44dbd749e37b34dbecf47cba03799d4289f",
+    "bayesian_phystwin": "695f7d7b949988052d8bd83ac7ac91620d1c6bb1",
+    "deform360_code": "0fe36f0b7a7a917ba62b5f8cee707299a9a4a317",
+    "official_phystwin": "2b6630528141b9cba5a7677c8b88b2129b4a8390",
+    "deform360_dataset_revision": "7fea8e20231a47641d1d2bc8791920ec4e62ec5e"
+  },
+  "runtime": {
+    "recorded_numpy": "2.5.1",
+    "conditional_reproduction_numpy": "1.26.4",
+    "python": "3.12.3",
+    "scipy": "1.13.1",
+    "torch": "2.4.0+cu121",
+    "torch_cuda": "12.1",
+    "warp": "1.15.0",
+    "zero_baseline_reproduction_required": true
+  },
+  "registered_thresholds": {
+    "baseline_chamfer_tolerance_mm": 0.5,
+    "baseline_p99_strain_tolerance": 0.01,
+    "minimum_common_episode_count": 24,
+    "minimum_relative_improvement": 0.05,
+    "minimum_win_fraction": 0.6,
+    "require_non_decreasing_quality_valid_count": true
+  },
+  "cohort": {
+    "selected_object_count": 5,
+    "episode_count": 30,
+    "baseline_reproduction_episode_count": 30,
+    "baseline_reproduction_passed": true,
+    "zero_quality_valid_episode_count": 28
+  },
+  "policies": {
+    "zero_v1": {
+      "mean_chamfer_mm": 58.040161213749776,
+      "quality_valid_episode_count": 28
+    },
+    "global_contact_translation_v1": {
+      "mean_chamfer_mm": 58.3067354068535,
+      "relative_improvement_vs_zero": -0.004592926475892943,
+      "win_fraction_vs_zero": 0.4,
+      "common_finite_episode_count": 30,
+      "quality_valid_episode_count": 28,
+      "quality_rescue_count": 0,
+      "quality_regression_count": 0
+    },
+    "graph_harmonic_contact_v1": {
+      "mean_chamfer_mm": 58.14199560540145,
+      "relative_improvement_vs_zero": -0.001754550461647353,
+      "win_fraction_vs_zero": 0.3,
+      "common_finite_episode_count": 30,
+      "quality_valid_episode_count": 28,
+      "quality_rescue_count": 0,
+      "quality_regression_count": 0
+    }
+  },
+  "graph_harmonic_per_object": [
+    {
+      "object_id": "002-rope-silk",
+      "relative_improvement_vs_zero": -0.003241165003781497,
+      "win_fraction_vs_zero": 0.16666666666666666
+    },
+    {
+      "object_id": "081-stripe-rope",
+      "relative_improvement_vs_zero": -0.00901640861309652,
+      "win_fraction_vs_zero": 0.5
+    },
+    {
+      "object_id": "083-blanket-cloth",
+      "relative_improvement_vs_zero": -0.003788667836495902,
+      "win_fraction_vs_zero": 0.16666666666666666
+    },
+    {
+      "object_id": "085-scarf-cloth",
+      "relative_improvement_vs_zero": 0.00013607270486801668,
+      "win_fraction_vs_zero": 0.16666666666666666
+    },
+    {
+      "object_id": "170-spider",
+      "relative_improvement_vs_zero": 0.004506656605586318,
+      "win_fraction_vs_zero": 0.5
+    }
+  ],
+  "decision": {
+    "passed": false,
+    "interpretation": "causal prefix kinematics does not pass the source-only repair gate",
+    "initial_velocity_is_dominant_general_repair": false,
+    "registered_method_changed": false,
+    "target_prefix_access_permitted": false,
+    "target_future_access_permitted": false,
+    "next_experiment": "do not widen the velocity model on this opened source cohort; prioritize representation, support/contact realization, within-episode dynamics competence, and independent public or physical evidence"
+  }
+}

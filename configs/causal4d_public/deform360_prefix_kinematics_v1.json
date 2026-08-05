@@ -1,0 +1,43 @@
+{
+  "artifact_kind": "Deform360SourcePrefixKinematicsConfig",
+  "config": {
+    "baseline_chamfer_tolerance_m": 0.0005,
+    "baseline_strain_tolerance": 0.01,
+    "candidate_selection": "quality_constrained_source_oracle_else_finite_oracle",
+    "control_policy": "global_contact_translation_v1",
+    "kinematics": {
+      "contact_memory_frames": 3,
+      "contact_weight": 100.0,
+      "lookback_frames": 3,
+      "maximum_controller_speed_m_s": 2.0,
+      "maximum_node_speed_m_s": 2.0,
+      "ridge_weight": 0.1,
+      "smoothness_weight": 1.0
+    },
+    "minimum_common_episode_count": 24,
+    "minimum_relative_improvement": 0.05,
+    "minimum_win_fraction": 0.6,
+    "primary_policy": "graph_harmonic_contact_v1",
+    "selected_object_ids": [
+      "002-rope-silk",
+      "081-stripe-rope",
+      "083-blanket-cloth",
+      "085-scarf-cloth",
+      "170-spider"
+    ]
+  },
+  "config_sha256": "18b9554b80bd6f4cd39813323267553df586403e032d711df0517c93b012bb27",
+  "information_boundary": {
+    "calibration_outcomes_allowed": false,
+    "registered_replication_result_mutable": false,
+    "source_future_geometry_allowed_for_diagnostic_scoring": true,
+    "source_only": true,
+    "source_tactile_allowed": true,
+    "target_future_allowed": false,
+    "target_prefix_allowed": false
+  },
+  "protocol_config_sha256": "f0aab308345807b2183f653306a062d4ad0295584b6b283deb99d29b3c247934",
+  "schema_version": 1,
+  "source_backend_decision_result_sha256": "3603d273f6263dfe682631b9d9c72ae73b11ec2707a649f6d065cb6855e343a2",
+  "source_milestone_manifest_sha256": "594107433cda1be386210df85e150796240255f91e25436e43d21c0911e9ffa2"
+}
