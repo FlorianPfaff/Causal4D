@@ -71,6 +71,8 @@ evidence. Source-panel executions remain source-only and cannot increment the
   write access through `setflags(write=True)` or `flags.writeable = True`.
   Serialization boundaries now export explicit plain JSON, preserving existing
   content identities and artifact schemas for valid inputs.
+- Add adversarial regression and source-policy coverage for built-in container
+  mutation bypasses and attempts to re-enable NumPy write access.
 - Reject coercible or schema-drifted Causal4D contract descriptors, archive
   inventories, support indices, and grouped-observation indices before they can
   change content identity or evidence selection. Preserve exact JSON numeric
