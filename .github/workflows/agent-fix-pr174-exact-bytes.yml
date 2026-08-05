@@ -1,0 +1,214 @@
+name: Agent fix PR 174 exact-byte lineage
+
+on:
+  push:
+    branches:
+      - agent/schema4-factor-lineage
+    paths:
+      - .github/workflows/agent-fix-pr174-exact-bytes.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out the PR branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/schema4-factor-lineage
+          fetch-depth: 0
+          persist-credentials: true
+          clean: true
+      - name: Bind validation to the exact hashed bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path('src/causal4d/observation_factor_lineage.py')
+          text = source.read_text(encoding='utf-8')
+          text = text.replace(
+              'import hashlib\nimport json\nimport math\n',
+              'import hashlib\nimport io\nimport json\nimport math\n',
+              1,
+          )
+          old = '''def _load_json_object(path: Path, *, name: str) -> dict[str, Any]:
+              def object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+                  result: dict[str, Any] = {}
+                  for key, item in pairs:
+                      if key in result:
+                          raise _StrictJsonValueError(
+                              f"{name} contains duplicate JSON object key {key!r}"
+                          )
+                      result[key] = item
+                  return result
+
+              def reject_constant(token: str) -> Any:
+                  raise _StrictJsonValueError(
+                      f"{name} contains non-finite JSON number {token!r}"
+                  )
+
+              try:
+                  value = json.loads(
+                      path.read_text(encoding="utf-8"),
+                      object_pairs_hook=object_pairs,
+                      parse_constant=reject_constant,
+                  )
+              except _StrictJsonValueError:
+                  raise
+              except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+                  raise ValueError(f"{name} is not valid UTF-8 JSON") from error
+              if not isinstance(value, dict):
+                  raise ValueError(f"{name} must contain one JSON object")
+              return value
+          '''
+          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines()) + '\n'
+          new = '''def _load_json_object_bytes(content: bytes, *, name: str) -> dict[str, Any]:
+              def object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+                  result: dict[str, Any] = {}
+                  for key, item in pairs:
+                      if key in result:
+                          raise _StrictJsonValueError(
+                              f"{name} contains duplicate JSON object key {key!r}"
+                          )
+                      result[key] = item
+                  return result
+
+              def reject_constant(token: str) -> Any:
+                  raise _StrictJsonValueError(
+                      f"{name} contains non-finite JSON number {token!r}"
+                  )
+
+              try:
+                  value = json.loads(
+                      content.decode("utf-8"),
+                      object_pairs_hook=object_pairs,
+                      parse_constant=reject_constant,
+                  )
+              except _StrictJsonValueError:
+                  raise
+              except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                  raise ValueError(f"{name} is not valid UTF-8 JSON") from error
+              if not isinstance(value, dict):
+                  raise ValueError(f"{name} must contain one JSON object")
+              return value
+          '''
+          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines()) + '\n'
+          if old not in text:
+              raise SystemExit('strict JSON loader marker changed')
+          text = text.replace(old, new, 1)
+
+          old = '''    manifest = Path(manifest_path)
+              if not manifest.is_file():
+                  raise ValueError("factor-bundle manifest file is missing")
+              manifest_sha = file_sha256(manifest)
+              record = _load_json_object(manifest, name="factor-bundle manifest")
+          '''
+          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines())
+          new = '''    manifest = Path(manifest_path)
+              if not manifest.is_file():
+                  raise ValueError("factor-bundle manifest file is missing")
+              try:
+                  manifest_bytes = manifest.read_bytes()
+              except OSError as error:
+                  raise ValueError("factor-bundle manifest file is unreadable") from error
+              manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
+              record = _load_json_object_bytes(
+                  manifest_bytes,
+                  name="factor-bundle manifest",
+              )
+          '''
+          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines())
+          if old not in text:
+              raise SystemExit('manifest load marker changed')
+          text = text.replace(old, new, 1)
+
+          old = '''    payload = _safe_payload_path(manifest, payload_record["path"])
+              actual_payload_sha = file_sha256(payload)
+              if actual_payload_sha != declared_payload_sha:
+                  raise ValueError("factor-bundle payload checksum mismatch")
+          '''
+          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines())
+          new = '''    payload = _safe_payload_path(manifest, payload_record["path"])
+              try:
+                  payload_bytes = payload.read_bytes()
+              except OSError as error:
+                  raise ValueError("factor-bundle payload file is unreadable") from error
+              actual_payload_sha = hashlib.sha256(payload_bytes).hexdigest()
+              if actual_payload_sha != declared_payload_sha:
+                  raise ValueError("factor-bundle payload checksum mismatch")
+          '''
+          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines())
+          if old not in text:
+              raise SystemExit('payload hash marker changed')
+          text = text.replace(old, new, 1)
+          if 'archive = np.load(payload, allow_pickle=False)' not in text:
+              raise SystemExit('NPZ load marker changed')
+          text = text.replace(
+              'archive = np.load(payload, allow_pickle=False)',
+              'archive = np.load(io.BytesIO(payload_bytes), allow_pickle=False)',
+              1,
+          )
+          source.write_text(text, encoding='utf-8')
+
+          tests = Path('tests/test_observation_factor_lineage_v4.py')
+          text = tests.read_text(encoding='utf-8')
+          text = text.replace(
+              'import hashlib\nimport json\n',
+              'import hashlib\nimport io\nimport json\n',
+              1,
+          )
+          marker = 'def test_schema_v4_rejects_joint_covariance_order_drift(tmp_path: Path) -> None:\n'
+          addition = '''def test_payload_is_evaluated_from_the_exact_hashed_bytes(
+              tmp_path: Path,
+              monkeypatch: pytest.MonkeyPatch,
+          ) -> None:
+              manifest = _write_bundle(tmp_path)
+              observed_sources: list[object] = []
+              original_load = np.load
+
+              def tracked_load(source: object, *args: object, **kwargs: object) -> object:
+                  observed_sources.append(source)
+                  return original_load(source, *args, **kwargs)
+
+              monkeypatch.setattr(
+                  "causal4d.observation_factor_lineage.np.load",
+                  tracked_load,
+              )
+              load_observation_factor_lineage(manifest)
+
+              assert observed_sources
+              assert isinstance(observed_sources[0], io.BytesIO)
+
+
+          '''
+          addition = '\n'.join(line[10:] if line.startswith('          ') else line for line in addition.splitlines())
+          if marker not in text:
+              raise SystemExit('test insertion marker changed')
+          text = text.replace(marker, addition + marker, 1)
+          tests.write_text(text, encoding='utf-8')
+          PY
+          python -m pip install -e '.[dev]'
+          python -m ruff format \
+            src/causal4d/observation_factor_lineage.py \
+            tests/test_observation_factor_lineage_v4.py
+          python -m ruff check \
+            src/causal4d/observation_factor_lineage.py \
+            tests/test_observation_factor_lineage_v4.py
+          python -m mypy src/causal4d/observation_factor_lineage.py
+          python -m pytest -q \
+            tests/test_observation_factor_lineage.py \
+            tests/test_observation_factor_lineage_v4.py
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            src/causal4d/observation_factor_lineage.py \
+            tests/test_observation_factor_lineage_v4.py
+          git commit -m 'Bind factor lineage to exact bytes'
+          git push origin HEAD:agent/schema4-factor-lineage
