@@ -1,0 +1,138 @@
+name: Produce exact Ruff formatting blobs
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-format-hardening-files
+  cancel-in-progress: true
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out implementation branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/harden-evidence-publication
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install the CI formatter
+        run: python3 -m pip install ruff==0.16.1
+
+      - name: Format the four files reported by exact-head CI
+        run: |
+          python3 -m ruff format \
+            src/causal4d/phystwin_backend.py \
+            src/causal4d/result_bundle_publication.py \
+            src/causal4d/trusted_pickle.py \
+            tests/test_result_bundle_publication.py
+          python3 -m ruff format --check \
+            src/causal4d/phystwin_backend.py \
+            src/causal4d/result_bundle_publication.py \
+            src/causal4d/trusted_pickle.py \
+            tests/test_result_bundle_publication.py
+
+      - name: Assert the formatter touched only the expected files
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="$RUNNER_TEMP/expected.txt"
+          actual="$RUNNER_TEMP/actual.txt"
+          cat > "$expected" <<'EOF'
+          src/causal4d/phystwin_backend.py
+          src/causal4d/result_bundle_publication.py
+          src/causal4d/trusted_pickle.py
+          tests/test_result_bundle_publication.py
+          EOF
+          git diff --name-only | sort > "$actual"
+          sort -o "$expected" "$expected"
+          diff -u "$expected" "$actual"
+          git diff --check
+
+      - name: Create remote Git blobs and report their identities
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import base64
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          from typing import Any
+          from urllib.error import HTTPError
+          from urllib.request import Request, urlopen
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          paths = [
+              "src/causal4d/phystwin_backend.py",
+              "src/causal4d/result_bundle_publication.py",
+              "src/causal4d/trusted_pickle.py",
+              "tests/test_result_bundle_publication.py",
+          ]
+
+          def post_blob(payload: bytes) -> str:
+              request = Request(
+                  f"https://api.github.com/repos/{repository}/git/blobs",
+                  data=json.dumps(
+                      {
+                          "content": base64.b64encode(payload).decode("ascii"),
+                          "encoding": "base64",
+                      }
+                  ).encode("utf-8"),
+                  method="POST",
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": f"Bearer {token}",
+                      "Content-Type": "application/json",
+                      "User-Agent": "causal4d-ruff-blob-producer",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              try:
+                  with urlopen(request, timeout=60) as response:
+                      return str(json.load(response)["sha"])
+              except HTTPError as error:
+                  body = error.read().decode("utf-8", errors="replace")
+                  raise RuntimeError(
+                      f"GitHub blob creation failed with {error.code}: {body}"
+                  ) from error
+
+          result = {
+              "parent_sha": subprocess.check_output(
+                  ["git", "rev-parse", "HEAD"], text=True
+              ).strip(),
+              "base_tree_sha": subprocess.check_output(
+                  ["git", "rev-parse", "HEAD^{tree}"], text=True
+              ).strip(),
+              "blobs": {},
+          }
+          for path_text in paths:
+              result["blobs"][path_text] = post_blob(Path(path_text).read_bytes())
+          output = Path(os.environ["RUNNER_TEMP"], "formatted-blobs.json")
+          output.write_text(
+              json.dumps(result, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(output.read_text(encoding="utf-8"))
+          PY
+
+      - name: Upload formatted blob map
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: formatted-hardening-blobs
+          path: ${{ runner.temp }}/formatted-blobs.json
+          if-no-files-found: error
+          retention-days: 7
