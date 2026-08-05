@@ -1,0 +1,111 @@
+name: Scheduled-contact replay installed-wheel integration
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/scheduled-contact-replay-integration.yml"
+      - "docs/causal4d_multi_contact_paths.md"
+      - "src/causal4d/multi_contact.py"
+      - "src/causal4d/scheduled_contact_replay.py"
+      - "tests/test_multi_contact.py"
+      - "tests/test_multi_contact_hardening.py"
+      - "tests/test_scheduled_contact_replay_adapter.py"
+      - "tests/test_scheduled_contact_replay_workflow_policy.py"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/scheduled-contact-replay-integration.yml"
+      - "docs/causal4d_multi_contact_paths.md"
+      - "src/causal4d/multi_contact.py"
+      - "src/causal4d/scheduled_contact_replay.py"
+      - "tests/test_multi_contact.py"
+      - "tests/test_multi_contact_hardening.py"
+      - "tests/test_scheduled_contact_replay_adapter.py"
+      - "tests/test_scheduled_contact_replay_workflow_policy.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scheduled-contact-replay-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  installed-wheel-contract:
+    name: BPT schedule contract -> Causal4D rollout bank
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out Causal4D
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: causal4d
+          persist-credentials: false
+
+      - name: Check out exact Bayesian-PhysTwin contract revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/BayesianPhysTwin
+          ref: eb00da3d1628a913e1c0f09bf5e4cc63367cca98
+          path: bayesian-phystwin
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            causal4d/pyproject.toml
+            bayesian-phystwin/pyproject.toml
+
+      - name: Check changed source quality
+        run: |
+          python -m pip install "ruff>=0.15.22,<0.17"
+          python -m ruff check \
+            bayesian-phystwin/src/bayesian_phystwin/contracts/scheduled_replay.py \
+            bayesian-phystwin/tests/test_scheduled_contact_replay_contract.py \
+            causal4d/src/causal4d/multi_contact.py \
+            causal4d/src/causal4d/scheduled_contact_replay.py \
+            causal4d/tests/test_scheduled_contact_replay_adapter.py \
+            causal4d/tests/test_scheduled_contact_replay_workflow_policy.py
+          python -m ruff format --check --diff \
+            bayesian-phystwin/src/bayesian_phystwin/contracts/scheduled_replay.py \
+            bayesian-phystwin/tests/test_scheduled_contact_replay_contract.py \
+            causal4d/src/causal4d/multi_contact.py \
+            causal4d/src/causal4d/scheduled_contact_replay.py \
+            causal4d/tests/test_scheduled_contact_replay_adapter.py \
+            causal4d/tests/test_scheduled_contact_replay_workflow_policy.py
+
+      - name: Build both wheels
+        run: |
+          python -m pip install --upgrade build pip
+          wheelhouse="$RUNNER_TEMP/scheduled-contact-wheelhouse"
+          mkdir -p "$wheelhouse"
+          python -m build --wheel --outdir "$wheelhouse" bayesian-phystwin
+          python -m build --wheel --outdir "$wheelhouse" causal4d
+          test "$(find "$wheelhouse" -maxdepth 1 -name '*.whl' | wc -l)" -eq 2
+
+      - name: Install wheels in an isolated environment
+        run: |
+          venv="$RUNNER_TEMP/scheduled-contact-venv"
+          wheelhouse="$RUNNER_TEMP/scheduled-contact-wheelhouse"
+          python -m venv "$venv"
+          "$venv/bin/python" -m pip install --upgrade pip
+          mapfile -t wheels < <(find "$wheelhouse" -maxdepth 1 -name '*.whl' -print | sort)
+          "$venv/bin/python" -m pip install "${wheels[@]}" pytest
+          "$venv/bin/python" -m pip check
+
+      - name: Exercise the installed cross-repository contract
+        run: |
+          cd "$RUNNER_TEMP"
+          env -u PYTHONPATH \
+            "$RUNNER_TEMP/scheduled-contact-venv/bin/python" -m pytest -q \
+              --import-mode=importlib \
+              "$GITHUB_WORKSPACE/bayesian-phystwin/tests/test_scheduled_contact_replay_contract.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_scheduled_contact_replay_adapter.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_scheduled_contact_replay_workflow_policy.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_multi_contact.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_multi_contact_hardening.py"
