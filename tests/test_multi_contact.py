@@ -341,6 +341,15 @@ def test_numeric_contracts_reject_boolean_and_string_coercion() -> None:
             prior_weights=np.ones(1),
             base_variance_m2=1.0,
         )
+    with pytest.raises(ValueError, match="outside int8 range"):
+        MultiContactPathBank(
+            contact_ids=("left",),
+            path_ids=("path",),
+            regime_paths=np.asarray([[[0, 256]]]),
+            trajectories_m=np.zeros((1, 2, 1, 2)),
+            prior_weights=np.ones(1),
+            base_variance_m2=1.0,
+        )
 
 
 def test_global_ood_distance_is_not_multiplied_by_contact_count() -> None:
