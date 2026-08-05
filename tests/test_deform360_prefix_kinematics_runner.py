@@ -38,9 +38,7 @@ def _selection_payload() -> dict[str, object]:
         "artifact_kind": "Deform360PrefixKinematicsPythonSelection",
         "expected": expected,
         "runtime_provenance": {
-            "correction": {
-                "numpy": {"recorded": "2.5.1", "effective": "1.26.4"}
-            },
+            "correction": {"numpy": {"recorded": "2.5.1", "effective": "1.26.4"}},
             "zero_baseline_reproduction_required": True,
         },
         "candidates": [],
