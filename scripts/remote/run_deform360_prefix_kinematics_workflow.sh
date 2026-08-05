@@ -21,6 +21,21 @@ deform360_root="$(realpath "$deform360_root")"
 official_root="$(realpath "$official_root")"
 mkdir -p "$output_dir"
 output_dir="$(realpath "$output_dir")"
+runtime_selection="$output_dir/python-selection.json"
+
+if [[ ! -f "$runtime_selection" ]]; then
+  selected="$(
+    "$python_bin" \
+      "$repository_root/scripts/remote/select_deform360_prefix_kinematics_python.py" \
+      --repository-root "$repository_root" \
+      --candidate "$python_bin" \
+      --report "$runtime_selection"
+  )"
+  if [[ "$selected" != "$python_bin" ]]; then
+    echo "runtime selector chose another interpreter: $selected" >&2
+    exit 1
+  fi
+fi
 
 data_root="$(
   "$python_bin" \
@@ -35,6 +50,7 @@ export PYTHONUNBUFFERED=1
   - "$repository_root" "$bpt_root" "$deform360_root" "$official_root" <<'PY'
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 import subprocess
@@ -48,7 +64,23 @@ import warp as wp
 repository_root, bpt_root, deform360_root, official_root = map(
     Path, sys.argv[1:]
 )
-expected = json.loads(
+selector_path = (
+    repository_root
+    / "scripts"
+    / "remote"
+    / "select_deform360_prefix_kinematics_python.py"
+)
+spec = importlib.util.spec_from_file_location(
+    "deform360_prefix_kinematics_python_selector",
+    selector_path,
+)
+if spec is None or spec.loader is None:
+    raise SystemExit("failed to load the frozen-runtime selector")
+selector = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = selector
+spec.loader.exec_module(selector)
+expected, runtime_provenance = selector._load_runtime_lock(repository_root)
+environment = json.loads(
     (
         repository_root
         / "milestones"
@@ -105,11 +137,12 @@ for root, revision in expected_revisions.items():
 print(
     json.dumps(
         {
-            "dataset_revision": expected["dataset_revision"],
+            "dataset_revision": environment["dataset_revision"],
             "repositories": {
                 str(root): revision for root, revision in expected_revisions.items()
             },
             "runtime": observed,
+            "runtime_provenance": runtime_provenance,
         },
         sort_keys=True,
     )
@@ -129,9 +162,13 @@ result="$output_dir/result.json"
   --bayesian-phystwin-repo "$bpt_root" \
   --deform360-repo "$deform360_root" \
   --official-phystwin-repo "$official_root" \
+  --runtime-selection "$runtime_selection" \
   --output "$result" \
   --device cuda:0
 
-sha256sum "$result" "$output_dir/result.runtime.json" \
+sha256sum \
+  "$result" \
+  "$output_dir/result.runtime.json" \
+  "$runtime_selection" \
   > "$output_dir/SHA256SUMS"
 cat "$output_dir/SHA256SUMS"
