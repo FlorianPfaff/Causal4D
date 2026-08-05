@@ -8,7 +8,8 @@ from types import ModuleType
 
 import numpy as np
 
-from causal4d.multi_contact import MultiContactPathBank, MultiContactPathPrior
+from causal4d._multi_contact_inference import MultiContactPathBank
+from causal4d._multi_contact_prior import MultiContactPathPrior
 
 
 class ScheduledContactReplayUnavailableError(ImportError):
