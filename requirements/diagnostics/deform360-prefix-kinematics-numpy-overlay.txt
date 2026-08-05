@@ -1,0 +1,5 @@
+# Workspace-local reconstruction of the NumPy component recorded by
+# milestones/deform360-replication-source-backend-v1/verification/environment.json.
+# The self-hosted workflow installs this wheel into a disposable PYTHONPATH
+# overlay and never mutates the preserved GPU virtual environment.
+numpy==2.5.1 --hash=sha256:59fda5e192b570217ec2580c96f00e9a7e12ef6866a900eb089b62c1a32545ca
