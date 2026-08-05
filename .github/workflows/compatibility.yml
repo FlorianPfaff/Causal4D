@@ -34,30 +34,47 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
           persist-credentials: true
-      - name: Install development dependencies
+      - name: Select existing runner Python
+        shell: bash
         run: |
-          /usr/bin/python3 -m venv .agent-venv
-          .agent-venv/bin/python -m pip install --upgrade pip
-          .agent-venv/bin/python -m pip install -e ".[dev]" pyyaml
+          set -euo pipefail
+          candidates=(
+            /home/github-runner/.venvs/bpt-gpu/bin/python
+            /home/github-runner/.cache/venvs/bpt-gpu/bin/python
+            /home/github-runner/miniconda3/envs/bpt-gpu/bin/python
+            /opt/hostedtoolcache/Python/3.12.3/x64/bin/python
+            /usr/bin/python3
+          )
+          for candidate in "${candidates[@]}"; do
+            if [[ -x "$candidate" ]] && "$candidate" -m pip --version >/dev/null 2>&1; then
+              echo "AGENT_PYTHON=$candidate" >> "$GITHUB_ENV"
+              "$candidate" --version
+              exit 0
+            fi
+          done
+          echo "No runner Python with pip is available" >&2
+          exit 1
+      - name: Install development dependencies
+        run: "$AGENT_PYTHON" -m pip install -e ".[dev]" pyyaml
       - name: Apply and format focused patch
         run: |
-          .agent-venv/bin/python scripts/ci/agent_apply_public_provider_ci.py
-          .agent-venv/bin/python -m ruff format \
+          "$AGENT_PYTHON" scripts/ci/agent_apply_public_provider_ci.py
+          "$AGENT_PYTHON" -m ruff format \
             tests/test_release_workflow_policy.py \
             tests/test_three_repository_workflow_policy.py
       - name: Validate focused patch
         run: |
-          .agent-venv/bin/python -m ruff check \
+          "$AGENT_PYTHON" -m ruff check \
             tests/test_release_workflow_policy.py \
             tests/test_three_repository_workflow_policy.py
-          .agent-venv/bin/python -m ruff format --check \
+          "$AGENT_PYTHON" -m ruff format --check \
             tests/test_release_workflow_policy.py \
             tests/test_three_repository_workflow_policy.py
-          .agent-venv/bin/python -m pytest -ra \
+          "$AGENT_PYTHON" -m pytest -ra \
             tests/test_release_workflow_policy.py \
             tests/test_three_repository_workflow_policy.py \
             tests/test_github_action_pins.py
-          .agent-venv/bin/python - <<'PY'
+          "$AGENT_PYTHON" - <<'PY'
           from pathlib import Path
 
           import yaml
@@ -72,7 +89,7 @@ jobs:
           ):
               yaml.load(path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
           PY
-          .agent-venv/bin/python scripts/ci/read_bpt_pin.py
+          "$AGENT_PYTHON" scripts/ci/read_bpt_pin.py
           git diff --check
       - name: Restore workflow, retire patch script, and push
         env:
