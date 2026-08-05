@@ -16,6 +16,7 @@ from .deform360_contact_support_contract import (
     ContactSupportDiagnosticConfig,
     _finite_float,
     _require,
+    _require_mapping,
 )
 from .deform360_phystwin_feasibility import (
     WarpRopeCandidate,
@@ -357,15 +358,15 @@ def build_contact_support_episode_record(
             "touching_initial_ground_clearance_m": config.touching_clearance_m,
             "lifted_initial_ground_clearance_m": config.lifted_clearance_m,
             "tactile_active_fraction": _finite_float(
-                np.mean(tactile_schedule),
+                float(np.mean(tactile_schedule)),
                 name="tactile_active_fraction",
             ),
             "opening_active_fraction": _finite_float(
-                np.mean(opening_schedule),
+                float(np.mean(opening_schedule)),
                 name="opening_active_fraction",
             ),
             "opening_vs_tactile_disagreement_fraction": _finite_float(
-                np.mean(opening_schedule != tactile_schedule),
+                float(np.mean(opening_schedule != tactile_schedule)),
                 name="opening_vs_tactile_disagreement_fraction",
             ),
             "registered_association": _association_summary(registered),
