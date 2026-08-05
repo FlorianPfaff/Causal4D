@@ -1,3 +1,5 @@
+"""Adversarial regressions for fail-closed PhysTwin hypothesis boundaries."""
+
 import numpy as np
 import pytest
 
