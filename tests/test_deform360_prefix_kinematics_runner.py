@@ -25,7 +25,7 @@ def _load_runner():
 
 
 def _selection_payload() -> dict[str, object]:
-    expected = {
+    candidate = {
         "python": "3.12.3",
         "numpy": "1.26.4",
         "scipy": "1.13.1",
@@ -33,18 +33,25 @@ def _selection_payload() -> dict[str, object]:
         "torch_cuda": "12.1",
         "warp": "1.15.0",
     }
+    recorded = {**candidate, "numpy": "2.5.1"}
     return {
         "schema_version": 1,
         "artifact_kind": "Deform360PrefixKinematicsPythonSelection",
-        "expected": expected,
+        "expected": candidate,
         "runtime_provenance": {
-            "correction": {"numpy": {"recorded": "2.5.1", "effective": "1.26.4"}},
+            "status": "conditional-reproduction-runtime-deviation",
+            "recorded_runtime": recorded,
+            "candidate_runtime": candidate,
+            "deviation": {
+                "numpy": {"recorded": "2.5.1", "candidate": "1.26.4"}
+            },
+            "interpretation_permitted_only_after_zero_baseline_reproduction": True,
             "zero_baseline_reproduction_required": True,
         },
         "candidates": [],
         "selected": sys.executable,
         "selected_runtime": {
-            **expected,
+            **candidate,
             "pytest": "9.1.1",
             "torch_cuda_available": True,
             "warp_cuda_device_count": 1,
@@ -93,4 +100,40 @@ def test_runner_rejects_relaxed_zero_baseline_gate(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ValueError, match="relaxed zero-baseline"):
+        runner._load_runtime_selection(selection)
+
+
+def test_runner_rejects_premature_interpretation(tmp_path: Path) -> None:
+    runner = _load_runner()
+    selection = tmp_path / "python-selection.json"
+    payload = _selection_payload()
+    provenance = payload["runtime_provenance"]
+    assert isinstance(provenance, dict)
+    provenance[
+        "interpretation_permitted_only_after_zero_baseline_reproduction"
+    ] = False
+    selection.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="premature interpretation"):
+        runner._load_runtime_selection(selection)
+
+
+def test_runner_rejects_unregistered_runtime_deviation(tmp_path: Path) -> None:
+    runner = _load_runner()
+    selection = tmp_path / "python-selection.json"
+    payload = _selection_payload()
+    provenance = payload["runtime_provenance"]
+    assert isinstance(provenance, dict)
+    deviation = provenance["deviation"]
+    assert isinstance(deviation, dict)
+    deviation["numpy"] = {"recorded": "2.5.1", "candidate": "2.0.0"}
+    selection.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="declared deviation"):
         runner._load_runtime_selection(selection)
