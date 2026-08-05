@@ -1,0 +1,495 @@
+name: Apply contact and public-integration improvements
+
+on:
+  push:
+    branches:
+      - agent/harden-contact-and-public-integration
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Apply focused repository patches
+        shell: bash
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          from pathlib import Path
+          import re
+
+
+          def replace_once(text: str, old: str, new: str, *, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{label}: expected one match, found {count}")
+              return text.replace(old, new, 1)
+
+
+          contact_path = Path("src/causal4d/contact_inference.py")
+          contact = contact_path.read_text(encoding="utf-8")
+          contact = replace_once(
+              contact,
+              "from itertools import product\nfrom statistics import NormalDist\n",
+              "from itertools import product\nfrom numbers import Integral, Real\n"
+              "from statistics import NormalDist\n",
+              label="numeric abstract base imports",
+          )
+          contact = replace_once(
+              contact,
+              "    return weights\n\n\n@dataclass(frozen=True)\nclass LatentContactConfig:\n",
+              '''    return weights
+
+
+def _validated_finite_real(value: object, *, name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, Real):
+        raise ValueError(f"{name} must be a real number")
+    normalized = float(value)
+    if not np.isfinite(normalized):
+        raise ValueError(f"{name} must be finite")
+    return normalized
+
+
+def _validated_finite_real_values(
+    values: Sequence[object],
+    *,
+    name: str,
+) -> tuple[float, ...]:
+    try:
+        items = tuple(values)
+    except TypeError as exc:
+        raise ValueError(f"{name} must be a sequence") from exc
+    if not items:
+        raise ValueError(f"{name} must not be empty")
+    normalized = tuple(
+        _validated_finite_real(value, name=name) for value in items
+    )
+    if len(set(normalized)) != len(normalized):
+        raise ValueError(f"{name} must not contain duplicates")
+    return normalized
+
+
+def _validated_integer_values(
+    values: Sequence[object],
+    *,
+    name: str,
+) -> tuple[int, ...]:
+    try:
+        items = tuple(values)
+    except TypeError as exc:
+        raise ValueError(f"{name} must be a sequence") from exc
+    if not items:
+        raise ValueError(f"{name} must not be empty")
+    normalized: list[int] = []
+    for value in items:
+        if isinstance(value, bool) or not isinstance(value, Integral):
+            raise ValueError(f"{name} must contain only integers")
+        normalized.append(int(value))
+    result = tuple(normalized)
+    if len(set(result)) != len(result):
+        raise ValueError(f"{name} must not contain duplicates")
+    return result
+
+
+@dataclass(frozen=True)
+class LatentContactConfig:
+''',
+              label="latent-contact validators",
+          )
+          post_init = '''    def __post_init__(self) -> None:
+        observation_fraction = _validated_finite_real(
+            self.observation_fraction,
+            name="observation_fraction",
+        )
+        if not 0.10 <= observation_fraction <= 0.20:
+            raise ValueError("observation_fraction must be in [0.10, 0.20]")
+
+        observation_noise = _validated_finite_real(
+            self.observation_noise_std_m,
+            name="observation_noise_std_m",
+        )
+        if observation_noise <= 0.0:
+            raise ValueError("observation_noise_std_m must be positive")
+
+        likelihood_scales = _validated_finite_real_values(
+            self.likelihood_scales_m,
+            name="likelihood_scales_m",
+        )
+        if min(likelihood_scales) <= 0.0:
+            raise ValueError("likelihood_scales_m must be positive")
+
+        dynamic_weights = _validated_finite_real_values(
+            self.dynamic_likelihood_weights,
+            name="dynamic_likelihood_weights",
+        )
+        if min(dynamic_weights) < 0.0:
+            raise ValueError("dynamic_likelihood_weights must be non-negative")
+
+        likelihood_powers = _validated_finite_real_values(
+            self.likelihood_powers,
+            name="likelihood_powers",
+        )
+        if min(likelihood_powers) <= 0.0 or max(likelihood_powers) > 1.0:
+            raise ValueError("likelihood_powers must be in (0, 1]")
+
+        temperatures = _validated_finite_real_values(
+            self.posterior_temperatures,
+            name="posterior_temperatures",
+        )
+        if min(temperatures) < 1.0:
+            raise ValueError("posterior_temperatures must be at least one")
+
+        if (
+            isinstance(self.parameter_particle_count, bool)
+            or not isinstance(self.parameter_particle_count, Integral)
+            or int(self.parameter_particle_count) < 1
+        ):
+            raise ValueError("parameter_particle_count must be a positive integer")
+
+        gains = _validated_finite_real_values(
+            self.gain_values,
+            name="gain_values",
+        )
+        if min(gains) <= 0.0:
+            raise ValueError("gain_values must be positive")
+
+        delays = _validated_integer_values(
+            self.delay_values,
+            name="delay_values",
+        )
+        if min(delays) < 0:
+            raise ValueError("delay_values must be non-negative")
+
+        slips = _validated_finite_real_values(
+            self.slip_values,
+            name="slip_values",
+        )
+        if min(slips) < 0.0 or max(slips) >= 1.0:
+            raise ValueError("slip_values must be in [0, 1)")
+
+        _validated_finite_real_values(
+            self.rotation_values_deg,
+            name="rotation_values_deg",
+        )
+
+        for name in (
+            "node_prior_smoothing",
+            "categorical_prior_smoothing",
+            "gain_prior_bandwidth",
+            "slip_prior_bandwidth",
+            "rotation_prior_bandwidth_deg",
+        ):
+            value = _validated_finite_real(getattr(self, name), name=name)
+            if value <= 0.0:
+                raise ValueError(f"{name} must be positive")
+
+        confidence = _validated_finite_real(
+            self.confidence_level,
+            name="confidence_level",
+        )
+        if not 0.0 < confidence < 1.0:
+            raise ValueError("confidence_level must be in (0, 1)")
+
+        variance_min = _validated_finite_real(
+            self.variance_scale_min,
+            name="variance_scale_min",
+        )
+        variance_max = _validated_finite_real(
+            self.variance_scale_max,
+            name="variance_scale_max",
+        )
+        if variance_min <= 0.0 or variance_max < variance_min:
+            raise ValueError("invalid variance scale bounds")
+
+        for name in (
+            "gate_gap_closure",
+            "gate_matched_degradation",
+            "gate_coverage_tolerance",
+            "gate_node_accuracy",
+            "gate_node_credible_coverage",
+            "gate_node_calibration_error",
+            "gate_gain_coverage",
+            "gate_delay_map_accuracy",
+            "gate_delay_coverage",
+            "gate_minimum_topology_gap_closure",
+        ):
+            value = _validated_finite_real(getattr(self, name), name=name)
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(f"{name} must be in [0, 1]")
+
+        for name in ("gate_gain_mae", "gate_delay_mae_steps"):
+            value = _validated_finite_real(getattr(self, name), name=name)
+            if value < 0.0:
+                raise ValueError(f"{name} must be non-negative")
+
+    @property
+'''
+          contact, count = re.subn(
+              r"    def __post_init__\(self\) -> None:\n.*?\n    @property\n",
+              post_init,
+              contact,
+              count=1,
+              flags=re.DOTALL,
+          )
+          if count != 1:
+              raise RuntimeError(f"LatentContactConfig.__post_init__: found {count}")
+          prefix_method = '''    def prefix_frame_count(self, frame_count: int) -> int:
+        if isinstance(frame_count, bool) or not isinstance(frame_count, Integral):
+            raise ValueError("frame_count must be an integer")
+        normalized_frame_count = int(frame_count)
+        if normalized_frame_count < 4:
+            raise ValueError("frame_count must be at least four")
+        return max(
+            3,
+            min(
+                normalized_frame_count - 1,
+                int(np.ceil(self.observation_fraction * normalized_frame_count)),
+            ),
+        )
+
+    def as_dict'''
+          contact, count = re.subn(
+              r"    def prefix_frame_count\(self, frame_count: int\) -> int:\n"
+              r".*?\n\n    def as_dict",
+              prefix_method,
+              contact,
+              count=1,
+              flags=re.DOTALL,
+          )
+          if count != 1:
+              raise RuntimeError(f"prefix_frame_count: found {count}")
+          contact_path.write_text(contact, encoding="utf-8")
+
+          ci_path = Path(".github/workflows/ci.yml")
+          ci = ci_path.read_text(encoding="utf-8")
+          pinned_job = '''  pinned-bpt:
+    name: Pinned Bayesian-PhysTwin installed-wheel integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Causal4D
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Read exact Bayesian-PhysTwin pin
+        id: pin
+        run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
+      - name: Check out pinned Bayesian-PhysTwin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/BayesianPhysTwin
+          ref: ${{ steps.pin.outputs.sha }}
+          path: _bpt
+          persist-credentials: false
+      - name: Build Causal4D and pinned provider wheels
+        run: |
+          python -m pip install --upgrade build pip
+          wheelhouse="$RUNNER_TEMP/pinned-bpt-wheelhouse"
+          mkdir -p "$wheelhouse"
+          python -m build --wheel --outdir "$wheelhouse" .
+          python -m build --wheel --outdir "$wheelhouse" ./_bpt
+          test "$(find "$wheelhouse" -maxdepth 1 -name '*.whl' | wc -l)" -eq 2
+      - name: Install isolated wheels
+        run: |
+          wheelhouse="$RUNNER_TEMP/pinned-bpt-wheelhouse"
+          python -m venv artifact-venv
+          artifact-venv/bin/python -m pip install --upgrade pip
+          artifact-venv/bin/python -m pip install "$wheelhouse"/*.whl pytest
+          artifact-venv/bin/python -m pip check
+      - name: Run pinned-provider integration tests
+        env:
+          CAUSAL4D_REQUIRE_BPT_PROVIDER: "1"
+        run: artifact-venv/bin/python scripts/ci/run_bpt_integration_tests.py
+'''
+          ci, count = re.subn(
+              r"  pinned-bpt:\n.*?\n  build:\n",
+              pinned_job + "\n  build:\n",
+              ci,
+              count=1,
+              flags=re.DOTALL,
+          )
+          if count != 1:
+              raise RuntimeError(f"pinned-bpt CI job: found {count}")
+          if "BPT_READ_SSH_KEY" in ci or "ssh-key:" in ci:
+              raise RuntimeError("main CI still contains a private-provider gate")
+          ci_path.write_text(ci, encoding="utf-8")
+
+          compatibility_path = Path(
+              ".github/workflows/bayesian-phystwin-provider-compatibility.yml"
+          )
+          compatibility = compatibility_path.read_text(encoding="utf-8")
+          compatibility, count = re.subn(
+              r"jobs:\n  credential-gate:.*?\n  installed-wheel-golden-path:\n",
+              "jobs:\n  installed-wheel-golden-path:\n",
+              compatibility,
+              count=1,
+              flags=re.DOTALL,
+          )
+          if count != 1:
+              raise RuntimeError(f"private provider jobs: found {count}")
+          compatibility = compatibility.replace(
+              "    needs: credential-gate\n"
+              "    if: needs.credential-gate.result == 'success'\n",
+              "",
+          )
+          compatibility = compatibility.replace(
+              "    env:\n"
+              "      PROB4D_READ_TOKEN: ${{ secrets.PROB4D_READ_TOKEN }}\n",
+              "",
+          )
+          compatibility, count = re.subn(
+              r"    steps:\n      - name: Probe Prob4D repository access.*?"
+              r"\n      - name: Check out Causal4D",
+              "    steps:\n      - name: Check out Causal4D",
+              compatibility,
+              count=1,
+              flags=re.DOTALL,
+          )
+          if count != 1:
+              raise RuntimeError(f"Prob4D credential probe: found {count}")
+          compatibility = compatibility.replace(
+              "        if: steps.prob4d-access.outputs.available == 'true'\n",
+              "",
+          )
+          compatibility = compatibility.replace(
+              "          ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}\n",
+              "",
+          )
+          compatibility = compatibility.replace(
+              "          token: ${{ env.PROB4D_READ_TOKEN }}\n",
+              "",
+          )
+          forbidden = (
+              "credential-gate:",
+              "external-pull-request:",
+              "BPT_READ_SSH_KEY",
+              "PROB4D_READ_TOKEN",
+              "steps.prob4d-access",
+              "ssh-key:",
+          )
+          remaining = [value for value in forbidden if value in compatibility]
+          if remaining:
+              raise RuntimeError(f"public compatibility workflow still has {remaining}")
+          compatibility_path.write_text(compatibility, encoding="utf-8")
+
+          docs_path = Path("docs/ci.md")
+          docs = docs_path.read_text(encoding="utf-8")
+          docs = docs.replace(
+              "Causal4D separates its lightweight contracts from private-provider and\n"
+              "hardware integrations. This keeps a base installation testable while still\n"
+              "detecting drift at the Prob4D and Bayesian-PhysTwin boundaries.\n",
+              "Causal4D separates its lightweight contracts from public cross-repository and\n"
+              "hardware integrations. This keeps a base installation testable while still\n"
+              "detecting drift at the Prob4D and Bayesian-PhysTwin boundaries.\n",
+          )
+          docs, count = re.subn(
+              r"## Private repository access\n.*?\n## Three-repository installed-wheel golden path\n",
+              '''## Public repository integration
+
+Prob4D, BayesianPhysTwin, and Causal4D are public repositories. Required
+provider checks therefore use ordinary read-only `actions/checkout` steps and do
+not depend on repository secrets, deploy keys, or same-repository trust. Forked
+pull requests exercise the same installed-wheel boundary as organization
+branches, and release tags remain blocked unless the pinned public-provider job
+passes.
+
+## Three-repository installed-wheel golden path
+''',
+              docs,
+              count=1,
+              flags=re.DOTALL,
+          )
+          if count != 1:
+              raise RuntimeError(f"private repository documentation: found {count}")
+          docs, count = re.subn(
+              r"`\.github/workflows/bayesian-phystwin-provider-compatibility\.yml` is the terminal\n"
+              r".*?\n\nThe installed-wheel job records",
+              '''`.github/workflows/bayesian-phystwin-provider-compatibility.yml` is the terminal
+Prob4D -> BayesianPhysTwin -> Causal4D compatibility check. It runs on relevant
+pull requests and pushes, can be dispatched with explicit BPT and Prob4D
+revisions, and runs weekly against both public repositories' `main` branches.
+All events execute the full path; an unavailable checkout or contract failure is
+a failing check rather than a credential-dependent skip.
+
+The installed-wheel job records''',
+              docs,
+              count=1,
+              flags=re.DOTALL,
+          )
+          if count != 1:
+              raise RuntimeError(f"golden-path documentation: found {count}")
+          docs = docs.replace(
+              "The workflow is the canonical executable specification because it can read the\n"
+              "two private repositories. A local equivalent requires checkouts of all three\n"
+              "repositories and a token is not needed once they are available:\n",
+              "The workflow is the canonical executable specification. A local equivalent\n"
+              "requires checkouts of all three public repositories:\n",
+          )
+          docs_path.write_text(docs, encoding="utf-8")
+
+          changelog_path = Path("CHANGELOG.md")
+          changelog = changelog_path.read_text(encoding="utf-8")
+          changelog = replace_once(
+              changelog,
+              "### Fixed\n\n",
+              "### Fixed\n\n"
+              "- Reject non-finite, empty, duplicate, Boolean, and out-of-range latent-contact\n"
+              "  configuration values at construction time, and require at least one future\n"
+              "  frame for prefix inference.\n"
+              "- Remove obsolete private-repository gates from required BayesianPhysTwin and\n"
+              "  three-repository installed-wheel CI now that all provider repositories are\n"
+              "  public, so forked pull requests and releases exercise the same boundary.\n",
+              label="changelog fixed section",
+          )
+          changelog_path.write_text(changelog, encoding="utf-8")
+
+          Path(".github/workflows/agent-apply-improvements.yml").unlink()
+          PY
+
+      - name: Validate focused changes
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m ruff check \
+            src/causal4d/contact_inference.py \
+            tests/test_latent_contact_config_validation.py \
+            tests/test_release_workflow_policy.py \
+            tests/test_three_repository_workflow_policy.py
+          python -m ruff format --check \
+            src/causal4d/contact_inference.py \
+            tests/test_latent_contact_config_validation.py \
+            tests/test_release_workflow_policy.py \
+            tests/test_three_repository_workflow_policy.py
+          python -m pytest -ra \
+            tests/test_latent_contact_config_validation.py \
+            tests/test_causal4d_contact_inference.py \
+            tests/test_release_workflow_policy.py \
+            tests/test_three_repository_workflow_policy.py \
+            tests/test_github_action_pins.py
+
+      - name: Commit generated patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            .github/workflows/ci.yml \
+            .github/workflows/bayesian-phystwin-provider-compatibility.yml \
+            .github/workflows/agent-apply-improvements.yml \
+            CHANGELOG.md \
+            docs/ci.md \
+            src/causal4d/contact_inference.py
+          git commit -m "Harden contact configuration and provider CI"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
