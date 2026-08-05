@@ -331,9 +331,7 @@ class ExternalForecastBundle:
             "node_indices_sha256": array_sha256(self.node_indices),
             "anchor_positions_m_sha256": array_sha256(self.anchor_positions_m),
             "future_positions_m_sha256": array_sha256(self.future_positions_m),
-            "physical_frame_indices_sha256": array_sha256(
-                self.physical_frame_indices
-            ),
+            "physical_frame_indices_sha256": array_sha256(self.physical_frame_indices),
             "validity_mask_sha256": array_sha256(self.coordinate_validity),
             "future_times_s_sha256": (
                 array_sha256(self.future_times_s)
@@ -473,16 +471,22 @@ def load_external_forecast(path: str | Path) -> ExternalForecastBundle:
                 f"unexpected={sorted(actual_fields - _ARCHIVE_FIELDS)}"
             )
         descriptor = _parse_descriptor(archive["descriptor_json"])
-        if _require_nonempty_string(
-            descriptor["schema"],
-            name="external forecast schema",
-        ) != EXTERNAL_FORECAST_SCHEMA:
+        if (
+            _require_nonempty_string(
+                descriptor["schema"],
+                name="external forecast schema",
+            )
+            != EXTERNAL_FORECAST_SCHEMA
+        ):
             raise ValueError("artifact is not a Causal4D external forecast")
-        if _require_integer(
-            descriptor["schema_version"],
-            name="external forecast schema_version",
-            minimum=1,
-        ) != EXTERNAL_FORECAST_SCHEMA_VERSION:
+        if (
+            _require_integer(
+                descriptor["schema_version"],
+                name="external forecast schema_version",
+                minimum=1,
+            )
+            != EXTERNAL_FORECAST_SCHEMA_VERSION
+        ):
             raise ValueError("unsupported external forecast schema version")
         source = _require_exact_fields(
             descriptor["source"],

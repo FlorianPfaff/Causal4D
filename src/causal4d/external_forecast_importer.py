@@ -209,9 +209,7 @@ def _normalize_validity(
         elif array.shape == coordinate_shape:
             result = np.transpose(array, (1, 0, 2))[None]
         else:
-            raise ValueError(
-                "PFC validity must have shape (P, F) or (P, F, 3)"
-            )
+            raise ValueError("PFC validity must have shape (P, F) or (P, F, 3)")
     elif layout == "FPC":
         point_shape = (frame_count, point_count)
         coordinate_shape = (*point_shape, 3)
@@ -220,9 +218,7 @@ def _normalize_validity(
         elif array.shape == coordinate_shape:
             result = array[None]
         else:
-            raise ValueError(
-                "FPC validity must have shape (F, P) or (F, P, 3)"
-            )
+            raise ValueError("FPC validity must have shape (F, P) or (F, P, 3)")
     elif layout == "KPFC":
         point_shape = (forecast_count, point_count, frame_count)
         coordinate_shape = (*point_shape, 3)
@@ -231,9 +227,7 @@ def _normalize_validity(
         elif array.shape == coordinate_shape:
             result = np.transpose(array, (0, 2, 1, 3))
         else:
-            raise ValueError(
-                "KPFC validity must have shape (K, P, F) or (K, P, F, 3)"
-            )
+            raise ValueError("KPFC validity must have shape (K, P, F) or (K, P, F, 3)")
     elif layout == "KFPC":
         point_shape = (forecast_count, frame_count, point_count)
         coordinate_shape = (*point_shape, 3)
@@ -242,9 +236,7 @@ def _normalize_validity(
         elif array.shape == coordinate_shape:
             result = array
         else:
-            raise ValueError(
-                "KFPC validity must have shape (K, F, P) or (K, F, P, 3)"
-            )
+            raise ValueError("KFPC validity must have shape (K, F, P) or (K, F, P, 3)")
     else:
         raise ValueError(f"unsupported validity layout {layout!r}")
     if result.shape[-1] == 1:
@@ -289,16 +281,22 @@ def import_external_forecast(
     )
     if _file_sha256(import_manifest_json) != manifest_hash:
         raise ValueError("external forecast manifest changed during import")
-    if _require_nonempty_string(
-        manifest["schema"],
-        name="external forecast import schema",
-    ) != EXTERNAL_FORECAST_IMPORT_SCHEMA:
+    if (
+        _require_nonempty_string(
+            manifest["schema"],
+            name="external forecast import schema",
+        )
+        != EXTERNAL_FORECAST_IMPORT_SCHEMA
+    ):
         raise ValueError("unexpected external forecast import schema")
-    if _require_integer(
-        manifest["schema_version"],
-        name="external forecast import schema_version",
-        minimum=1,
-    ) != EXTERNAL_FORECAST_IMPORT_SCHEMA_VERSION:
+    if (
+        _require_integer(
+            manifest["schema_version"],
+            name="external forecast import schema_version",
+            minimum=1,
+        )
+        != EXTERNAL_FORECAST_IMPORT_SCHEMA_VERSION
+    ):
         raise ValueError("unsupported external forecast import schema version")
 
     case_id = _require_nonempty_string(manifest["case_id"], name="case_id")
@@ -339,9 +337,7 @@ def import_external_forecast(
         name="position_unit",
     )
     if position_unit not in _UNIT_SCALE_TO_M:
-        raise ValueError(
-            f"position_unit must be one of {sorted(_UNIT_SCALE_TO_M)}"
-        )
+        raise ValueError(f"position_unit must be one of {sorted(_UNIT_SCALE_TO_M)}")
     forecast_ids = _validated_string_tuple(
         manifest["forecast_ids"],
         name="forecast_ids",
@@ -446,9 +442,7 @@ def import_external_forecast(
         camera_to_world_hash = None
         if coordinate_frame == "camera":
             if "camera_to_world" not in arrays:
-                raise ValueError(
-                    "camera-frame imports require arrays.camera_to_world"
-                )
+                raise ValueError("camera-frame imports require arrays.camera_to_world")
             transform = np.asarray(
                 _source_array(
                     archive,

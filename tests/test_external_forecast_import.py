@@ -51,9 +51,7 @@ def _write_manifest(path: Path, **overrides: object) -> None:
         "position_unit": "m",
         "forecast_ids": ["instruction"],
         "physical_fps": 1.0,
-        "forecast_metadata": {
-            "instruction": {"caption": "Lift the cloth upward."}
-        },
+        "forecast_metadata": {"instruction": {"caption": "Lift the cloth upward."}},
         "metadata": {"producer": "unit-test"},
     }
     manifest.update(overrides)
