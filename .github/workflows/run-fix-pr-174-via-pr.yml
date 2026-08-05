@@ -1,0 +1,67 @@
+name: Execute PR 174 repair through pull-request CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths: [.github/workflows/run-fix-pr-174-via-pr.yml]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: execute-pr-174-repair
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the execution branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ci/fix-pr-174
+          path: executor
+          persist-credentials: false
+          clean: true
+
+      - name: Check out the target PR branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/schema4-factor-lineage
+          path: target
+          fetch-depth: 0
+          persist-credentials: true
+          clean: true
+
+      - name: Execute the reviewed repair steps verbatim
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install pyyaml
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          import yaml
+
+          workflow = yaml.safe_load(
+              Path("executor/.github/workflows/fix-pr-174-exact-bytes.yml")
+              .read_text(encoding="utf-8")
+          )
+          scripts = [
+              step["run"]
+              for step in workflow["jobs"]["repair"]["steps"]
+              if "run" in step
+          ]
+          if len(scripts) != 3:
+              raise SystemExit(f"unexpected repair step count: {len(scripts)}")
+          for index, script in enumerate(scripts, start=1):
+              print(f"::group::reviewed repair step {index}")
+              subprocess.run(
+                  ["bash", "-euo", "pipefail", "-c", script],
+                  cwd="target",
+                  check=True,
+              )
+              print("::endgroup::")
+          PY
