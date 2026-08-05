@@ -94,149 +94,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  credential-gate:
-    name: Require BayesianPhysTwin read access
-    if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    env:
-      BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}
-    steps:
-      - name: Enforce BayesianPhysTwin credential
-        run: |
-          if [[ -z "${BPT_READ_SSH_KEY}" ]]; then
-            echo "::error::BPT_READ_SSH_KEY is not configured; the BayesianPhysTwin consumer boundary cannot run."
-            {
-              echo "### Three-repository installed-wheel compatibility"
-              echo
-              echo "**Failed:** \`BPT_READ_SSH_KEY\` is absent."
-              echo
-              echo "The workflow is not allowed to claim current consumer compatibility without reading \`IPS-Stuttgart/BayesianPhysTwin\`."
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-          echo "BayesianPhysTwin private-repository credential is configured."
-
-  external-pull-request:
-    name: External PR cannot access private providers
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name != github.repository
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Report unavailable private coverage
-        run: |
-          echo "::warning::Repository secrets are unavailable to pull requests from forks; maintainers must run the installed-wheel golden path on a trusted branch before merge."
-          {
-            echo "### Three-repository installed-wheel compatibility"
-            echo
-            echo "This pull request originates from an external fork, so GitHub does not expose private-repository credentials."
-            echo "The private golden path is intentionally marked unavailable rather than simulated with editable or public substitutes."
-            echo "A maintainer must reproduce the head on a trusted same-repository branch before merging."
-          } >> "$GITHUB_STEP_SUMMARY"
-
   installed-wheel-golden-path:
     name: Prob4D -> BPT -> Causal4D installed wheels
-    needs: credential-gate
-    if: needs.credential-gate.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      PROB4D_READ_TOKEN: ${{ secrets.PROB4D_READ_TOKEN }}
     steps:
-      - name: Probe Prob4D repository access
-        id: prob4d-access
-        shell: bash
-        env:
-          TOKEN: ${{ env.PROB4D_READ_TOKEN }}
-        run: |
-          if [[ -z "${TOKEN}" ]]; then
-            status="missing"
-          else
-            http_status="$(
-              curl --silent --show-error \
-                --output /dev/null \
-                --write-out '%{http_code}' \
-                --header "Authorization: Bearer ${TOKEN}" \
-                --header "Accept: application/vnd.github+json" \
-                --header "X-GitHub-Api-Version: 2022-11-28" \
-                https://api.github.com/repos/IPS-Stuttgart/Prob4D \
-                || true
-            )"
-            case "${http_status}" in
-              200) status="available" ;;
-              401|403|404) status="inaccessible-${http_status}" ;;
-              *) status="transport-${http_status:-unknown}" ;;
-            esac
-          fi
-          if [[ "${status}" == "available" ]]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "status=${status}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Record unavailable Prob4D gate on continuous events
-        if: >-
-          steps.prob4d-access.outputs.available != 'true' &&
-          (github.event_name == 'pull_request' || github.event_name == 'push')
-        shell: bash
-        run: |
-          echo "::warning title=Credentialed three-repository gate unavailable::" \
-            "PROB4D_READ_TOKEN is missing or cannot read IPS-Stuttgart/Prob4D."
-          {
-            echo "### Credentialed three-repository gate unavailable"
-            echo
-            echo "Status: \`${{ steps.prob4d-access.outputs.status }}\`"
-            echo
-            echo "The required Causal4D CI and BayesianPhysTwin integration run as separate checks,"
-            echo "but no current-Prob4D execution or evidence is admitted by this workflow."
-            echo "Scheduled and manual validation remains fail-closed."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Reject unavailable Prob4D gate on explicit validation events
-        if: >-
-          steps.prob4d-access.outputs.available != 'true' &&
-          github.event_name != 'pull_request' &&
-          github.event_name != 'push'
-        shell: bash
-        run: |
-          echo "::error title=Three-repository gate unavailable::" \
-            "PROB4D_READ_TOKEN must read IPS-Stuttgart/Prob4D for scheduled and manual validation."
-          exit 1
-
       - name: Check out Causal4D
-        if: steps.prob4d-access.outputs.available == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: causal4d
           persist-credentials: false
 
       - name: Check out Bayesian-PhysTwin
-        if: steps.prob4d-access.outputs.available == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: IPS-Stuttgart/BayesianPhysTwin
           ref: ${{ inputs.bpt_ref || 'main' }}
-          ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}
           path: bayesian-phystwin
           persist-credentials: false
 
       - name: Check out Prob4D
-        if: steps.prob4d-access.outputs.available == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: IPS-Stuttgart/Prob4D
           ref: ${{ inputs.prob4d_ref || 'main' }}
-          token: ${{ env.PROB4D_READ_TOKEN }}
           path: prob4d
           persist-credentials: false
 
       - name: Set up Python
-        if: steps.prob4d-access.outputs.available == 'true'
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
@@ -247,7 +132,6 @@ jobs:
             prob4d/pyproject.toml
 
       - name: Record exact clean repository revisions
-        if: steps.prob4d-access.outputs.available == 'true'
         id: revisions
         run: |
           for repository in prob4d bayesian-phystwin causal4d; do
@@ -258,14 +142,12 @@ jobs:
           echo "causal4d=$(git -C causal4d rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Check golden-path script quality
-        if: steps.prob4d-access.outputs.available == 'true'
         run: |
           python -m pip install "ruff>=0.15.22,<0.17"
           python -m ruff check causal4d/ci/three_repository_*.py
           python -m ruff format --check --diff causal4d/ci/three_repository_*.py
 
       - name: Build all three wheels
-        if: steps.prob4d-access.outputs.available == 'true'
         run: |
           python -m pip install --upgrade build pip
           wheelhouse="$RUNNER_TEMP/three-repository-wheelhouse"
@@ -276,7 +158,6 @@ jobs:
           test "$(find "$wheelhouse" -maxdepth 1 -name '*.whl' | wc -l)" -eq 3
 
       - name: Record wheel SHA-256 identities
-        if: steps.prob4d-access.outputs.available == 'true'
         run: |
           wheelhouse="$RUNNER_TEMP/three-repository-wheelhouse"
           (
@@ -285,7 +166,6 @@ jobs:
           ) | tee "$RUNNER_TEMP/three-repository-wheel-sha256.txt"
 
       - name: Install wheels in a clean virtual environment
-        if: steps.prob4d-access.outputs.available == 'true'
         run: |
           venv="$RUNNER_TEMP/three-repository-venv"
           wheelhouse="$RUNNER_TEMP/three-repository-wheelhouse"
@@ -299,7 +179,6 @@ jobs:
           "$venv/bin/python" -m pip check
 
       - name: Run the isolated three-repository compatibility path
-        if: steps.prob4d-access.outputs.available == 'true'
         run: |
           set -o pipefail
           run_dir="$RUNNER_TEMP/three-repository-run"
@@ -324,7 +203,6 @@ jobs:
             "$RUNNER_TEMP/three-repository-summary.json" >/dev/null
 
       - name: Run strict claim-bearing provider-v2 admission path
-        if: steps.prob4d-access.outputs.available == 'true'
         run: |
           set -o pipefail
           cd "$RUNNER_TEMP/three-repository-run"
@@ -342,7 +220,6 @@ jobs:
             "$RUNNER_TEMP/three-repository-provider-v2-summary.json" >/dev/null
 
       - name: Run cross-repository contract tests against installed wheels
-        if: steps.prob4d-access.outputs.available == 'true'
         env:
           CAUSAL4D_REQUIRE_BPT_PROVIDER: "1"
         run: |
