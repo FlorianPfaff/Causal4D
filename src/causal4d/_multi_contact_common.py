@@ -47,7 +47,16 @@ def integer_array(
     """Return immutable integer data without truncating or coercing inputs."""
 
     exact = readonly_integer_array(values, name=name)
-    return readonly(exact, dtype=dtype)
+    target_dtype = np.dtype(dtype)
+    if target_dtype.kind not in {"i", "u"}:
+        raise ValueError(f"{name} target dtype must be integral")
+    if exact.size:
+        limits = np.iinfo(target_dtype)
+        if int(np.min(exact)) < limits.min or int(np.max(exact)) > limits.max:
+            raise ValueError(
+                f"{name} contains an integer outside {target_dtype.name} range"
+            )
+    return readonly(exact, dtype=target_dtype)
 
 
 def normalized_weights(values: Any, *, name: str) -> np.ndarray:
