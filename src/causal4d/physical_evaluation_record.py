@@ -8,8 +8,6 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, BinaryIO
 
-import numpy as np
-
 from causal4d._held_out_target_contract import (
     PAYLOAD_FIELDS,
     SOURCE_FIELDS,
