@@ -1,6 +1,9 @@
-name: Execute PR 174 repair through pull-request CI
+name: Execute PR 174 repair
 
 on:
+  push:
+    branches: [ci/fix-pr-174]
+    paths: [.github/workflows/run-fix-pr-174-via-pr.yml]
   pull_request:
     branches: [main]
     paths: [.github/workflows/run-fix-pr-174-via-pr.yml]
@@ -14,7 +17,7 @@ concurrency:
 
 jobs:
   execute:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
