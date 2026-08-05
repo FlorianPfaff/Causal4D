@@ -70,7 +70,7 @@ jobs:
           PY
           python /tmp/apply_agent_hardening.py
 
-      - name: Pin static analysis and complete the typing ratchet
+      - name: Pin static analysis and complete metadata contracts
         shell: bash
         run: |
           set -euo pipefail
@@ -98,6 +98,45 @@ jobs:
               script_text.replace(old_annotation, new_annotation, 1),
               encoding="utf-8",
           )
+
+          citation_path = Path("tests/test_citation_metadata.py")
+          citation_text = citation_path.read_text(encoding="utf-8")
+          import_old = "import re\nfrom pathlib import Path\n"
+          import_new = (
+              "import re\nfrom pathlib import Path\n\n"
+              "from causal4d import __version__\n"
+          )
+          version_old = (
+              "    version_match = re.search(r'(?m)^version = \"([^\"]+)\"$', pyproject)\n"
+              "    assert version_match is not None\n\n"
+          )
+          version_assert_old = (
+              '    assert _required_scalar(citation, "version") == version_match.group(1)\n'
+          )
+          version_assert_new = (
+              '    assert _required_scalar(citation, "version") == __version__\n'
+          )
+          license_old = (
+              '    assert \'license = { file = "LICENSE" }\' in pyproject\n'
+              '    assert \'"License :: OSI Approved :: MIT License"\' in pyproject\n'
+          )
+          license_new = (
+              '    assert \'license = "MIT"\' in pyproject\n'
+              '    assert \'license-files = ["LICENSE"]\' in pyproject\n'
+              '    assert \'"License :: OSI Approved :: MIT License"\' not in pyproject\n'
+          )
+          for old in (import_old, version_old, version_assert_old, license_old):
+              if citation_text.count(old) != 1:
+                  raise SystemExit(f"citation metadata contract fragment missing: {old!r}")
+          citation_text = citation_text.replace(import_old, import_new, 1)
+          citation_text = citation_text.replace(version_old, "", 1)
+          citation_text = citation_text.replace(
+              version_assert_old,
+              version_assert_new,
+              1,
+          )
+          citation_text = citation_text.replace(license_old, license_new, 1)
+          citation_path.write_text(citation_text, encoding="utf-8")
           PY
 
       - name: Remove one-shot executor before validation
@@ -147,6 +186,7 @@ jobs:
             tests/test_trusted_pickle_cli_contract.py \
             tests/test_result_bundle_publication.py \
             tests/test_package_contract.py \
+            tests/test_citation_metadata.py \
             tests/test_release_workflow_policy.py \
             tests/test_three_repository_workflow_policy.py
 
