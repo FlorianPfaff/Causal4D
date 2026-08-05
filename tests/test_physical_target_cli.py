@@ -60,8 +60,8 @@ def _posterior() -> tuple[PhysicalPosterior, np.ndarray]:
 
 def _install_import_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
     def load_dependencies() -> None:
-        import_cli.target_validity = (
-            lambda visible, motion: np.asarray(visible, dtype=bool)
+        import_cli.target_validity = lambda visible, motion: np.asarray(
+            visible, dtype=bool
         )
         import_cli.PhysicalPosterior = PhysicalPosterior
         import_cli.load_contract = load_contract
@@ -106,16 +106,19 @@ def test_legacy_import_requires_digest_and_produces_safe_target(
     digest = hashlib.sha256(pickle_path.read_bytes()).hexdigest()
     _install_import_dependencies(monkeypatch)
 
-    assert import_cli.main(
-        [
-            str(posterior_path),
-            str(pickle_path),
-            str(target_path),
-            "--allow-unsafe-pickle",
-            "--expected-sha256",
-            digest,
-        ]
-    ) == 0
+    assert (
+        import_cli.main(
+            [
+                str(posterior_path),
+                str(pickle_path),
+                str(target_path),
+                "--allow-unsafe-pickle",
+                "--expected-sha256",
+                digest,
+            ]
+        )
+        == 0
+    )
     target = load_physical_target(target_path)
     assert target.source_final_data_sha256 == digest
     assert target.object_points.dtype == np.dtype(np.float32)
@@ -140,21 +143,25 @@ def test_safe_evaluation_binds_target_and_publishes_exactly_once(
     save_physical_target(target_path, target)
     _install_evaluate_dependencies(monkeypatch)
 
-    assert evaluate_cli.main(
-        [
-            str(posterior_path),
-            str(target_path),
-            str(output_path),
-            "--start-frame",
-            "2",
-        ]
-    ) == 0
+    assert (
+        evaluate_cli.main(
+            [
+                str(posterior_path),
+                str(target_path),
+                str(output_path),
+                "--start-frame",
+                "2",
+            ]
+        )
+        == 0
+    )
     result = json.loads(output_path.read_text(encoding="utf-8"))
     assert result["physical_target_id"] == target.artifact_id
     assert result["physical_posterior_id"] == posterior.artifact_id
-    assert result["evaluation_target_id"] == target.evaluation_target(
-        start_frame=2
-    ).artifact_id
+    assert (
+        result["evaluation_target_id"]
+        == target.evaluation_target(start_frame=2).artifact_id
+    )
     assert len(result["evaluation_id"]) == 64
 
     with pytest.raises(FileExistsError):
