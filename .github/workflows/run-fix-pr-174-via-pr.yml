@@ -59,14 +59,24 @@ jobs:
               raise SystemExit(f"unexpected repair step count: {len(scripts)}")
           for index, script in enumerate(scripts, start=1):
               if index == 1:
+                  helper = '''
+
+def strip_yaml(value: str) -> str:
+    suffix = "\\n" if value.endswith("\\n") else ""
+    lines = value.splitlines()
+    return "\\n".join(
+        line[10:] if line.startswith("          ") else line
+        for line in lines
+    ) + suffix
+'''
                   script = script.replace(
                       "from pathlib import Path\n",
-                      "from pathlib import Path\nfrom textwrap import dedent\n",
+                      "from pathlib import Path\n" + helper,
                       1,
                   )
                   script = re.sub(
                       r"(?s)('''.*?''')\.replace\(\" {10}\", \"\"\)",
-                      r"dedent(\1)",
+                      r"strip_yaml(\1)",
                       script,
                   )
               print(f"::group::reviewed repair step {index}")
