@@ -42,9 +42,7 @@ def _selection_payload() -> dict[str, object]:
             "status": "conditional-reproduction-runtime-deviation",
             "recorded_runtime": recorded,
             "candidate_runtime": candidate,
-            "deviation": {
-                "numpy": {"recorded": "2.5.1", "candidate": "1.26.4"}
-            },
+            "deviation": {"numpy": {"recorded": "2.5.1", "candidate": "1.26.4"}},
             "interpretation_permitted_only_after_zero_baseline_reproduction": True,
             "zero_baseline_reproduction_required": True,
         },
@@ -109,9 +107,7 @@ def test_runner_rejects_premature_interpretation(tmp_path: Path) -> None:
     payload = _selection_payload()
     provenance = payload["runtime_provenance"]
     assert isinstance(provenance, dict)
-    provenance[
-        "interpretation_permitted_only_after_zero_baseline_reproduction"
-    ] = False
+    provenance["interpretation_permitted_only_after_zero_baseline_reproduction"] = False
     selection.write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
