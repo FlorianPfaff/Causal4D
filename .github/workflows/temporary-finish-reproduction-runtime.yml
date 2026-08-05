@@ -34,15 +34,43 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Apply the remaining deterministic cleanup
+      - name: Apply idempotent cleanup
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/ci/temporary_finish_reproduction_runtime.py
-          rm configs/causal4d_public/deform360_source_backend_runtime_erratum_v1.json
+          python - <<'PY'
+          from pathlib import Path
+
+          old_name = "deform360_source_backend_runtime_erratum_v1.json"
+          new_name = "deform360_source_backend_reproduction_runtime_v1.json"
+
+          for relative in (
+              ".github/workflows/deform360-prefix-kinematics.yml",
+              ".github/workflows/temporary-deform360-prefix-kinematics-evidence.yml",
+          ):
+              path = Path(relative)
+              text = path.read_text(encoding="utf-8")
+              path.write_text(text.replace(old_name, new_name), encoding="utf-8")
+
+          policy = Path("tests/test_deform360_prefix_kinematics_workflow_policy.py")
+          text = policy.read_text(encoding="utf-8")
+          text = text.replace("RUNTIME_ERRATUM", "REPRODUCTION_RUNTIME")
+          text = text.replace(old_name, new_name)
+          text = text.replace(
+              "test_gpu_jobs_reuse_only_the_exact_effective_runtime_lock",
+              "test_gpu_jobs_use_only_the_conditional_reproduction_runtime",
+          )
+          text = text.replace(
+              "assert RUNTIME_ERRATUM.is_file()",
+              "assert REPRODUCTION_RUNTIME.is_file()",
+          )
+          policy.write_text(text, encoding="utf-8")
+          PY
+          rm -f configs/causal4d_public/deform360_source_backend_runtime_erratum_v1.json
           rm -f requirements/diagnostics/deform360-prefix-kinematics-numpy-overlay.txt
           rm -f scripts/ci/temporary_reframe_prefix_runtime.py
           rm -f scripts/ci/temporary_fix_reframe_output.py
+          rm -f scripts/ci/temporary_finish_reproduction_runtime.py
 
       - name: Format and validate the exact product
         shell: bash
@@ -91,18 +119,17 @@ jobs:
           fi
           git diff --check
 
-      - name: Remove one-shot tooling and publish
+      - name: Remove one-shot workflow and publish
         env:
           PUSH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           rm .github/workflows/temporary-finish-reproduction-runtime.yml
-          rm scripts/ci/temporary_finish_reproduction_runtime.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "Preserve the recorded runtime as a conditional deviation"
+          git commit -m "Finish the conditional reproduction-runtime boundary"
           basic_auth="$(printf 'x-access-token:%s' "${PUSH_TOKEN}" | base64 -w0)"
           git -c \
             http.https://github.com/.extraheader="AUTHORIZATION: basic ${basic_auth}" \
