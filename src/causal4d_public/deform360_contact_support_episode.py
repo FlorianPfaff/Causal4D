@@ -16,7 +16,6 @@ from .deform360_contact_support_contract import (
     ContactSupportDiagnosticConfig,
     _finite_float,
     _require,
-    _require_mapping,
 )
 from .deform360_phystwin_feasibility import (
     WarpRopeCandidate,
