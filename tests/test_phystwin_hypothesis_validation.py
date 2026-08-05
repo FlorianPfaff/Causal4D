@@ -3,6 +3,11 @@
 import numpy as np
 import pytest
 
+pytest.importorskip(
+    "bayesian_phystwin",
+    reason="PhysTwin backend validation requires BayesianPhysTwin",
+)
+
 import causal4d.phystwin_backend as backend_module
 import causal4d.rollout_bank_io as rollout_bank_io
 from causal4d.phystwin_backend import (
