@@ -8,9 +8,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SELECTOR = (
-    ROOT / "scripts" / "remote" / "select_deform360_prefix_kinematics_python.py"
-)
+SELECTOR = ROOT / "scripts" / "remote" / "select_deform360_prefix_kinematics_python.py"
 
 
 def _load_selector():
