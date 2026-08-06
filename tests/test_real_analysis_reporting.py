@@ -155,6 +155,8 @@ def test_report_uses_sessions_as_the_resampling_unit(tmp_path: Path) -> None:
         report["design_diagnostics"]["condition_comparisons_are_descriptive_only"]
         is True
     )
+    assert report["design_diagnostics"]["fully_crossed"] is True
+    assert report["design_diagnostics"]["balanced_across_actions"] is False
 
 
 def test_session_weighting_survives_one_preregistered_exclusion(
@@ -229,6 +231,30 @@ def test_report_rejects_missing_or_relabelled_registered_units(
         build_real_analysis_effect_report(
             effect_table,
             PROTOCOL,
+            method_freeze_path=freeze,
+            analysis_manifest_path=analysis,
+        )
+
+
+def test_reporting_recomputes_the_complete_protocol_digest(
+    tmp_path: Path,
+) -> None:
+    freeze, analysis, freeze_sha, analysis_sha = _source_pair(tmp_path)
+    payload = _factual_payload(
+        freeze_sha=freeze_sha,
+        analysis_sha=analysis_sha,
+    )
+    effect_table = tmp_path / "effects.json"
+    _write_json(effect_table, payload)
+    protocol = json.loads(PROTOCOL.read_text(encoding="utf-8"))
+    protocol["executions"][0]["command_profile_id"] = "tampered-action"
+    tampered_protocol = tmp_path / "tampered-protocol.json"
+    _write_json(tampered_protocol, protocol)
+
+    with pytest.raises(ValueError, match="design SHA-256 does not match"):
+        build_real_analysis_effect_report(
+            effect_table,
+            tampered_protocol,
             method_freeze_path=freeze,
             analysis_manifest_path=analysis,
         )

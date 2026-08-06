@@ -109,6 +109,10 @@ artifact.
 The verifier reads, hashes, and parses the same exact bytes. Duplicate JSON keys,
 non-finite JSON values, symbolic links, and concurrent file replacement cannot
 silently separate the retained digest from the validated payload.
+The registered protocol is also passed through the repository's complete
+`validate_protocol` contract. Its design SHA-256 is recomputed from the full
+content, so a modified split, execution label, acquisition order, or balance
+cannot be admitted by retaining the old embedded digest.
 
 ## Reported diagnostics
 
@@ -124,9 +128,9 @@ The output contains:
 - explicit same-object and non-safety claim boundaries.
 
 The acquisition-order diagnostic cannot select exclusions or revise the primary
-result. Realization-condition summaries are descriptive because condition and
-action are not fully crossed and conditions occupy different acquisition-time
-ranges.
+result. Realization-condition summaries are descriptive because all condition/action
+cells exist but are unequally replicated, and conditions occupy different
+acquisition-time ranges.
 
 ## Calibration utility
 

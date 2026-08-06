@@ -9,9 +9,10 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import numpy as np
+from numpy.typing import NDArray
 
 from causal4d.artifact_io import (
     ArtifactFileSnapshot,
@@ -23,6 +24,7 @@ from causal4d.execution_block_calibration import (
     ExecutionBlockConformalCalibration,
 )
 from causal4d.immutable_json import plain_json
+from causal4d.real_protocol import validate_protocol
 from causal4d.real_result_source_verification import verify_real_result_sources
 
 REAL_ANALYSIS_EFFECT_TABLE_SCHEMA_VERSION = 1
@@ -101,7 +103,12 @@ def _require(condition: bool, message: str) -> None:
 def _mapping(value: Any, *, name: str) -> Mapping[str, Any]:
     _require(isinstance(value, Mapping), f"{name} must be a JSON object")
     _require(all(type(key) is str for key in value), f"{name} keys must be strings")
-    return value
+    return cast(Mapping[str, Any], value)
+
+
+def _json_array(value: Any, *, name: str) -> list[Any]:
+    _require(isinstance(value, list), f"{name} must be a JSON array")
+    return cast(list[Any], value)
 
 
 def _exact_fields(
@@ -347,6 +354,7 @@ def _registered_units(
     protocol: Mapping[str, Any],
     endpoint: Endpoint,
 ) -> tuple[dict[str, Any], ...]:
+    validate_protocol(protocol)
     _require(protocol.get("protocol_id") == EXPECTED_PROTOCOL_ID, "wrong protocol")
     _require(
         protocol.get("design_sha256") == EXPECTED_PROTOCOL_DESIGN_SHA256,
@@ -354,8 +362,10 @@ def _registered_units(
     )
     object_record = _mapping(protocol.get("object"), name="protocol object")
     _require(object_record.get("object_id") == EXPECTED_OBJECT_ID, "wrong object")
-    raw_executions = protocol.get("executions")
-    _require(isinstance(raw_executions, list), "protocol executions must be an array")
+    raw_executions = _json_array(
+        protocol.get("executions"),
+        name="protocol executions",
+    )
     executions: dict[str, Mapping[str, Any]] = {}
     for raw in raw_executions:
         execution = _mapping(raw, name="protocol execution")
@@ -366,8 +376,10 @@ def _registered_units(
         )
         executions[execution_id] = execution
     splits = _mapping(protocol.get("splits"), name="protocol splits")
-    entries = splits.get(_ENDPOINT_SPLIT_KEYS[endpoint])
-    _require(isinstance(entries, list), "endpoint split must be an array")
+    entries = _json_array(
+        splits.get(_ENDPOINT_SPLIT_KEYS[endpoint]),
+        name="endpoint split",
+    )
     units: list[dict[str, Any]] = []
     for raw in entries:
         entry = _mapping(raw, name="endpoint unit")
@@ -447,7 +459,7 @@ def _improvement(record: Mapping[str, Any], *, lower_is_better: bool) -> float:
 def _summary(values: Sequence[float]) -> dict[str, Any] | None:
     if not values:
         return None
-    array = np.asarray(values, dtype=float)
+    array: NDArray[np.float64] = np.asarray(values, dtype=np.float64)
     return {
         "count": int(len(array)),
         "mean": float(np.mean(array)),
@@ -477,7 +489,7 @@ def _session_effects(
 
 
 def _bootstrap(values: Sequence[float]) -> dict[str, Any]:
-    array = np.asarray(values, dtype=float)
+    array: NDArray[np.float64] = np.asarray(values, dtype=np.float64)
     result: dict[str, Any] = {
         "estimable": len(array) >= 2,
         "method": "session_cluster_percentile_bootstrap",
@@ -519,8 +531,14 @@ def _drift(
     }
     if len(sessions) < 3:
         return result
-    x = np.asarray([indices[session] for session in sessions], dtype=float)
-    y = np.asarray([effects[session] for session in sessions], dtype=float)
+    x: NDArray[np.float64] = np.asarray(
+        [indices[session] for session in sessions],
+        dtype=np.float64,
+    )
+    y: NDArray[np.float64] = np.asarray(
+        [effects[session] for session in sessions],
+        dtype=np.float64,
+    )
     centered = x - np.mean(x)
     slope = float(np.dot(centered, y - np.mean(y)) / np.dot(centered, centered))
     correlation = 0.0
@@ -597,6 +615,9 @@ def _design_diagnostics(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             count > 0
             for action_counts in counts.values()
             for count in action_counts.values()
+        ),
+        "balanced_across_actions": all(
+            len(set(action_counts.values())) == 1 for action_counts in counts.values()
         ),
         "condition_acquisition_timing": timing,
         "condition_comparisons_are_descriptive_only": True,
@@ -752,11 +773,8 @@ def summarize_execution_block_utility(
         evaluation.get("outer_fold_id") == calibration.outer_fold_id,
         "execution-block evaluation identifies another outer fold",
     )
-    raw_cases = evaluation.get("cases")
-    _require(
-        isinstance(raw_cases, list) and bool(raw_cases),
-        "evaluation cases missing",
-    )
+    raw_cases = _json_array(evaluation.get("cases"), name="evaluation cases")
+    _require(bool(raw_cases), "evaluation cases missing")
     cases = [_mapping(value, name="evaluation case") for value in raw_cases]
     mean_widths = [
         _number(case.get("mean_interval_width_m"), name="mean_interval_width_m")

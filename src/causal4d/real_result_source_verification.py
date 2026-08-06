@@ -6,7 +6,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Final, Protocol
+from typing import Any, Final, Protocol, cast
 
 from causal4d.artifact_io import load_strict_json_object, read_regular_file
 from causal4d.real_experiment_freeze import MILESTONE_ID, SCHEMA_VERSION
@@ -20,11 +20,20 @@ SOURCE_VERIFICATION_ARTIFACT_KIND: Final = "Causal4DRealResultSourceVerification
 class RealResultSourceBinding(Protocol):
     """Minimum provenance identity needed to verify registered analysis sources."""
 
-    protocol_id: str
-    protocol_design_sha256: str
-    preacquisition_amendment_sha256: str
-    method_freeze_sha256: str
-    analysis_manifest_sha256: str
+    @property
+    def protocol_id(self) -> str: ...
+
+    @property
+    def protocol_design_sha256(self) -> str: ...
+
+    @property
+    def preacquisition_amendment_sha256(self) -> str: ...
+
+    @property
+    def method_freeze_sha256(self) -> str: ...
+
+    @property
+    def analysis_manifest_sha256(self) -> str: ...
 
 
 def _require(condition: bool, message: str) -> None:
@@ -88,24 +97,33 @@ def _validate_method_freeze(
         payload.get("target_outcomes_observed_at_freeze") is False,
         "method freeze records target access before locking",
     )
-    protocol = payload.get("protocol")
-    _require(isinstance(protocol, Mapping), "method freeze lacks protocol provenance")
+    protocol_value = payload.get("protocol")
+    _require(
+        isinstance(protocol_value, Mapping),
+        "method freeze lacks protocol provenance",
+    )
+    protocol = cast(Mapping[str, Any], protocol_value)
     _require(
         protocol.get("design_sha256") == binding.protocol_design_sha256,
         "method freeze protocol digest differs from the gate summary",
     )
-    preacquisition = payload.get("preacquisition")
+    preacquisition_value = payload.get("preacquisition")
     _require(
-        isinstance(preacquisition, Mapping),
+        isinstance(preacquisition_value, Mapping),
         "method freeze lacks pre-acquisition provenance",
     )
+    preacquisition = cast(Mapping[str, Any], preacquisition_value)
     _require(
         preacquisition.get("amendment_sha256")
         == binding.preacquisition_amendment_sha256,
         "method freeze amendment digest differs from the gate summary",
     )
-    analysis = payload.get("analysis_contract")
-    _require(isinstance(analysis, Mapping), "method freeze lacks an analysis contract")
+    analysis_value = payload.get("analysis_contract")
+    _require(
+        isinstance(analysis_value, Mapping),
+        "method freeze lacks an analysis contract",
+    )
+    analysis = cast(Mapping[str, Any], analysis_value)
     _require(
         analysis.get("target_outcomes_may_select_method_or_hyperparameters") is False,
         "method freeze permits target-informed analysis selection",
@@ -225,8 +243,12 @@ def validate_real_result_source_verification(
         value = payload.get(field)
         _require(isinstance(value, str) and bool(value), f"{field} is missing")
     for field in ("method_freeze", "registered_analysis_manifest"):
-        descriptor = payload.get(field)
-        _require(isinstance(descriptor, Mapping), f"{field} descriptor is missing")
+        descriptor_value = payload.get(field)
+        _require(
+            isinstance(descriptor_value, Mapping),
+            f"{field} descriptor is missing",
+        )
+        descriptor = cast(Mapping[str, Any], descriptor_value)
         digest = descriptor.get("sha256")
         byte_count = descriptor.get("bytes")
         _require(
