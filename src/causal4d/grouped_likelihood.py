@@ -21,6 +21,24 @@ class GroupLikelihoodDiagnostics:
     effective_group_weights: tuple[float, ...]
     nominal_responsibilities: np.ndarray
     full_covariance_group_ids: tuple[str, ...] = ()
+    low_rank_covariance_group_ids: tuple[str, ...] = ()
+
+
+def _student_t_log_density_from_terms(
+    *,
+    dimension: int,
+    degrees_of_freedom: float,
+    log_determinant: np.ndarray,
+    mahalanobis: np.ndarray,
+) -> np.ndarray:
+    normalization = (
+        lgamma(0.5 * (degrees_of_freedom + dimension))
+        - lgamma(0.5 * degrees_of_freedom)
+        - 0.5 * (dimension * np.log(degrees_of_freedom * np.pi) + log_determinant)
+    )
+    return normalization - 0.5 * (degrees_of_freedom + dimension) * np.log1p(
+        mahalanobis / degrees_of_freedom
+    )
 
 
 def _multivariate_student_t_log_density(
@@ -43,13 +61,11 @@ def _multivariate_student_t_log_density(
         raise ValueError("Student-t scale matrix must be positive definite")
     solved = np.linalg.solve(scale, values[..., None])[..., 0]
     mahalanobis = np.einsum("...i,...i->...", values, solved)
-    normalization = (
-        lgamma(0.5 * (degrees_of_freedom + dimension))
-        - lgamma(0.5 * degrees_of_freedom)
-        - 0.5 * (dimension * np.log(degrees_of_freedom * np.pi) + log_determinant)
-    )
-    return normalization - 0.5 * (degrees_of_freedom + dimension) * np.log1p(
-        mahalanobis / degrees_of_freedom
+    return _student_t_log_density_from_terms(
+        dimension=dimension,
+        degrees_of_freedom=degrees_of_freedom,
+        log_determinant=log_determinant,
+        mahalanobis=mahalanobis,
     )
 
 
@@ -84,18 +100,158 @@ def _broadcast_additive_covariance(
     return covariance
 
 
+def _broadcast_additive_covariance_factor(
+    values: np.ndarray,
+    *,
+    leading_shape: tuple[int, ...],
+    dimension: int,
+) -> np.ndarray:
+    factor = np.asarray(values, dtype=float)
+    if factor.ndim < 2 or factor.shape[-2] != dimension or factor.shape[-1] < 1:
+        raise ValueError(
+            "additive_covariance_factor_m must end in "
+            "(coordinate, positive_rank)"
+        )
+    rank = factor.shape[-1]
+    try:
+        factor = np.broadcast_to(
+            factor,
+            (*leading_shape, dimension, rank),
+        )
+    except ValueError as error:
+        raise ValueError(
+            "additive_covariance_factor_m must broadcast to component leading "
+            "dimensions and end in (coordinate, rank)"
+        ) from error
+    if not np.all(np.isfinite(factor)):
+        raise ValueError("additive covariance factor must be finite")
+    return factor
+
+
+def _multivariate_student_t_log_density_low_rank(
+    residual: np.ndarray,
+    base_covariance_m2: np.ndarray,
+    covariance_factor_m: np.ndarray,
+    *,
+    degrees_of_freedom: float,
+    covariance_multiplier: float = 1.0,
+) -> np.ndarray:
+    """Evaluate Student-t density for ``base + factor @ factor.T``.
+
+    The implementation uses Cholesky whitening plus the matrix determinant lemma
+    and Woodbury identity. It never materializes the low-rank covariance update.
+    """
+
+    values = np.asarray(residual, dtype=float)
+    dimension = values.shape[-1]
+    leading_shape = values.shape[:-1]
+    base = np.asarray(base_covariance_m2, dtype=float)
+    if base.shape[-2:] != (dimension, dimension):
+        raise ValueError("base_covariance_m2 must end in (coordinate, coordinate)")
+    try:
+        base = np.broadcast_to(base, (*leading_shape, dimension, dimension))
+    except ValueError as error:
+        raise ValueError(
+            "base_covariance_m2 must broadcast to the residual leading dimensions"
+        ) from error
+    if not np.all(np.isfinite(base)):
+        raise ValueError("base covariance must be finite")
+    factor = _broadcast_additive_covariance_factor(
+        covariance_factor_m,
+        leading_shape=leading_shape,
+        dimension=dimension,
+    )
+    try:
+        base_cholesky = np.linalg.cholesky(base)
+    except np.linalg.LinAlgError as error:
+        raise ValueError("base covariance must be positive definite") from error
+
+    whitened_residual = np.linalg.solve(
+        base_cholesky,
+        values[..., None],
+    )[..., 0]
+    whitened_factor = np.linalg.solve(base_cholesky, factor)
+    rank = factor.shape[-1]
+    low_rank_system = np.eye(rank) + np.einsum(
+        "...ir,...is->...rs",
+        whitened_factor,
+        whitened_factor,
+    )
+    try:
+        low_rank_cholesky = np.linalg.cholesky(low_rank_system)
+    except np.linalg.LinAlgError as error:
+        raise ValueError(
+            "low-rank covariance system must be positive definite"
+        ) from error
+
+    projected_residual = np.einsum(
+        "...ir,...i->...r",
+        whitened_factor,
+        whitened_residual,
+    )
+    whitened_projection = np.linalg.solve(
+        low_rank_cholesky,
+        projected_residual[..., None],
+    )[..., 0]
+    base_quadratic = np.einsum(
+        "...i,...i->...",
+        whitened_residual,
+        whitened_residual,
+    )
+    correction_quadratic = np.einsum(
+        "...r,...r->...",
+        whitened_projection,
+        whitened_projection,
+    )
+    covariance_quadratic = np.maximum(
+        base_quadratic - correction_quadratic,
+        0.0,
+    )
+    base_log_determinant = 2.0 * np.sum(
+        np.log(np.diagonal(base_cholesky, axis1=-2, axis2=-1)),
+        axis=-1,
+    )
+    low_rank_log_determinant = 2.0 * np.sum(
+        np.log(np.diagonal(low_rank_cholesky, axis1=-2, axis2=-1)),
+        axis=-1,
+    )
+    scale_multiplier = (
+        (degrees_of_freedom - 2.0)
+        / degrees_of_freedom
+        * covariance_multiplier
+    )
+    if not np.isfinite(scale_multiplier) or scale_multiplier <= 0.0:
+        raise ValueError("Student-t covariance multiplier must be positive")
+    log_determinant = (
+        base_log_determinant
+        + low_rank_log_determinant
+        + dimension * np.log(scale_multiplier)
+    )
+    mahalanobis = covariance_quadratic / scale_multiplier
+    return _student_t_log_density_from_terms(
+        dimension=dimension,
+        degrees_of_freedom=degrees_of_freedom,
+        log_determinant=log_determinant,
+        mahalanobis=mahalanobis,
+    )
+
+
 def group_log_likelihood(
     predicted_values_m: np.ndarray,
     group: ObservationGroup,
     *,
     additive_variance_m2: np.ndarray | None = None,
     additive_covariance_m2: np.ndarray | None = None,
+    additive_covariance_factor_m: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return robust mixture log likelihood and posterior nominal responsibility.
 
-    ``additive_covariance_m2`` preserves component-specific correlation. The
-    legacy ``additive_variance_m2`` argument remains a diagonal convenience and
-    can be combined with the full covariance term.
+    ``additive_covariance_m2`` preserves component-specific dense correlation.
+    ``additive_covariance_factor_m`` represents a positive-semidefinite update as
+    ``factor @ factor.T`` and is evaluated without forming that dense matrix. The
+    legacy ``additive_variance_m2`` argument remains a diagonal convenience; all
+    three forms can be combined without double counting when they represent
+    distinct uncertainty sources.
     """
 
     predictions = np.asarray(predicted_values_m, dtype=float)
@@ -120,17 +276,37 @@ def group_log_likelihood(
             leading_shape=predictions.shape[:-1],
             dimension=group.coordinate_count,
         )
-    nominal = _multivariate_student_t_log_density(
-        residual,
-        covariance,
-        degrees_of_freedom=group.degrees_of_freedom,
-    )
-    outlier = _multivariate_student_t_log_density(
-        residual,
-        covariance,
-        degrees_of_freedom=group.degrees_of_freedom,
-        covariance_multiplier=group.outlier_scale_multiplier,
-    )
+    if additive_covariance_factor_m is None:
+        nominal = _multivariate_student_t_log_density(
+            residual,
+            covariance,
+            degrees_of_freedom=group.degrees_of_freedom,
+        )
+        outlier = _multivariate_student_t_log_density(
+            residual,
+            covariance,
+            degrees_of_freedom=group.degrees_of_freedom,
+            covariance_multiplier=group.outlier_scale_multiplier,
+        )
+    else:
+        factor = _broadcast_additive_covariance_factor(
+            additive_covariance_factor_m,
+            leading_shape=predictions.shape[:-1],
+            dimension=group.coordinate_count,
+        )
+        nominal = _multivariate_student_t_log_density_low_rank(
+            residual,
+            covariance,
+            factor,
+            degrees_of_freedom=group.degrees_of_freedom,
+        )
+        outlier = _multivariate_student_t_log_density_low_rank(
+            residual,
+            covariance,
+            factor,
+            degrees_of_freedom=group.degrees_of_freedom,
+            covariance_multiplier=group.outlier_scale_multiplier,
+        )
     log_nominal_component = np.log(group.prior_nominal_probability) + nominal
     log_outlier_component = np.log1p(-group.prior_nominal_probability) + outlier
     log_mixture = np.logaddexp(log_nominal_component, log_outlier_component)
@@ -145,13 +321,15 @@ def grouped_component_log_likelihoods(
     prefix_frame_count: int,
     component_variance_m2: np.ndarray | None = None,
     component_group_covariance_m2: Mapping[str, np.ndarray] | None = None,
+    component_group_covariance_factor_m: Mapping[str, np.ndarray] | None = None,
 ) -> tuple[np.ndarray, GroupLikelihoodDiagnostics]:
     """Score arbitrary leading component dimensions against grouped O-plus evidence.
 
-    ``component_group_covariance_m2`` maps a group ID to a covariance that is
-    broadcastable to ``component_shape + (group_coordinate, group_coordinate)``.
-    It is intended for low-rank graph discrepancy, shared camera bias, gauge, or
-    other correlated component uncertainty that would be lost by diagonalization.
+    ``component_group_covariance_m2`` maps group IDs to dense covariance updates.
+    ``component_group_covariance_factor_m`` maps group IDs to low-rank factors in
+    meters. Each factor must broadcast to
+    ``component_shape + (group_coordinate, rank)`` and contributes
+    ``factor @ factor.T`` without dense materialization.
     """
 
     components = np.asarray(predicted_components_m, dtype=float)
@@ -172,29 +350,42 @@ def grouped_component_log_likelihoods(
         if np.any(~np.isfinite(variance)) or np.any(variance < 0.0):
             raise ValueError("component variances must be finite and nonnegative")
     covariance_by_group = dict(component_group_covariance_m2 or {})
+    factor_by_group = dict(component_group_covariance_factor_m or {})
     known_group_ids = {group.group_id for group in evidence.groups}
-    unknown = set(covariance_by_group) - known_group_ids
-    if unknown:
+    unknown_covariance = set(covariance_by_group) - known_group_ids
+    if unknown_covariance:
         raise ValueError(
-            f"component covariance references unknown groups: {sorted(unknown)}"
+            "component covariance references unknown groups: "
+            f"{sorted(unknown_covariance)}"
+        )
+    unknown_factor = set(factor_by_group) - known_group_ids
+    if unknown_factor:
+        raise ValueError(
+            "component covariance factor references unknown groups: "
+            f"{sorted(unknown_factor)}"
         )
     total = np.zeros(leading_shape, dtype=float)
     responsibilities = []
     effective_weights = evidence.effective_group_weights
     full_covariance_groups = []
+    low_rank_covariance_groups = []
     for group, weight in zip(evidence.groups, effective_weights, strict=True):
         selected = group.selected_predictions(components)
         selected_variance = (
             None if variance is None else group.selected_predictions(variance)
         )
         selected_covariance = covariance_by_group.get(group.group_id)
+        selected_factor = factor_by_group.get(group.group_id)
         if selected_covariance is not None:
             full_covariance_groups.append(group.group_id)
+        if selected_factor is not None:
+            low_rank_covariance_groups.append(group.group_id)
         log_likelihood, responsibility = group_log_likelihood(
             selected,
             group,
             additive_variance_m2=selected_variance,
             additive_covariance_m2=selected_covariance,
+            additive_covariance_factor_m=selected_factor,
         )
         total += weight * log_likelihood
         responsibilities.append(responsibility)
@@ -203,6 +394,7 @@ def grouped_component_log_likelihoods(
         effective_group_weights=effective_weights,
         nominal_responsibilities=np.stack(responsibilities, axis=-1),
         full_covariance_group_ids=tuple(full_covariance_groups),
+        low_rank_covariance_group_ids=tuple(low_rank_covariance_groups),
     )
     return total, diagnostics
 
@@ -215,6 +407,7 @@ def posterior_weights_from_grouped_evidence(
     prefix_frame_count: int,
     component_variance_m2: np.ndarray | None = None,
     component_group_covariance_m2: Mapping[str, np.ndarray] | None = None,
+    component_group_covariance_factor_m: Mapping[str, np.ndarray] | None = None,
 ) -> tuple[np.ndarray, GroupLikelihoodDiagnostics]:
     """Apply grouped evidence to finite component support in log space."""
 
@@ -229,6 +422,9 @@ def posterior_weights_from_grouped_evidence(
         prefix_frame_count=prefix_frame_count,
         component_variance_m2=component_variance_m2,
         component_group_covariance_m2=component_group_covariance_m2,
+        component_group_covariance_factor_m=(
+            component_group_covariance_factor_m
+        ),
     )
     log_posterior = log_weights_from_probabilities(prior, name="prior_weights") + score
     maximum = float(np.max(log_posterior))
