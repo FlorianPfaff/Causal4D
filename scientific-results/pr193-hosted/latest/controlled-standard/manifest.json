@@ -1,0 +1,165 @@
+{
+  "artifacts": [
+    {
+      "bytes": 6465,
+      "path": "counterfactual/high_inference_noise/fit_diagnostics.csv",
+      "sha256": "5d0aa43d57b42ccb94ceccc071f6002b355a30046c73a87fa328cfdcfc9ee9fc"
+    },
+    {
+      "bytes": 114964,
+      "path": "counterfactual/high_inference_noise/interventions.csv",
+      "sha256": "6b5ee759ccd40c9b2e33c46ac2f8801580845ba391e921d3ad48acd1ad939c68"
+    },
+    {
+      "bytes": 38484,
+      "path": "counterfactual/high_inference_noise/parameter_recovery.csv",
+      "sha256": "f3fb73441a64381d56d71825f684c73977dd65f23a7e3039041eaf177627f5b3"
+    },
+    {
+      "bytes": 162841,
+      "path": "counterfactual/high_inference_noise/protocol.json",
+      "sha256": "4e7012bb963b4464a707b6c642bf98d113c986b9231334cb4a68a4b42c57a0ad"
+    },
+    {
+      "bytes": 7010,
+      "path": "counterfactual/high_inference_noise/summary.json",
+      "sha256": "ec53186b688fa9180339eb670d12620e3e0b291d2f74c1a0df0be2a57cda41a5"
+    },
+    {
+      "bytes": 6465,
+      "path": "counterfactual/matched_world/fit_diagnostics.csv",
+      "sha256": "a06ca045694425d72f9be1a7b8927750beeee058d81cff24572072ee38af7698"
+    },
+    {
+      "bytes": 114239,
+      "path": "counterfactual/matched_world/interventions.csv",
+      "sha256": "134891018c49237a1b5373ae085426867f43d62a99df3801cf3d0e7345c0409c"
+    },
+    {
+      "bytes": 37995,
+      "path": "counterfactual/matched_world/parameter_recovery.csv",
+      "sha256": "fbee49a600b5914ac5568ce4083985f5cba7d96cda2748be05a79ae2b83dc4f6"
+    },
+    {
+      "bytes": 162585,
+      "path": "counterfactual/matched_world/protocol.json",
+      "sha256": "9a20c7cf18036901ea7068679a3fa2ad8e2109f9816c6782d6c9247fb6cf30f1"
+    },
+    {
+      "bytes": 7038,
+      "path": "counterfactual/matched_world/summary.json",
+      "sha256": "3e09c62d6a5b00999cbde22856bc232846775400d231b486a4d17359e6e6d826"
+    },
+    {
+      "bytes": 15569,
+      "path": "counterfactual/nominal/fit_diagnostics.csv",
+      "sha256": "e6a6b9cb0167438a009b4ee06a5f54461e33d52502230b62aae455fa49ea7ee1"
+    },
+    {
+      "bytes": 288441,
+      "path": "counterfactual/nominal/interventions.csv",
+      "sha256": "9e7aa3ce4f60e8877936312ed339b3de9db47388d14326bc0a5097b24e6f6f98"
+    },
+    {
+      "bytes": 93814,
+      "path": "counterfactual/nominal/parameter_recovery.csv",
+      "sha256": "44861cc30377f38cf17f93c35849442bd88c4d9cfc0dadbf34dd4d5e8957bf7d"
+    },
+    {
+      "bytes": 162841,
+      "path": "counterfactual/nominal/protocol.json",
+      "sha256": "044a8a59a8528a08d466c08c4ddd6ddb6163bb440d30a9d86a7c38c0a3ec75cf"
+    },
+    {
+      "bytes": 7237,
+      "path": "counterfactual/nominal/summary.json",
+      "sha256": "238c02b1d9c0900e7700cb860c4a2e5290ef1d44437ad66696c5d52507d8001b"
+    },
+    {
+      "bytes": 6442,
+      "path": "counterfactual/strong_world_mismatch/fit_diagnostics.csv",
+      "sha256": "b6a20eb5b915e4d2737700abac5abaeb7bb3a4a8bbd4431c67294c9c6198ea25"
+    },
+    {
+      "bytes": 115704,
+      "path": "counterfactual/strong_world_mismatch/interventions.csv",
+      "sha256": "e609aa74c6a3d9c00e39a9ac24ecf57ac2cd9bd34940535c218b92a1679b3d6a"
+    },
+    {
+      "bytes": 38034,
+      "path": "counterfactual/strong_world_mismatch/parameter_recovery.csv",
+      "sha256": "0be8bb50dae1cb703cca50ed90a5da71f938963f1c6b63e81748adc5d1a70e0a"
+    },
+    {
+      "bytes": 162827,
+      "path": "counterfactual/strong_world_mismatch/protocol.json",
+      "sha256": "d139ee8d752943e23de158164bc254e1deb56332a740b6bfc7790bd116a8850c"
+    },
+    {
+      "bytes": 7042,
+      "path": "counterfactual/strong_world_mismatch/summary.json",
+      "sha256": "17efe00009d1eb57852484f6fa6593af2f7e76608e5c6becf8284eef8ff28aab"
+    },
+    {
+      "bytes": 80617,
+      "path": "dynamic-contact/cases.csv",
+      "sha256": "0200f06e1f3668d36bd5f24c32e72b15d20e9c3df198aa9ee616f6e102686b67"
+    },
+    {
+      "bytes": 609467,
+      "path": "dynamic-contact/cases.json",
+      "sha256": "d6ac75fb1767bab450f35d63d4bafba20bc97305d31109b1a9e68113204b554a"
+    },
+    {
+      "bytes": 844,
+      "path": "environment.json",
+      "sha256": "85037e432aff5619a32f78c3c270012ea7f365952fd6c9980c5e19da9bd773f1"
+    },
+    {
+      "bytes": 85088,
+      "path": "latent-contact/contact_recovery.csv",
+      "sha256": "ad0518569d53f022fe8d32341fcd7b29afc1475a49a81ab1d56aca908a6bde0c"
+    },
+    {
+      "bytes": 19545,
+      "path": "latent-contact/fold_calibration.csv",
+      "sha256": "9991d4e5a4232ba481721c8d782198c26dd38355e8f1d6f29b8d8ddc5673718f"
+    },
+    {
+      "bytes": 178522,
+      "path": "latent-contact/interventions.csv",
+      "sha256": "a8555126b6efd32da50076be900de2cd2ef294fa31f7de40672930947e87d650"
+    },
+    {
+      "bytes": 178530,
+      "path": "latent-contact/protocol.json",
+      "sha256": "1687c4857752f8f90aa57620b4153be4c5c06259b064051abced5258455f09d8"
+    },
+    {
+      "bytes": 2632,
+      "path": "latent-contact/success_gates.json",
+      "sha256": "b9affcc070680a50cb267f77a48cfce4a150b28c45945db5817b17717852bd4a"
+    },
+    {
+      "bytes": 25653,
+      "path": "latent-contact/summary.json",
+      "sha256": "a5b6305a62f5497ce033d79cc9115fd29f4dc4277512849441e2960402ffbad6"
+    },
+    {
+      "bytes": 58399,
+      "path": "summary.json",
+      "sha256": "4ece541b0f0c5250c85c8b7129690c1cc2c7e6a365ddc843900eaf808eb72e1b"
+    },
+    {
+      "bytes": 4773,
+      "path": "summary.md",
+      "sha256": "b34270333a67de89dee31bc85587f77f9f6f367da5f52cd7dc18ce5811d76bcb"
+    },
+    {
+      "bytes": 334,
+      "path": "timings.csv",
+      "sha256": "add06a42b470a15de2e8c4e1ec1ba05307d1d8a35d89e6afe0b31003fb70b18f"
+    }
+  ],
+  "schema_version": 1
+}

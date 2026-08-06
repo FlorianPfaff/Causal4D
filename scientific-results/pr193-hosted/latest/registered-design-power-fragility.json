@@ -1,0 +1,287 @@
+{
+  "artifact_kind": "Causal4DRegisteredDesignPowerAndFragilityAudit",
+  "endpoint_power": [
+    {
+      "approximate_power": 0.050000000000000155,
+      "endpoint": "factual_continuation",
+      "independent_sessions": 18,
+      "standardized_session_effect": 0.0,
+      "two_sided_alpha": 0.05
+    },
+    {
+      "approximate_power": 0.12619508544369573,
+      "endpoint": "factual_continuation",
+      "independent_sessions": 18,
+      "standardized_session_effect": 0.2,
+      "two_sided_alpha": 0.05
+    },
+    {
+      "approximate_power": 0.2886791256969905,
+      "endpoint": "factual_continuation",
+      "independent_sessions": 18,
+      "standardized_session_effect": 0.35,
+      "two_sided_alpha": 0.05
+    },
+    {
+      "approximate_power": 0.5163649719167622,
+      "endpoint": "factual_continuation",
+      "independent_sessions": 18,
+      "standardized_session_effect": 0.5,
+      "two_sided_alpha": 0.05
+    },
+    {
+      "approximate_power": 0.7387294571309213,
+      "endpoint": "factual_continuation",
+      "independent_sessions": 18,
+      "standardized_session_effect": 0.65,
+      "two_sided_alpha": 0.05
+    },
+    {
+      "approximate_power": 0.8919738009214689,
+      "endpoint": "factual_continuation",
+      "independent_sessions": 18,
+      "standardized_session_effect": 0.8,
+      "two_sided_alpha": 0.05
+    },
+    {
+      "approximate_power": 0.9789598266713063,
+      "endpoint": "factual_continuation",
+      "independent_sessions": 18,
+      "standardized_session_effect": 1.0,
+      "two_sided_alpha": 0.05
+    },
+    {
+      "approximate_power": 0.050000000000000155,
+      "endpoint": "same_grasp_transfer",
+      "independent_sessions": 18,
+      "standardized_session_effect": 0.0,
+      "two_sided_alpha": 0.05
+    },
+    {
+      "approximate_power": 0.12619508544369573,
+      "endpoint": "same_grasp_transfer",
+      "independent_sessions": 18,
+      "standardized_session_effect": 0.2,
+      "two_sided_alpha": 0.05
+    },
+    {
+      "approximate_power": 0.2886791256969905,
+      "endpoint": "same_grasp_transfer",
+      "independent_sessions": 18,
+      "standardized_session_effect": 0.35,
+      "two_sided_alpha": 0.05
+    },
+    {
+      "approximate_power": 0.5163649719167622,
+      "endpoint": "same_grasp_transfer",
+      "independent_sessions": 18,
+      "standardized_session_effect": 0.5,
+      "two_sided_alpha": 0.05
+    },
+    {
+      "approximate_power": 0.7387294571309213,
+      "endpoint": "same_grasp_transfer",
+      "independent_sessions": 18,
+      "standardized_session_effect": 0.65,
+      "two_sided_alpha": 0.05
+    },
+    {
+      "approximate_power": 0.8919738009214689,
+      "endpoint": "same_grasp_transfer",
+      "independent_sessions": 18,
+      "standardized_session_effect": 0.8,
+      "two_sided_alpha": 0.05
+    },
+    {
+      "approximate_power": 0.9789598266713063,
+      "endpoint": "same_grasp_transfer",
+      "independent_sessions": 18,
+      "standardized_session_effect": 1.0,
+      "two_sided_alpha": 0.05
+    },
+    {
+      "approximate_power": 0.050000000000000155,
+      "endpoint": "new_contact_transfer",
+      "independent_sessions": 12,
+      "standardized_session_effect": 0.0,
+      "two_sided_alpha": 0.05
+    },
+    {
+      "approximate_power": 0.09719878342102595,
+      "endpoint": "new_contact_transfer",
+      "independent_sessions": 12,
+      "standardized_session_effect": 0.2,
+      "two_sided_alpha": 0.05
+    },
+    {
+      "approximate_power": 0.1983639903030675,
+      "endpoint": "new_contact_transfer",
+      "independent_sessions": 12,
+      "standardized_session_effect": 0.35,
+      "two_sided_alpha": 0.05
+    },
+    {
+      "approximate_power": 0.35282414932733897,
+      "endpoint": "new_contact_transfer",
+      "independent_sessions": 12,
+      "standardized_session_effect": 0.5,
+      "two_sided_alpha": 0.05
+    },
+    {
+      "approximate_power": 0.5373004285732985,
+      "endpoint": "new_contact_transfer",
+      "independent_sessions": 12,
+      "standardized_session_effect": 0.65,
+      "two_sided_alpha": 0.05
+    },
+    {
+      "approximate_power": 0.7136600656001073,
+      "endpoint": "new_contact_transfer",
+      "independent_sessions": 12,
+      "standardized_session_effect": 0.8,
+      "two_sided_alpha": 0.05
+    },
+    {
+      "approximate_power": 0.8828916377291324,
+      "endpoint": "new_contact_transfer",
+      "independent_sessions": 12,
+      "standardized_session_effect": 1.0,
+      "two_sided_alpha": 0.05
+    }
+  ],
+  "execution_block_calibration_fragility": [
+    {
+      "calibration_units": 9,
+      "fragility_may_select_or_change_threshold": false,
+      "leave_one_session_out_nominal_90_percent_threshold_finite": false,
+      "max_to_sample_median_quantiles": {
+        "q50": 2.6005590354080264,
+        "q90": 4.705601808576028,
+        "q95": 5.742521435521638,
+        "q99": 8.567403113279328
+      },
+      "probability_max_exceeds_three_times_sample_median": 0.36715,
+      "probability_max_exceeds_twice_sample_median": 0.759375,
+      "registered_rank_one_based": 9,
+      "score_distribution": "half_normal",
+      "second_largest_to_maximum_quantiles": {
+        "q05": 0.461813027521974,
+        "q50": 0.7927662265373543,
+        "q95": 0.9807817715820388
+      },
+      "simulation_draws": 200000,
+      "threshold_is_sample_maximum": true
+    },
+    {
+      "calibration_units": 9,
+      "fragility_may_select_or_change_threshold": false,
+      "leave_one_session_out_nominal_90_percent_threshold_finite": false,
+      "max_to_sample_median_quantiles": {
+        "q50": 1.4259180064421644,
+        "q90": 1.782040774741833,
+        "q95": 1.9141900117586768,
+        "q99": 2.2101126541397775
+      },
+      "probability_max_exceeds_three_times_sample_median": 0.00019,
+      "probability_max_exceeds_twice_sample_median": 0.03158,
+      "registered_rank_one_based": 9,
+      "score_distribution": "lognormal_sigma_0.25",
+      "second_largest_to_maximum_quantiles": {
+        "q05": 0.6878917868644309,
+        "q50": 0.898661052214976,
+        "q95": 0.9915228849837912
+      },
+      "simulation_draws": 200000,
+      "threshold_is_sample_maximum": true
+    },
+    {
+      "calibration_units": 9,
+      "fragility_may_select_or_change_threshold": false,
+      "leave_one_session_out_nominal_90_percent_threshold_finite": false,
+      "max_to_sample_median_quantiles": {
+        "q50": 2.0355243957666342,
+        "q90": 3.1798180489067955,
+        "q95": 3.6789485777710014,
+        "q99": 4.900604929632874
+      },
+      "probability_max_exceeds_three_times_sample_median": 0.129195,
+      "probability_max_exceeds_twice_sample_median": 0.522715,
+      "registered_rank_one_based": 9,
+      "score_distribution": "lognormal_sigma_0.50",
+      "second_largest_to_maximum_quantiles": {
+        "q05": 0.47183999341666744,
+        "q50": 0.8078420878209616,
+        "q95": 0.9829073482650529
+      },
+      "simulation_draws": 200000,
+      "threshold_is_sample_maximum": true
+    },
+    {
+      "calibration_units": 9,
+      "fragility_may_select_or_change_threshold": false,
+      "leave_one_session_out_nominal_90_percent_threshold_finite": false,
+      "max_to_sample_median_quantiles": {
+        "q50": 4.118273797575844,
+        "q90": 10.034210111087273,
+        "q95": 13.367531942217504,
+        "q99": 23.689205048350022
+      },
+      "probability_max_exceeds_three_times_sample_median": 0.70841,
+      "probability_max_exceeds_twice_sample_median": 0.91984,
+      "registered_rank_one_based": 9,
+      "score_distribution": "lognormal_sigma_1.00",
+      "second_largest_to_maximum_quantiles": {
+        "q05": 0.22287923599250448,
+        "q50": 0.6540825944307966,
+        "q95": 0.9668632359983886
+      },
+      "simulation_draws": 200000,
+      "threshold_is_sample_maximum": true
+    },
+    {
+      "calibration_units": 9,
+      "fragility_may_select_or_change_threshold": false,
+      "leave_one_session_out_nominal_90_percent_threshold_finite": false,
+      "max_to_sample_median_quantiles": {
+        "q50": 3.0865251396641633,
+        "q90": 6.280015003467521,
+        "q95": 7.92013548850541,
+        "q99": 12.923940941366183
+      },
+      "probability_max_exceeds_three_times_sample_median": 0.52377,
+      "probability_max_exceeds_twice_sample_median": 0.844525,
+      "registered_rank_one_based": 9,
+      "score_distribution": "absolute_t5",
+      "second_largest_to_maximum_quantiles": {
+        "q05": 0.3491689385221136,
+        "q50": 0.7373989589210949,
+        "q95": 0.9753828092190215
+      },
+      "simulation_draws": 200000,
+      "threshold_is_sample_maximum": true
+    }
+  ],
+  "interpretation": {
+    "does_not_change_registered_method_or_threshold": true,
+    "does_not_substitute_for_the_36_execution_physical_result": true,
+    "not_conditioned_on_target_outcomes": true
+  },
+  "precision_and_minimum_detectable_effect": [
+    {
+      "expected_95_percent_half_width_in_session_sd_units": 0.6353696873306397,
+      "independent_sessions": 12,
+      "minimum_standardized_effect_for_80_percent_power": 0.8886542652934868,
+      "minimum_standardized_effect_for_90_percent_power": 1.029471492376683
+    },
+    {
+      "expected_95_percent_half_width_in_session_sd_units": 0.4972883007129839,
+      "independent_sessions": 18,
+      "minimum_standardized_effect_for_80_percent_power": 0.700722500795467,
+      "minimum_standardized_effect_for_90_percent_power": 0.8111660962060084
+    }
+  ],
+  "protocol_design_sha256": "6d61f2bea96af0ba04faaf3476990b58cd87e0a9c826420c254a012dec647968",
+  "protocol_id": "causal4d-sloth-multi-action-v1",
+  "schema_version": 1,
+  "session_cluster_is_independent_unit": true
+}
