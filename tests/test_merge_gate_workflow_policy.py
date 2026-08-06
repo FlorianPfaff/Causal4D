@@ -32,6 +32,10 @@ def test_merge_gate_validates_the_pull_request_merge_result() -> None:
 def test_merge_gate_covers_quality_tests_build_and_provider_integration() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
+    assert (
+        "python -W error::SyntaxWarning -m compileall -q -f src tests scripts"
+        in text
+    )
     assert "python -m ruff check ." in text
     assert "python -m mypy --python-version 3.12" in text
     assert "src/causal4d/belief_provider_v2_contract.py" in text
