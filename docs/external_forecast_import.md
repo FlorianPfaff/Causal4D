@@ -91,6 +91,48 @@ physical_frame = anchor_physical_frame + future_time_s * physical_fps
 
 and fails closed on disagreement.
 
+## Runnable MolmoMotion/PhysTwin bridge
+
+[`examples/molmomotion_physics_bridge`](../examples/molmomotion_physics_bridge)
+contains a standalone producer-side exporter, a synthetic input generator, and
+an end-to-end quickstart covering:
+
+- exact PhysTwin node identities and metric world coordinates;
+- several prompts in one `KPFC` forecast bundle;
+- 30 Hz physical data aligned to a 15 Hz MolmoMotion forecast;
+- canonical import and content addressing;
+- BayesianPhysTwin/Causal4D physical posterior generation;
+- byte-identical `beta=0` fallback and exploratory positive-beta sweeps; and
+- the later Prob4D observation-belief extension.
+
+The helper only depends on NumPy and can be copied into an existing MolmoMotion
+environment. A complete local export smoke test is:
+
+```bash
+workdir=/tmp/molmomotion-physics-bridge
+mkdir -p "${workdir}"
+
+python examples/molmomotion_physics_bridge/make_demo_input.py \
+  "${workdir}/molmo_raw.npz"
+
+python examples/molmomotion_physics_bridge/export_molmo_forecast.py \
+  "${workdir}/molmo_raw.npz" \
+  "${workdir}/producer_forecast.npz" \
+  "${workdir}/external_forecast_manifest.json" \
+  --case-id single_lift_cloth \
+  --source-revision demo-checkpoint \
+  --anchor-physical-frame 70 \
+  --physical-fps 30 \
+  --forecast-fps 15 \
+  --forecast 'instruction=Lift the cloth upward.' \
+  --forecast 'paraphrase=Raise the cloth vertically with one hand.' \
+  --forecast 'shuffled=Push the cloth sideways across the table.'
+```
+
+The example supports arbitrary point count; eight points are recommended for the
+first locked comparison, while 16/32-point calls should remain a separate
+scalability ablation.
+
 ## Python API
 
 ```python
