@@ -1,4 +1,4 @@
-name: Temporary acquisition path discovery
+name: Temporary acquisition scaffold provisioning
 
 on:
   pull_request:
@@ -10,223 +10,296 @@ permissions:
   contents: read
 
 concurrency:
-  group: temporary-acquisition-path-discovery-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: temporary-acquisition-provision-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+env:
+  CANDIDATE_SHA: 0cac23a0a64cb48dd531a2e94b0c022eb394f033
+  ACQUISITION_ROOT: /mnt/lexar4tb/causal4d-physical
+  FROZEN_CHECKOUT: /mnt/lexar4tb/causal4d-physical/causal4d-frozen
+  DATASET_ROOT: /mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1
+  REPORT_DIR: /mnt/lexar4tb/causal4d-physical/operator-bootstrap
+  MINIMUM_FREE_BYTES: "107374182400"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUNBUFFERED: "1"
 
 jobs:
-  discover:
-    name: Discover persistent acquisition roots without mutation
+  provision:
+    name: Provision candidate checkout and non-evidence templates
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, nvidia-smi]
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
-      - name: Check out exact pull-request head
+      - name: Check out exact acquisition-candidate revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ env.CANDIDATE_SHA }}
+          fetch-depth: 1
           persist-credentials: false
           clean: true
 
-      - name: Verify checked-out revision
-        env:
-          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      - name: Verify candidate revision and persistent root
         shell: bash
         run: |
           set -euo pipefail
-          actual_head_sha="$(git rev-parse HEAD)"
-          test "${actual_head_sha}" = "${EXPECTED_HEAD_SHA}"
-          echo "CHECKED_OUT_SHA=${actual_head_sha}" >> "${GITHUB_ENV}"
+          test "$(git rev-parse HEAD)" = "${CANDIDATE_SHA}"
+          test -d /mnt/lexar4tb
+          test ! -L /mnt/lexar4tb
+          test -w /mnt/lexar4tb
+          test ! -e "${ACQUISITION_ROOT}"
+          available_bytes="$(df -PB1 /mnt/lexar4tb | awk 'NR == 2 {print $4}')"
+          test "${available_bytes}" -ge "${MINIMUM_FREE_BYTES}"
+          test -f configs/causal4d/sloth_multi_action_v1.json
+          echo "AVAILABLE_BYTES=${available_bytes}" >> "${GITHUB_ENV}"
 
-      - name: Inspect bounded persistent-root candidates
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Create candidate checkout and registered templates
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p outputs/acquisition-path-discovery
-          python3 - <<'PY'
+          umask 027
+          marker="${ACQUISITION_ROOT}/.provisioning-run"
+          venv=""
+          cleanup_on_failure() {
+            status=$?
+            if [[ -n "${venv}" ]]; then
+              rm -rf "${venv}"
+            fi
+            if [[ ${status} -ne 0 && -f "${marker}" ]] && \
+               grep -Fxq "${GITHUB_RUN_ID}:${CANDIDATE_SHA}" "${marker}"; then
+              rm -rf --one-file-system "${ACQUISITION_ROOT}"
+            fi
+            exit "${status}"
+          }
+          trap cleanup_on_failure EXIT
+
+          mkdir "${ACQUISITION_ROOT}"
+          printf '%s\n' "${GITHUB_RUN_ID}:${CANDIDATE_SHA}" > "${marker}"
+          mkdir "${REPORT_DIR}"
+
+          git init "${FROZEN_CHECKOUT}"
+          git -C "${FROZEN_CHECKOUT}" fetch \
+            --depth=1 \
+            "${GITHUB_WORKSPACE}" \
+            "${CANDIDATE_SHA}"
+          git -C "${FROZEN_CHECKOUT}" checkout --detach FETCH_HEAD
+          test "$(git -C "${FROZEN_CHECKOUT}" rev-parse HEAD)" = "${CANDIDATE_SHA}"
+          test -z "$(git -C "${FROZEN_CHECKOUT}" status --porcelain)"
+          test -z "$(git -C "${FROZEN_CHECKOUT}" remote)"
+          if find "${FROZEN_CHECKOUT}" -type l -print -quit | grep -q .; then
+            echo "::error::Candidate checkout contains a symbolic link."
+            exit 1
+          fi
+
+          venv="${RUNNER_TEMP}/causal4d-provision-${GITHUB_RUN_ID}"
+          python -m venv "${venv}"
+          "${venv}/bin/python" -m pip install "${FROZEN_CHECKOUT}"
+          "${venv}/bin/python" -m pip check
+          "${venv}/bin/causal4d" commands validate --require-installed
+
+          "${venv}/bin/causal4d" protocol real scaffold \
+            "${FROZEN_CHECKOUT}/configs/causal4d/sloth_multi_action_v1.json" \
+            "${DATASET_ROOT}"
+          "${venv}/bin/causal4d" protocol readiness scaffold \
+            "${FROZEN_CHECKOUT}" \
+            "${DATASET_ROOT}"
+          "${venv}/bin/causal4d" protocol readiness scaffold-operator-registry \
+            "${FROZEN_CHECKOUT}" \
+            "${DATASET_ROOT}"
+
+          set +e
+          "${venv}/bin/causal4d" protocol readiness source-panel-status \
+            "${FROZEN_CHECKOUT}" \
+            "${DATASET_ROOT}" \
+            --verify-file-hashes \
+            --require-complete \
+            --output-json "${REPORT_DIR}/source-panel-status.json"
+          source_panel_rc=$?
+
+          "${venv}/bin/causal4d" protocol readiness status \
+            "${FROZEN_CHECKOUT}" \
+            "${DATASET_ROOT}" \
+            --verify-file-hashes \
+            --require-ready \
+            --output-json "${REPORT_DIR}/preacquisition-readiness.json"
+          readiness_rc=$?
+
+          "${venv}/bin/causal4d" protocol real status \
+            "${FROZEN_CHECKOUT}/configs/causal4d/sloth_multi_action_v1.json" \
+            "${DATASET_ROOT}" \
+            --repository-root "${FROZEN_CHECKOUT}" \
+            --verify-file-hashes \
+            --require-complete \
+            --output-json "${REPORT_DIR}/confirmatory-evidence-status.json"
+          evidence_rc=$?
+          set -e
+
+          test "${source_panel_rc}" -eq 3
+          test "${readiness_rc}" -eq 3
+          test "${evidence_rc}" -eq 3
+
+          CANDIDATE_SHA="${CANDIDATE_SHA}" \
+          ACQUISITION_ROOT="${ACQUISITION_ROOT}" \
+          FROZEN_CHECKOUT="${FROZEN_CHECKOUT}" \
+          DATASET_ROOT="${DATASET_ROOT}" \
+          REPORT_DIR="${REPORT_DIR}" \
+          AVAILABLE_BYTES="${AVAILABLE_BYTES}" \
+          GITHUB_RUN_ID="${GITHUB_RUN_ID}" \
+          python - <<'PY'
           from __future__ import annotations
 
+          import hashlib
           import json
           import os
-          import shutil
-          import subprocess
           from pathlib import Path
           from typing import Any
 
-          output = Path("outputs/acquisition-path-discovery/path-discovery.json")
-          home = Path.home()
-          workspace_raw = os.environ.get("RUNNER_WORKSPACE")
-          roots = [
-              Path("/mnt/lexar4tb"),
-              Path("/mnt"),
-              Path("/data"),
-              Path("/opt"),
-              home,
-          ]
-          if workspace_raw:
-              roots.append(Path(workspace_raw))
+          report_dir = Path(os.environ["REPORT_DIR"])
 
-          unique_roots: list[Path] = []
-          seen: set[str] = set()
-          for root in roots:
-              text = str(root)
-              if text not in seen:
-                  unique_roots.append(root)
-                  seen.add(text)
+          def load(name: str) -> dict[str, Any]:
+              value = json.loads((report_dir / name).read_text(encoding="utf-8"))
+              if not isinstance(value, dict):
+                  raise TypeError(f"{name} must contain a JSON object")
+              return value
 
-          def inspect(path: Path) -> dict[str, Any]:
-              result: dict[str, Any] = {
-                  "path": str(path),
-                  "exists": path.exists(),
-                  "is_directory": path.is_dir(),
-                  "is_symlink": path.is_symlink(),
-                  "writable": os.access(path, os.W_OK) if path.exists() else False,
-              }
-              if path.is_dir() and not path.is_symlink():
-                  try:
-                      usage = shutil.disk_usage(path)
-                  except OSError:
-                      pass
-                  else:
-                      result.update(
-                          {
-                              "free_bytes": usage.free,
-                              "total_bytes": usage.total,
-                          }
-                      )
-              return result
+          source = load("source-panel-status.json")
+          readiness = load("preacquisition-readiness.json")
+          evidence = load("confirmatory-evidence-status.json")
+          next_execution = source.get("next_execution")
+          if not isinstance(next_execution, dict):
+              raise ValueError("source panel lacks its first registered execution")
 
-          def bounded_candidates(root: Path) -> list[str]:
-              if not root.is_dir() or root.is_symlink():
-                  return []
-              matches: list[str] = []
-              root_depth = len(root.parts)
-              for current, directories, _files in os.walk(root, followlinks=False):
-                  current_path = Path(current)
-                  depth = len(current_path.parts) - root_depth
-                  directories[:] = sorted(
-                      name
-                      for name in directories
-                      if not (current_path / name).is_symlink()
-                      and name not in {".cache", ".local", "node_modules", ".venv"}
-                  )
-                  if depth >= 4:
-                      directories[:] = []
-                  lowered = current_path.name.lower()
-                  if any(token in lowered for token in ("causal4d", "sloth")):
-                      matches.append(str(current_path))
-                      if len(matches) >= 50:
-                          break
-              return matches
+          assert source.get("valid") is True
+          assert source.get("complete") is False
+          assert source.get("specified_executions") == 12
+          assert source.get("manifest_executions") == 0
+          assert source.get("validated_executions") == 0
+          assert next_execution.get("execution_id") == "sloth-pre-v2-lift_high-r1"
 
-          sudo_binary = shutil.which("sudo")
-          passwordless_sudo = False
-          if sudo_binary is not None:
-              sudo = subprocess.run(
-                  [sudo_binary, "-n", "true"],
-                  check=False,
-                  stdout=subprocess.DEVNULL,
-                  stderr=subprocess.DEVNULL,
-              )
-              passwordless_sudo = sudo.returncode == 0
+          assert readiness.get("valid") is True
+          assert readiness.get("ready") is False
+          collection_gate = readiness.get("collection_gate")
+          if not isinstance(collection_gate, dict):
+              raise ValueError("readiness report lacks collection_gate")
+          assert collection_gate.get("first_confirmatory_execution_allowed") is False
 
-          root_reports = [inspect(root) for root in unique_roots]
-          candidate_paths: list[str] = []
-          for root in unique_roots:
-              candidate_paths.extend(bounded_candidates(root))
-          candidate_paths = sorted(set(candidate_paths))[:100]
+          assert evidence.get("specified_executions") == 36
+          assert evidence.get("manifest_executions") == 0
+          assert evidence.get("acquired_executions") == 0
+          assert evidence.get("validated_executions") == 0
+          assert evidence.get("claim_ready") is False
 
-          writable_roots = [
-              report["path"]
-              for report in root_reports
-              if report["is_directory"]
-              and not report["is_symlink"]
-              and report["writable"]
-          ]
-          preferred_parent = next(
-              (
-                  candidate
-                  for candidate in ("/mnt/lexar4tb", "/data", str(home))
-                  if candidate in writable_roots
-              ),
-              None,
-          )
-          recommendation = None
-          if preferred_parent is not None:
-              parent = Path(preferred_parent)
-              recommendation = {
-                  "parent": str(parent),
-                  "frozen_checkout": str(
-                      parent / "causal4d-physical" / "causal4d-frozen"
-                  ),
-                  "dataset_root": str(
-                      parent
-                      / "causal4d-physical"
-                      / "causal4d-sloth-multi-action-v1"
-                  ),
-              }
-
-          payload = {
+          frozen = Path(os.environ["FROZEN_CHECKOUT"])
+          dataset = Path(os.environ["DATASET_ROOT"])
+          protocol = frozen / "configs/causal4d/sloth_multi_action_v1.json"
+          protocol_sha = hashlib.sha256(protocol.read_bytes()).hexdigest()
+          summary = {
               "schema_version": 1,
-              "artifact_kind": "Causal4DAcquisitionPathDiscoveryV1",
-              "repository": os.environ["GITHUB_REPOSITORY"],
-              "checked_out_commit": os.environ["CHECKED_OUT_SHA"],
-              "runner_name": os.environ.get("RUNNER_NAME"),
-              "runner_os": os.environ.get("RUNNER_OS"),
-              "runner_arch": os.environ.get("RUNNER_ARCH"),
-              "home": str(home),
-              "runner_workspace": workspace_raw,
-              "passwordless_sudo": passwordless_sudo,
-              "roots": root_reports,
-              "bounded_matching_directories": candidate_paths,
-              "recommended_non_evidence_paths": recommendation,
+              "artifact_kind": "Causal4DAcquisitionScaffoldProvisioningV1",
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "candidate_commit": os.environ["CANDIDATE_SHA"],
+              "protocol_sha256": protocol_sha,
+              "acquisition_root": os.environ["ACQUISITION_ROOT"],
+              "frozen_checkout": str(frozen),
+              "dataset_root": str(dataset),
+              "free_bytes_before_provisioning": int(os.environ["AVAILABLE_BYTES"]),
+              "source_panel": {
+                  "specified_executions": source["specified_executions"],
+                  "manifest_executions": source["manifest_executions"],
+                  "validated_executions": source["validated_executions"],
+                  "next_execution": next_execution,
+              },
+              "preacquisition": {
+                  "valid": readiness["valid"],
+                  "ready": readiness["ready"],
+                  "first_confirmatory_execution_allowed": False,
+                  "blockers": readiness.get("blockers", []),
+              },
+              "confirmatory": {
+                  "specified_executions": evidence["specified_executions"],
+                  "manifest_executions": evidence["manifest_executions"],
+                  "acquired_executions": evidence["acquired_executions"],
+                  "validated_executions": evidence["validated_executions"],
+                  "claim_ready": evidence["claim_ready"],
+              },
               "claim_boundary": (
-                  "This discovery reads directory metadata only. It does not create "
-                  "a checkout, dataset, scaffold, manifest, gate, or evidence."
+                  "Provisioning created only a detached candidate checkout and "
+                  "registered incomplete templates. It did not acquire, validate, "
+                  "publish, seal, approve, attest, or count a physical execution."
               ),
           }
+          output = report_dir / "provisioning-summary.json"
           output.write_text(
-              json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n",
+              json.dumps(summary, indent=2, sort_keys=True, allow_nan=False) + "\n",
               encoding="utf-8",
           )
-          print(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False))
+          print(json.dumps(summary, indent=2, sort_keys=True, allow_nan=False))
           PY
 
-      - name: Publish discovery summary
-        if: always()
+          rm -rf "${venv}"
+          rm "${marker}"
+          trap - EXIT
+
+      - name: Copy sanitized summary into the Actions workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p outputs/acquisition-provisioning
+          cp \
+            "${REPORT_DIR}/provisioning-summary.json" \
+            outputs/acquisition-provisioning/provisioning-summary.json
+
+      - name: Publish provisioning summary
         shell: bash
         run: |
           set -euo pipefail
           {
-            echo "### Causal4D acquisition path discovery"
+            echo "### Causal4D acquisition scaffold provisioned"
             echo
-            echo "Read-only directory metadata; no scaffold or evidence was created."
+            echo "Only registered incomplete templates were created; evidence counts remain zero."
             echo
             python3 - <<'PY'
           import json
           from pathlib import Path
 
-          payload = json.loads(
+          value = json.loads(
               Path(
-                  "outputs/acquisition-path-discovery/path-discovery.json"
+                  "outputs/acquisition-provisioning/provisioning-summary.json"
               ).read_text(encoding="utf-8")
           )
-          print(f"- runner: `{payload.get('runner_name')}`")
-          print(f"- passwordless sudo: `{payload.get('passwordless_sudo')}`")
-          recommendation = payload.get("recommended_non_evidence_paths")
-          if recommendation is None:
-              print("- recommended writable root: `none found`")
-          else:
-              print(f"- recommended parent: `{recommendation['parent']}`")
-              print(f"- frozen checkout: `{recommendation['frozen_checkout']}`")
-              print(f"- dataset root: `{recommendation['dataset_root']}`")
+          print(f"- candidate commit: `{value['candidate_commit']}`")
+          print(f"- frozen checkout: `{value['frozen_checkout']}`")
+          print(f"- dataset root: `{value['dataset_root']}`")
+          source = value["source_panel"]
+          print(
+              "- source panel: "
+              f"`{source['validated_executions']}/{source['specified_executions']}`"
+          )
+          print(
+              "- next source execution: "
+              f"`{source['next_execution']['execution_id']}`"
+          )
+          confirmatory = value["confirmatory"]
+          print(
+              "- confirmatory acquired/validated: "
+              f"`{confirmatory['acquired_executions']}/"
+              f"{confirmatory['validated_executions']}`"
+          )
+          print(
+              "- first confirmatory execution allowed: "
+              f"`{value['preacquisition']['first_confirmatory_execution_allowed']}`"
+          )
           PY
           } >> "${GITHUB_STEP_SUMMARY}"
 
-      - name: Upload discovery artifact
-        if: always()
+      - name: Upload sanitized provisioning artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: causal4d-acquisition-path-discovery
-          path: outputs/acquisition-path-discovery/path-discovery.json
+          name: causal4d-acquisition-scaffold-provisioning
+          path: outputs/acquisition-provisioning/provisioning-summary.json
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
