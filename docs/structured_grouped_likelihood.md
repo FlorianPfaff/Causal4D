@@ -11,7 +11,9 @@ low-rank factor:  U, with C = U U^T
 The existing dense `component_group_covariance_m2` path remains unchanged. The
 optional `component_group_covariance_factor_m` path is intended for shared gauge,
 graph-discrepancy, camera-bias, or other low-rank uncertainty where forming one
-full covariance matrix for every posterior component would be wasteful.
+full covariance matrix for every posterior component would be wasteful. The
+factor API is additive and opt-in; no producer is silently converted from dense
+to structured covariance.
 
 ## Numerical method
 
