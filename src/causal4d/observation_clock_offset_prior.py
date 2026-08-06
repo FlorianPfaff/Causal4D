@@ -20,9 +20,7 @@ from typing import Any
 
 import numpy as np
 
-OBSERVATION_CLOCK_OFFSET_PRIOR_SCHEMA = (
-    "causal4d.observation-clock-offset-prior"
-)
+OBSERVATION_CLOCK_OFFSET_PRIOR_SCHEMA = "causal4d.observation-clock-offset-prior"
 OBSERVATION_CLOCK_OFFSET_PRIOR_VERSION = 1
 OBSERVATION_TIME_CORRECTION_CONVENTION = (
     "aligned_observation_time_s = observation_time_s + offset_s"
@@ -133,9 +131,7 @@ def _sequence(value: object, *, name: str) -> Sequence[object]:
 
 def _ordered_unique_strings(value: object, *, name: str) -> tuple[str, ...]:
     values = _sequence(value, name=name)
-    result = tuple(
-        _nonempty_string(item, name=f"{name} entry") for item in values
-    )
+    result = tuple(_nonempty_string(item, name=f"{name} entry") for item in values)
     _require(bool(result), f"{name} must not be empty")
     _require(len(set(result)) == len(result), f"{name} must be unique")
     return result
@@ -186,9 +182,8 @@ def _predictive_summary(
     mean = float(np.mean(values))
     sample_standard_deviation = float(np.std(values, ddof=1))
     predictive_variance = (
-        (1.0 + 1.0 / len(values)) * sample_standard_deviation**2
-        + grid_standard_deviation_s**2
-    )
+        1.0 + 1.0 / len(values)
+    ) * sample_standard_deviation**2 + grid_standard_deviation_s**2
     predictive_standard_deviation = max(
         minimum_standard_deviation_s,
         math.sqrt(max(0.0, predictive_variance)),
@@ -241,9 +236,7 @@ class ObservationClockOffsetPriorV1:
             name="source_offsets_s",
         )
         _require(
-            len(source_artifact_ids)
-            == len(execution_ids)
-            == len(source_offsets),
+            len(source_artifact_ids) == len(execution_ids) == len(source_offsets),
             "source timing evidence counts differ",
         )
         _require(
@@ -364,9 +357,7 @@ class ObservationClockOffsetPriorV1:
             "minimum_predictive_standard_deviation_s": (
                 self.minimum_predictive_standard_deviation_s
             ),
-            "predictive_standard_deviation_s": (
-                self.predictive_standard_deviation_s
-            ),
+            "predictive_standard_deviation_s": (self.predictive_standard_deviation_s),
             "information_boundary": dict(_INFORMATION_BOUNDARY),
             "claim_boundary": _CLAIM_BOUNDARY,
         }
@@ -403,8 +394,7 @@ class ObservationClockOffsetPriorV1:
             "unexpected observation clock-offset prior schema",
         )
         _require(
-            value.get("schema_version")
-            == OBSERVATION_CLOCK_OFFSET_PRIOR_VERSION,
+            value.get("schema_version") == OBSERVATION_CLOCK_OFFSET_PRIOR_VERSION,
             "unsupported observation clock-offset prior version",
         )
         _require(
