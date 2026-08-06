@@ -8,7 +8,7 @@ on:
       - "scientific-trigger/pr193-hosted.txt"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: pr193-hosted-push-study
@@ -32,7 +32,7 @@ jobs:
           ref: agent/lock-real-analysis-reporting
           path: executor
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
           clean: true
 
       - name: Check out immutable PR 193 target
@@ -78,6 +78,34 @@ jobs:
             --output-dir work/pr193-hosted-push \
             --profile standard \
             | tee work/pr193-hosted-push/console.log
+
+      - name: Publish compact scientific result
+        shell: bash
+        run: |
+          set -euo pipefail
+          destination="executor/scientific-results/pr193-hosted-push/latest"
+          rm -rf "${destination}"
+          mkdir -p "${destination}/controlled-standard"
+          cp work/pr193-hosted-push/hosted-summary.json "${destination}/"
+          cp work/pr193-hosted-push/registered-design-power-fragility.json \
+            "${destination}/"
+          cp work/pr193-hosted-push/controlled-standard/summary.json \
+            "${destination}/controlled-standard/"
+          cp work/pr193-hosted-push/controlled-standard/summary.md \
+            "${destination}/controlled-standard/"
+          cp work/pr193-hosted-push/controlled-standard/manifest.json \
+            "${destination}/controlled-standard/"
+          cp work/pr193-hosted-push/controlled-standard/timings.csv \
+            "${destination}/controlled-standard/"
+          echo "${GITHUB_RUN_ID}" \
+            > executor/scientific-results/pr193-hosted-push/LATEST_RUN.txt
+          git -C executor config user.name "github-actions[bot]"
+          git -C executor config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C executor add scientific-results/pr193-hosted-push
+          git -C executor commit -m \
+            "Record PR 193 hosted push study ${GITHUB_RUN_ID}"
+          git -C executor push origin HEAD:agent/lock-real-analysis-reporting
 
       - name: Upload scientific result bundle
         if: always()
