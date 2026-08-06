@@ -22,8 +22,7 @@ def test_tag_release_requires_public_provider_integration() -> None:
         "      - build\n"
         "      - installed-artifact\n"
         "      - bundles\n"
-        "      - frozen-manifest\n"
-        in text
+        "      - frozen-manifest\n" in text
     )
     assert "BPT_READ_SSH_KEY" not in text
     assert "ssh-key:" not in text
