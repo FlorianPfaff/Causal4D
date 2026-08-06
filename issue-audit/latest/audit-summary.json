@@ -1,0 +1,291 @@
+{
+  "artifact_kind": "Causal4DOpenIssuesAcquisitionAuditV1",
+  "audit_source_sha": "977f174433d82329126f088c89567b3d6709174e",
+  "claim_boundary": "This read-only audit does not scaffold, seal, publish, repair, or count any physical source-panel or confirmatory execution. Workflow status artifacts are not physical evidence.",
+  "commands_executed": true,
+  "confirmatory_evidence": {
+    "accounting_complete": false,
+    "acquired_executions": 0,
+    "blockers": [
+      "prerequisite:object_registration",
+      "prerequisite:slip_pilot",
+      "prerequisite:timebase_calibration",
+      "prerequisite:contact_registration",
+      "prerequisite:method_freeze",
+      "prerequisite:method_freeze_validation",
+      "prerequisite:operator_registry",
+      "prerequisite:operator_identity_bindings",
+      "missing_execution_manifests:36",
+      "missing_session_manifests:18"
+    ],
+    "claim_ready": false,
+    "complete": false,
+    "incomplete_execution_ids": [],
+    "invalid_execution_ids": [],
+    "manifest_executions": 0,
+    "missing_execution_ids": [
+      "sloth-v1-c1-s6-e1",
+      "sloth-v1-c1-s6-e2",
+      "sloth-v1-c2-s1-e1",
+      "sloth-v1-c2-s1-e2",
+      "sloth-v1-c3-s6-e1",
+      "sloth-v1-c3-s6-e2",
+      "sloth-v1-c2-s2-e1",
+      "sloth-v1-c2-s2-e2",
+      "sloth-v1-c3-s4-e1",
+      "sloth-v1-c3-s4-e2",
+      "sloth-v1-c1-s3-e1",
+      "sloth-v1-c1-s3-e2",
+      "sloth-v1-c3-s3-e1",
+      "sloth-v1-c3-s3-e2",
+      "sloth-v1-c1-s2-e1",
+      "sloth-v1-c1-s2-e2",
+      "sloth-v1-c2-s4-e1",
+      "sloth-v1-c2-s4-e2",
+      "sloth-v1-c1-s1-e1",
+      "sloth-v1-c1-s1-e2",
+      "sloth-v1-c2-s6-e1",
+      "sloth-v1-c2-s6-e2",
+      "sloth-v1-c3-s5-e1",
+      "sloth-v1-c3-s5-e2",
+      "sloth-v1-c2-s3-e1",
+      "sloth-v1-c2-s3-e2",
+      "sloth-v1-c3-s2-e1",
+      "sloth-v1-c3-s2-e2",
+      "sloth-v1-c1-s5-e1",
+      "sloth-v1-c1-s5-e2",
+      "sloth-v1-c3-s1-e1",
+      "sloth-v1-c3-s1-e2",
+      "sloth-v1-c1-s4-e1",
+      "sloth-v1-c1-s4-e2",
+      "sloth-v1-c2-s5-e1",
+      "sloth-v1-c2-s5-e2"
+    ],
+    "next_pending_execution": {
+      "acquisition_execution_index": 0,
+      "execution_id": "sloth-v1-c1-s6-e1",
+      "session_id": "sloth-v1-c1-s6"
+    },
+    "specified_executions": 36,
+    "validated_executions": 0
+  },
+  "environment": {
+    "dataset_root": {
+      "configured_path": "/mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1",
+      "exists": true,
+      "is_directory": true,
+      "is_symlink": false
+    },
+    "frozen_checkout": {
+      "configured_path": "/mnt/lexar4tb/causal4d-physical/causal4d-frozen",
+      "exists": true,
+      "git_commit": "0cac23a0a64cb48dd531a2e94b0c022eb394f033",
+      "is_directory": true,
+      "is_symlink": false
+    }
+  },
+  "exit_codes": {
+    "confirmatory_evidence_status": 3,
+    "preacquisition_readiness": 3,
+    "source_panel_status": 3
+  },
+  "filesystem_after": {
+    "dataset_root": {
+      "available": true,
+      "directory_count": 71,
+      "metadata_sha256": "661e3a4514912ac970a86b52c129b9afa0d925694bd8ba5eb7b1dc083bfb7d9a",
+      "ordinary_file_count": 78,
+      "other_entry_count": 0,
+      "other_entry_paths": [],
+      "symlink_count": 0,
+      "symlink_paths": [],
+      "total_file_bytes": 229202
+    },
+    "frozen_checkout": {
+      "available": true,
+      "directory_count": 93,
+      "metadata_sha256": "9c489929ad4311f7341d33b0b03cad47acf10ed0a481030a7321cca843420c2e",
+      "ordinary_file_count": 1112,
+      "other_entry_count": 0,
+      "other_entry_paths": [],
+      "symlink_count": 0,
+      "symlink_paths": [],
+      "total_file_bytes": 20745079
+    }
+  },
+  "filesystem_before": {
+    "dataset_root": {
+      "available": true,
+      "directory_count": 71,
+      "metadata_sha256": "661e3a4514912ac970a86b52c129b9afa0d925694bd8ba5eb7b1dc083bfb7d9a",
+      "ordinary_file_count": 78,
+      "other_entry_count": 0,
+      "other_entry_paths": [],
+      "symlink_count": 0,
+      "symlink_paths": [],
+      "total_file_bytes": 229202
+    },
+    "frozen_checkout": {
+      "available": true,
+      "directory_count": 93,
+      "metadata_sha256": "9c489929ad4311f7341d33b0b03cad47acf10ed0a481030a7321cca843420c2e",
+      "ordinary_file_count": 1112,
+      "other_entry_count": 0,
+      "other_entry_paths": [],
+      "symlink_count": 0,
+      "symlink_paths": [],
+      "total_file_bytes": 20745079
+    }
+  },
+  "filesystem_unchanged": true,
+  "preacquisition_readiness": {
+    "blockers": [
+      "prerequisite:object_registration",
+      "prerequisite:slip_pilot",
+      "prerequisite:timebase_calibration",
+      "prerequisite:contact_registration",
+      "prerequisite:operator_registry",
+      "prerequisite:operator_identity_bindings",
+      "prerequisite:method_freeze",
+      "prerequisite:method_freeze_validation",
+      "gate:signature_panel_complete",
+      "gate:actuator_sync_passed",
+      "gate:support_registration_passed",
+      "gate:end_to_end_dry_run_passed",
+      "gate:software_environment_locked"
+    ],
+    "chronology_blockers": [],
+    "collection_gate": {
+      "actuator_sync_passed": false,
+      "analysis_code_frozen": false,
+      "contact_registration_approved": false,
+      "end_to_end_dry_run_passed": false,
+      "first_confirmatory_execution_allowed": false,
+      "operator_approval_bindings_valid": false,
+      "operator_identities_registered": false,
+      "signature_panel_complete": false,
+      "slip_pilot_passed_or_versioned_out": false,
+      "software_environment_locked": false,
+      "support_registration_passed": false
+    },
+    "confirmatory_collection": {
+      "acquired_executions": 0,
+      "manifest_executions": 0,
+      "not_started": true,
+      "validated_executions": 0
+    },
+    "evidence_sha256": "15c9f5accee821ad3b07786fcc1bb8d02492d9cd546dbaf501f2f9cc7e36c445",
+    "malformed_gates": [],
+    "malformed_prerequisites": [],
+    "missing_or_template_gates": [
+      "signature_panel_complete",
+      "actuator_sync_passed",
+      "support_registration_passed",
+      "end_to_end_dry_run_passed",
+      "software_environment_locked"
+    ],
+    "missing_prerequisites": [
+      "object_registration",
+      "slip_pilot",
+      "timebase_calibration",
+      "contact_registration",
+      "operator_registry",
+      "operator_identity_bindings",
+      "method_freeze",
+      "method_freeze_validation"
+    ],
+    "passed": false,
+    "ready": false,
+    "status_sha256": "22b4460a7487e0355bd040b06bf9b5529ea4232dc30b156a794063e2d3dcc030",
+    "valid": true
+  },
+  "present_evidence_valid": true,
+  "protocol_available": true,
+  "repository": "IPS-Stuttgart/Causal4D",
+  "runner_arch": "X64",
+  "runner_name": "workstation2",
+  "runner_os": "Linux",
+  "schema_version": 1,
+  "source_panel": {
+    "blockers": [
+      "manifest_missing:sloth-pre-v2-lift_high-r1",
+      "manifest_missing:sloth-pre-v2-lift_high-r2",
+      "manifest_missing:sloth-pre-v2-lift_high-r3",
+      "manifest_missing:sloth-pre-v2-lower_high-r1",
+      "manifest_missing:sloth-pre-v2-lower_high-r2",
+      "manifest_missing:sloth-pre-v2-lower_high-r3",
+      "manifest_missing:sloth-pre-v2-lift_high_slow-r1",
+      "manifest_missing:sloth-pre-v2-lift_high_slow-r2",
+      "manifest_missing:sloth-pre-v2-lift_high_slow-r3",
+      "manifest_missing:sloth-pre-v2-lift_high_long_hold-r1",
+      "manifest_missing:sloth-pre-v2-lift_high_long_hold-r2",
+      "manifest_missing:sloth-pre-v2-lift_high_long_hold-r3"
+    ],
+    "complete": false,
+    "completed_execution_ids": [],
+    "evidence_sha256": "e81d97942784cd3bf8717ba4672f5b1b2872e421bb418ec993cd0b252fa0822e",
+    "invalid_execution_ids": [],
+    "manifest_executions": 0,
+    "missing_execution_ids": [
+      "sloth-pre-v2-lift_high-r1",
+      "sloth-pre-v2-lift_high-r2",
+      "sloth-pre-v2-lift_high-r3",
+      "sloth-pre-v2-lower_high-r1",
+      "sloth-pre-v2-lower_high-r2",
+      "sloth-pre-v2-lower_high-r3",
+      "sloth-pre-v2-lift_high_slow-r1",
+      "sloth-pre-v2-lift_high_slow-r2",
+      "sloth-pre-v2-lift_high_slow-r3",
+      "sloth-pre-v2-lift_high_long_hold-r1",
+      "sloth-pre-v2-lift_high_long_hold-r2",
+      "sloth-pre-v2-lift_high_long_hold-r3"
+    ],
+    "next_execution": {
+      "allowed_uses": [
+        "noise_floor_estimation",
+        "reset_repeatability",
+        "source_only_mechanism_signature_diagnosis",
+        "analysis_pipeline_testing"
+      ],
+      "command_profile_id": "lift_high",
+      "confirmatory_fold_member": false,
+      "contact_region_id": "upper_torso",
+      "execution_id": "sloth-pre-v2-lift_high-r1",
+      "forbidden_uses": [
+        "confirmatory_target_evaluation",
+        "target_threshold_selection"
+      ],
+      "fresh_reset_and_fresh_grasp": true,
+      "manifest_path": "preacquisition/source_panel/executions/sloth-pre-v2-lift_high-r1/manifest.json",
+      "profile": {
+        "amplitude_m": 0.08,
+        "direction_controller": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "hold_duration_s": 0.25,
+        "id": "lift_high",
+        "outbound_duration_s": 0.75,
+        "post_return_settle_s": 1.5,
+        "return_duration_s": 0.75,
+        "waveform": "minimum_jerk_out_hold_minimum_jerk_return"
+      },
+      "realization_condition_id": "nominal",
+      "replicate": 1,
+      "session_id": "sloth-pre-v2-lift_high-r1",
+      "source_panel_execution_index": 0,
+      "template_path": "preacquisition/source_panel/executions/sloth-pre-v2-lift_high-r1/manifest.template.json",
+      "template_present": true,
+      "template_valid": true
+    },
+    "registered_prefix_valid": true,
+    "specified_executions": 12,
+    "status_sha256": "735ea59b2d6d1c4634c8ce01e3d570e194b5b106102827d653c7373c72a64056",
+    "valid": true,
+    "validated_executions": 0
+  },
+  "target_outcomes_used": false,
+  "workflow_run_attempt": "1",
+  "workflow_run_id": "31125212058"
+}
