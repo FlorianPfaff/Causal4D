@@ -1,0 +1,24 @@
+{
+  "artifact_kind": "Causal4DPR193HostedScientificSummary",
+  "claim_boundary": "Independent controlled and source-only design evidence; not a substitute for the registered 18-session/36-execution physical result.",
+  "controlled_integrity": null,
+  "controlled_summary_sha256": null,
+  "precision_and_minimum_detectable_effect": [
+    {
+      "expected_95_percent_half_width_in_session_sd_units": 0.6353696873306397,
+      "independent_sessions": 12,
+      "minimum_standardized_effect_for_80_percent_power": 0.8886542652934868,
+      "minimum_standardized_effect_for_90_percent_power": 1.029471492376683
+    },
+    {
+      "expected_95_percent_half_width_in_session_sd_units": 0.4972883007129839,
+      "independent_sessions": 18,
+      "minimum_standardized_effect_for_80_percent_power": 0.700722500795467,
+      "minimum_standardized_effect_for_90_percent_power": 0.8111660962060084
+    }
+  ],
+  "profile": "standard",
+  "schema_version": 1,
+  "target_sha": "fa6a64b2442474321e453e9e8fdccd591e0a282d",
+  "workflow_run_id": "31087305562"
+}
