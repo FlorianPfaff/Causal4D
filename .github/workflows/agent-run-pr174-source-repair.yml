@@ -9,6 +9,7 @@ on:
 permissions:
   contents: write
 
+# Second revision triggers the registered source-only executor.
 concurrency:
   group: run-pr174-source-only-repair
   cancel-in-progress: false
