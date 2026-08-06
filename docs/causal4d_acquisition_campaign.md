@@ -23,10 +23,12 @@ causal4d protocol acquisition doctor \
   --require-ready
 ```
 
-The campaign commands first verify the doctor artifact kind, schema, canonical
-SHA-256, execution counts, check counts, next-execution identity, completion
-state, and `target_outcomes_used=false` boundary. A modified or contradictory
-doctor artifact is rejected.
+The campaign commands first verify the exact schema-1 doctor contract: artifact
+kind, canonical SHA-256, timestamp and protocol identity, threshold types, the
+complete check inventory, derived validity/readiness/completion flags, execution
+counts, next-execution identity and index, resume semantics, and the recursive
+`target_outcomes_used=false` boundary. A modified, self-rehashed but
+contradictory, or outcome-contaminated doctor artifact is rejected.
 
 ## Compact machine-readable status
 
@@ -89,8 +91,14 @@ causal4d protocol acquisition campaign report \
 
 Both formats contain the progress, next execution, blockers, warnings, complete
 doctor-check table, source doctor digest, and explicit scientific boundary.
-Publication is atomic; without `--overwrite`, an existing destination is
-preserved and the command fails.
+Operator-controlled strings are escaped before rendering. Publication is
+atomic; without `--overwrite`, an existing destination is preserved and the
+command fails.
+
+A campaign output must be distinct from its source doctor report. The command
+rejects the same pathname as well as an existing symbolic-link or hard-link
+alias, even when `--overwrite` is supplied. This prevents a derived summary or
+rendered report from replacing the authoritative doctor artifact.
 
 ## Workflow usage
 
