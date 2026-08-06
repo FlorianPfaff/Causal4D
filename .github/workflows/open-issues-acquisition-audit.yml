@@ -1,0 +1,143 @@
+name: Audit Causal4D open physical issues
+
+on:
+  push:
+    branches:
+      - agent/open-issues-acquisition-audit-20260807
+    paths:
+      - ".github/workflows/open-issues-acquisition-audit.yml"
+      - "scripts/ci/run_open_issues_acquisition_audit.py"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: open-issues-acquisition-audit-20260807
+  cancel-in-progress: false
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONHASHSEED: "0"
+  PYTHONUNBUFFERED: "1"
+  FROZEN_CHECKOUT: /mnt/lexar4tb/causal4d-physical/causal4d-frozen
+  DATASET_ROOT: /mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1
+  AUDIT_OUTPUT: issue-audit/latest
+
+jobs:
+  audit:
+    name: Read-only acquisition-state audit
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out exact execution revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: true
+          clean: true
+
+      - name: Verify source revision and runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
+          test -z "$(git status --porcelain=v1)"
+          echo "AUDIT_SOURCE_SHA=${source_sha}" >> "${GITHUB_ENV}"
+          {
+            echo "source_sha=${source_sha}"
+            echo "runner_name=${RUNNER_NAME}"
+            echo "runner_os=${RUNNER_OS}"
+            echo "runner_arch=${RUNNER_ARCH}"
+          }
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install isolated audit environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          venv="${RUNNER_TEMP}/causal4d-open-issues-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          python -m venv "${venv}"
+          echo "AUDIT_VENV=${venv}" >> "${GITHUB_ENV}"
+          echo "${venv}/bin" >> "${GITHUB_PATH}"
+          "${venv}/bin/python" -m pip install \
+            "pip==25.2" \
+            "setuptools==80.9.0" \
+            "wheel==0.45.1"
+          "${venv}/bin/python" -m pip install .
+          "${venv}/bin/python" -m pip check
+          "${venv}/bin/python" -m pip freeze --all > "${RUNNER_TEMP}/audit-pip-freeze.txt"
+
+      - name: Run fail-closed read-only audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "${AUDIT_OUTPUT}"
+          python scripts/ci/run_open_issues_acquisition_audit.py \
+            --frozen-checkout "${FROZEN_CHECKOUT}" \
+            --dataset-root "${DATASET_ROOT}" \
+            --output-root "${AUDIT_OUTPUT}" \
+            | tee "${RUNNER_TEMP}/open-issues-audit-console.json"
+
+      - name: Publish concise job summary
+        shell: bash
+        run: cat "${AUDIT_OUTPUT}/audit-summary.md" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Commit sanitized audit result
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            "${AUDIT_OUTPUT}/audit-summary.json" \
+            "${AUDIT_OUTPUT}/audit-summary.md"
+          if git diff --cached --quiet; then
+            echo "No sanitized audit-result change to publish."
+          else
+            git commit -m "Record open-issue acquisition audit ${GITHUB_RUN_ID}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
+      - name: Upload sanitized audit evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: causal4d-open-issues-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            issue-audit/latest/audit-summary.json
+            issue-audit/latest/audit-summary.md
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce audit integrity
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("issue-audit/latest/audit-summary.json")
+          if not path.is_file():
+              raise SystemExit("sanitized audit summary was not produced")
+          summary = json.loads(path.read_text(encoding="utf-8"))
+          if not summary.get("filesystem_unchanged"):
+              raise SystemExit("audit commands changed the persistent acquisition workspace")
+          if summary.get("commands_executed") and not summary.get("present_evidence_valid"):
+              raise SystemExit(
+                  f"present acquisition evidence failed closed: {summary.get('exit_codes')}"
+              )
+          print("Read-only audit integrity checks passed.")
+          PY
+
+      - name: Remove isolated environment
+        if: always()
+        shell: bash
+        run: rm -rf "${AUDIT_VENV:-}" || true
