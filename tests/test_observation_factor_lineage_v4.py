@@ -7,6 +7,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+import causal4d.observation_factor_lineage as lineage_module
+
 from causal4d.observation_factor_lineage import (
     JOINT_GAUGE_COVARIANCE,
     MARGINAL_GAUGE_COVARIANCE,
@@ -66,9 +68,7 @@ def _write_bundle(
             2,
             axis=0,
         ),
-        factor_0000__association_probability=np.asarray(
-            [0.9, 0.8], dtype=np.float64
-        ),
+        factor_0000__association_probability=np.asarray([0.9, 0.8], dtype=np.float64),
         factor_0000__prior_reliability=np.asarray([0.7, 0.6], dtype=np.float64),
     )
     gauge_ids = ["window-0", "window-1"]
@@ -126,9 +126,7 @@ def _write_bundle(
                     "points_local_m": "factor_0000__points_local_m",
                     "valid_mask": "factor_0000__valid_mask",
                     "local_covariance_m2": "factor_0000__local_covariance_m2",
-                    "association_probability": (
-                        "factor_0000__association_probability"
-                    ),
+                    "association_probability": ("factor_0000__association_probability"),
                     "prior_reliability": "factor_0000__prior_reliability",
                 },
                 "ray_directions_local_key": None,
@@ -234,3 +232,51 @@ def test_rejects_nonfinite_json_numbers(tmp_path: Path) -> None:
     manifest.write_text(text, encoding="utf-8")
     with pytest.raises(ValueError, match="non-finite JSON number"):
         load_observation_factor_lineage(manifest)
+
+
+def test_manifest_validation_uses_the_exact_hashed_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = _write_bundle(tmp_path)
+    expected_manifest_bytes = manifest.read_bytes()
+    real_loader = lineage_module._load_json_bytes
+
+    def replacing_loader(
+        payload: bytes,
+        *,
+        name: str,
+    ) -> dict[str, object]:
+        manifest.write_text("{}\n", encoding="utf-8")
+        return real_loader(payload, name=name)
+
+    monkeypatch.setattr(lineage_module, "_load_json_bytes", replacing_loader)
+    lineage = load_observation_factor_lineage(manifest)
+
+    assert (
+        lineage.manifest_sha256 == hashlib.sha256(expected_manifest_bytes).hexdigest()
+    )
+
+
+def test_payload_validation_uses_the_exact_hashed_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = _write_bundle(tmp_path)
+    payload = tmp_path / "factors.npz"
+    expected_payload_bytes = payload.read_bytes()
+    real_load = lineage_module.np.load
+
+    def replacing_load(
+        source: object,
+        *args: object,
+        **kwargs: object,
+    ) -> object:
+        payload.write_bytes(b"concurrent replacement")
+        assert not isinstance(source, (str, Path))
+        return real_load(source, *args, **kwargs)
+
+    monkeypatch.setattr(lineage_module.np, "load", replacing_load)
+    lineage = load_observation_factor_lineage(manifest)
+
+    assert lineage.payload_sha256 == hashlib.sha256(expected_payload_bytes).hexdigest()

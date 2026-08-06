@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import math
 from collections.abc import Mapping
@@ -114,12 +115,10 @@ def _require_exact_fields(
     missing = sorted(expected - value.keys())
     extra = sorted(value.keys() - expected)
     if missing or extra:
-        raise ValueError(
-            f"{name} fields changed; missing={missing}, extra={extra}"
-        )
+        raise ValueError(f"{name} fields changed; missing={missing}, extra={extra}")
 
 
-def _load_json_object(path: Path, *, name: str) -> dict[str, Any]:
+def _load_json_bytes(payload: bytes, *, name: str) -> dict[str, Any]:
     def object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
         for key, item in pairs:
@@ -131,28 +130,36 @@ def _load_json_object(path: Path, *, name: str) -> dict[str, Any]:
         return result
 
     def reject_constant(token: str) -> Any:
-        raise _StrictJsonValueError(
-            f"{name} contains non-finite JSON number {token!r}"
-        )
+        raise _StrictJsonValueError(f"{name} contains non-finite JSON number {token!r}")
 
     try:
         value = json.loads(
-            path.read_text(encoding="utf-8"),
+            payload.decode("utf-8"),
             object_pairs_hook=object_pairs,
             parse_constant=reject_constant,
         )
     except _StrictJsonValueError:
         raise
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError(f"{name} is not valid UTF-8 JSON") from error
     if not isinstance(value, dict):
         raise ValueError(f"{name} must contain one JSON object")
     return value
 
 
+def _load_json_object(path: Path, *, name: str) -> dict[str, Any]:
+    try:
+        payload = path.read_bytes()
+    except OSError as error:
+        raise ValueError(f"{name} is not readable") from error
+    return _load_json_bytes(payload, name=name)
+
+
 def _validate_sha256(value: Any, *, name: str) -> str:
-    if type(value) is not str or len(value) != 64 or any(
-        character not in "0123456789abcdef" for character in value
+    if (
+        type(value) is not str
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
     ):
         raise ValueError(f"{name} must be a lowercase SHA-256 digest")
     return value
@@ -231,9 +238,7 @@ def _require_float64_array(values: np.ndarray, *, name: str) -> np.ndarray:
 
 def _probability_vector(values: np.ndarray, *, name: str) -> np.ndarray:
     result = _require_float64_array(values, name=name)
-    if not np.all(np.isfinite(result)) or np.any(
-        (result < 0.0) | (result > 1.0)
-    ):
+    if not np.all(np.isfinite(result)) or np.any((result < 0.0) | (result > 1.0)):
         raise ValueError(f"{name} must lie in [0, 1]")
     return result
 
@@ -254,16 +259,22 @@ def _require_psd(
 
 def _safe_payload_path(manifest: Path, relative: Any) -> Path:
     if type(relative) is not str or not relative or "\\" in relative:
-        raise ValueError("factor-bundle payload path must be a safe POSIX relative path")
+        raise ValueError(
+            "factor-bundle payload path must be a safe POSIX relative path"
+        )
     pure = PurePosixPath(relative)
     if pure.is_absolute() or any(part in {"", ".", ".."} for part in pure.parts):
-        raise ValueError("factor-bundle payload path must be a safe POSIX relative path")
+        raise ValueError(
+            "factor-bundle payload path must be a safe POSIX relative path"
+        )
     root = manifest.parent.resolve()
     payload = (root / Path(*pure.parts)).resolve()
     try:
         payload.relative_to(root)
     except ValueError as error:
-        raise ValueError("factor-bundle payload path escapes the manifest directory") from error
+        raise ValueError(
+            "factor-bundle payload path escapes the manifest directory"
+        ) from error
     if not payload.is_file():
         raise ValueError("factor-bundle payload file is missing")
     return payload
@@ -400,8 +411,15 @@ def load_observation_factor_lineage(
     manifest = Path(manifest_path)
     if not manifest.is_file():
         raise ValueError("factor-bundle manifest file is missing")
-    manifest_sha = file_sha256(manifest)
-    record = _load_json_object(manifest, name="factor-bundle manifest")
+    try:
+        manifest_bytes = manifest.read_bytes()
+    except OSError as error:
+        raise ValueError("factor-bundle manifest is not readable") from error
+    manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
+    record = _load_json_bytes(
+        manifest_bytes,
+        name="factor-bundle manifest",
+    )
     if record.get("schema") != OBSERVATION_FACTOR_SCHEMA:
         raise ValueError("unsupported observation-factor schema")
     schema_version = _schema_version(record.get("schema_version"))
@@ -446,7 +464,11 @@ def load_observation_factor_lineage(
         name="payload sha256",
     )
     payload = _safe_payload_path(manifest, payload_record["path"])
-    actual_payload_sha = file_sha256(payload)
+    try:
+        payload_bytes = payload.read_bytes()
+    except OSError as error:
+        raise ValueError("factor-bundle payload is not readable") from error
+    actual_payload_sha = hashlib.sha256(payload_bytes).hexdigest()
     if actual_payload_sha != declared_payload_sha:
         raise ValueError("factor-bundle payload checksum mismatch")
 
@@ -469,9 +491,11 @@ def load_observation_factor_lineage(
     cross_window_preserved = False
 
     try:
-        archive = np.load(payload, allow_pickle=False)
+        archive = np.load(io.BytesIO(payload_bytes), allow_pickle=False)
     except (OSError, ValueError) as error:
-        raise ValueError("factor-bundle payload is not a valid non-pickled NPZ") from error
+        raise ValueError(
+            "factor-bundle payload is not a valid non-pickled NPZ"
+        ) from error
     with archive as arrays:
         for position, raw_gauge_record in enumerate(gauge_records):
             gauge_record = _require_mapping(
@@ -565,9 +589,7 @@ def load_observation_factor_lineage(
             )
             dimension = 7 * len(gauge_ids)
             if joint_covariance.shape != (dimension, dimension):
-                raise ValueError(
-                    "schema-v4 joint gauge covariance has the wrong shape"
-                )
+                raise ValueError("schema-v4 joint gauge covariance has the wrong shape")
             if not np.all(np.isfinite(joint_covariance)):
                 raise ValueError("schema-v4 joint gauge covariance must be finite")
             _require_psd(
@@ -605,7 +627,9 @@ def load_observation_factor_lineage(
                 raw_factor_record,
                 name=f"factor record {position}",
             )
-            _require_exact_fields(factor_record, _FACTOR_FIELDS, name=f"factor {position}")
+            _require_exact_fields(
+                factor_record, _FACTOR_FIELDS, name=f"factor {position}"
+            )
             identifiers = {
                 name: _nonempty_string(
                     factor_record[name],
@@ -712,13 +736,9 @@ def load_observation_factor_lineage(
             if valid.dtype != np.dtype(bool) or valid.shape != (count,):
                 raise ValueError("factor valid mask must be a Boolean vector")
             if covariance.shape != (count, 3, 3):
-                raise ValueError(
-                    "factor local covariance must have shape (N, 3, 3)"
-                )
+                raise ValueError("factor local covariance must have shape (N, 3, 3)")
             if association.shape != (count,) or reliability.shape != (count,):
-                raise ValueError(
-                    "factor probability vectors must identify every point"
-                )
+                raise ValueError("factor probability vectors must identify every point")
             active = valid & (association > 0.0) & (reliability > 0.0)
             if not np.all(np.isfinite(points[active])):
                 raise ValueError("active factor points must be finite")
@@ -739,11 +759,7 @@ def load_observation_factor_lineage(
                 if not np.all(np.isfinite(rays[active])):
                     raise ValueError("active factor rays must be finite")
                 if np.any(
-                    active
-                    & (
-                        np.linalg.norm(rays, axis=1)
-                        <= np.finfo(np.float64).eps
-                    )
+                    active & (np.linalg.norm(rays, axis=1) <= np.finfo(np.float64).eps)
                 ):
                     raise ValueError("active factor rays must be nonzero")
             total_observations += count
