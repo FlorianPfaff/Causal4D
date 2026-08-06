@@ -1,0 +1,132 @@
+name: PR 193 scientific study
+
+on:
+  pull_request:
+    branches:
+      - agent/lock-real-analysis-reporting
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/pr193-scientific-pr.yml"
+      - "scripts/ci/run_pr193_scientific_study.py"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr193-scientific-study-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+env:
+  TARGET_SHA: fa6a64b2442474321e453e9e8fdccd591e0a282d
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONHASHSEED: "0"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  scientific-study:
+    name: Registered evidence gate and full robustness study
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 720
+    steps:
+      - name: Check out execution branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          path: executor
+          fetch-depth: 0
+          persist-credentials: true
+          clean: true
+
+      - name: Check out immutable PR 193 target
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/Causal4D
+          ref: ${{ env.TARGET_SHA }}
+          path: target
+          fetch-depth: 0
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Verify immutable target and record runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C target rev-parse HEAD)" = "${TARGET_SHA}"
+          test -z "$(git -C target status --short)"
+          mkdir -p work/pr193
+          {
+            echo "runner_name=${RUNNER_NAME}"
+            echo "runner_os=${RUNNER_OS}"
+            echo "runner_arch=${RUNNER_ARCH}"
+            echo "target_sha=${TARGET_SHA}"
+            echo "workflow_run_id=${GITHUB_RUN_ID}"
+            echo "workflow_run_attempt=${GITHUB_RUN_ATTEMPT}"
+            uname -a
+            lscpu
+          } | tee work/pr193/runner-info.txt
+          nvidia-smi | tee work/pr193/nvidia-smi.txt
+
+      - name: Install exact evaluation stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          venv="${RUNNER_TEMP}/causal4d-pr193-science-${GITHUB_RUN_ID}"
+          python -m venv "${venv}"
+          echo "VIRTUAL_ENV=${venv}" >> "${GITHUB_ENV}"
+          echo "${venv}/bin" >> "${GITHUB_PATH}"
+          "${venv}/bin/python" -m pip install --upgrade pip
+          "${venv}/bin/python" -m pip install -e "./target[dev,warp]"
+          "${venv}/bin/python" -m pip check
+          "${venv}/bin/python" -m pip freeze --all > work/pr193/pip-freeze.txt
+          git -C target reset --hard "${TARGET_SHA}"
+          git -C target clean -ffdx
+          test -z "$(git -C target status --short)"
+
+      - name: Run registered scientific study
+        shell: bash
+        run: |
+          set -euo pipefail
+          python executor/scripts/ci/run_pr193_scientific_study.py \
+            --target-root target \
+            --work-root work/pr193 \
+            --publish-root executor/scientific-results/pr193/latest \
+            | tee work/pr193/scientific-study-console.log
+
+      - name: Publish compact result to execution branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${GITHUB_RUN_ID}" \
+            > executor/scientific-results/pr193/LATEST_RUN.txt
+          git -C executor config user.name "github-actions[bot]"
+          git -C executor config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C executor add scientific-results/pr193
+          if git -C executor diff --cached --quiet; then
+            echo "No compact result changes to publish."
+          else
+            git -C executor commit -m \
+              "Record PR 193 scientific study ${GITHUB_RUN_ID}"
+            git -C executor push origin \
+              "HEAD:${{ github.event.pull_request.head.ref }}"
+          fi
+
+      - name: Upload complete execution bundle
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: causal4d-pr193-scientific-${{ github.run_id }}-${{ github.run_attempt }}
+          path: work/pr193/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove isolated environment
+        if: always()
+        shell: bash
+        run: rm -rf "${VIRTUAL_ENV:-}" || true
