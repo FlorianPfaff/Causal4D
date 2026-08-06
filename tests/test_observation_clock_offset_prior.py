@@ -208,6 +208,20 @@ def test_target_outcomes_and_changed_convention_are_rejected() -> None:
         )
 
 
+@pytest.mark.parametrize("boundary_offset", [-0.020, 0.020])
+def test_boundary_censored_source_offset_is_rejected(
+    boundary_offset: float,
+) -> None:
+    with pytest.raises(ValueError, match="censored"):
+        _fit(
+            [
+                _calibration("source-01", boundary_offset),
+                _calibration("source-02", -0.010),
+                _calibration("source-03", -0.009),
+            ]
+        )
+
+
 def test_too_few_or_duplicate_source_groups_are_rejected() -> None:
     with pytest.raises(ValueError, match="at least three"):
         _fit(
