@@ -89,47 +89,39 @@ jobs:
           ).lstrip()
           source = source[:loader_start] + loader + source[loader_end:]
 
-          old_manifest = dedent(
-              '''
-                  manifest_sha = file_sha256(manifest)
-                  record = _load_json_object(manifest, name="factor-bundle manifest")
-              '''
-          ).lstrip()
-          new_manifest = dedent(
-              '''
-                  try:
-                      manifest_bytes = manifest.read_bytes()
-                  except OSError as error:
-                      raise ValueError("factor-bundle manifest is not readable") from error
-                  manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
-                  record = _load_json_bytes(
-                      manifest_bytes,
-                      name="factor-bundle manifest",
-                  )
-              '''
-          ).lstrip()
+          old_manifest = (
+              "    manifest_sha = file_sha256(manifest)\n"
+              "    record = _load_json_object(manifest, name=\"factor-bundle manifest\")\n"
+          )
+          new_manifest = (
+              "    try:\n"
+              "        manifest_bytes = manifest.read_bytes()\n"
+              "    except OSError as error:\n"
+              "        raise ValueError(\"factor-bundle manifest is not readable\") from error\n"
+              "    manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()\n"
+              "    record = _load_json_bytes(\n"
+              "        manifest_bytes,\n"
+              "        name=\"factor-bundle manifest\",\n"
+              "    )\n"
+          )
           if old_manifest not in source and new_manifest not in source:
               raise SystemExit("manifest snapshot marker not found")
           source = source.replace(old_manifest, new_manifest, 1)
 
-          old_payload = dedent(
-              '''
-                  actual_payload_sha = file_sha256(payload)
-                  if actual_payload_sha != declared_payload_sha:
-                      raise ValueError("factor-bundle payload checksum mismatch")
-              '''
-          ).lstrip()
-          new_payload = dedent(
-              '''
-                  try:
-                      payload_bytes = payload.read_bytes()
-                  except OSError as error:
-                      raise ValueError("factor-bundle payload is not readable") from error
-                  actual_payload_sha = hashlib.sha256(payload_bytes).hexdigest()
-                  if actual_payload_sha != declared_payload_sha:
-                      raise ValueError("factor-bundle payload checksum mismatch")
-              '''
-          ).lstrip()
+          old_payload = (
+              "    actual_payload_sha = file_sha256(payload)\n"
+              "    if actual_payload_sha != declared_payload_sha:\n"
+              "        raise ValueError(\"factor-bundle payload checksum mismatch\")\n"
+          )
+          new_payload = (
+              "    try:\n"
+              "        payload_bytes = payload.read_bytes()\n"
+              "    except OSError as error:\n"
+              "        raise ValueError(\"factor-bundle payload is not readable\") from error\n"
+              "    actual_payload_sha = hashlib.sha256(payload_bytes).hexdigest()\n"
+              "    if actual_payload_sha != declared_payload_sha:\n"
+              "        raise ValueError(\"factor-bundle payload checksum mismatch\")\n"
+          )
           if old_payload not in source and new_payload not in source:
               raise SystemExit("payload snapshot marker not found")
           source = source.replace(old_payload, new_payload, 1)
