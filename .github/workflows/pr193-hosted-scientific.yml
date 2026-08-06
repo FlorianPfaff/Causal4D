@@ -1,0 +1,329 @@
+name: PR 193 hosted scientific replication
+
+on:
+  pull_request:
+    branches:
+      - agent/lock-real-analysis-reporting
+    types: [opened, synchronize, reopened]
+    paths:
+      - "scientific-trigger/pr193-hosted.txt"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr193-hosted-science-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+env:
+  TARGET_SHA: fa6a64b2442474321e453e9e8fdccd591e0a282d
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONHASHSEED: "0"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  hosted-study:
+    name: Registered-design audit and independent controlled replication
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Check out result branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          path: executor
+          fetch-depth: 0
+          persist-credentials: true
+          clean: true
+
+      - name: Check out immutable PR 193 target
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/Causal4D
+          ref: ${{ env.TARGET_SHA }}
+          path: target
+          fetch-depth: 0
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Verify immutable target and install study stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C target rev-parse HEAD)" = "${TARGET_SHA}"
+          test -z "$(git -C target status --short)"
+          python -m venv .hosted-study-venv
+          echo "VIRTUAL_ENV=${PWD}/.hosted-study-venv" >> "${GITHUB_ENV}"
+          echo "${PWD}/.hosted-study-venv/bin" >> "${GITHUB_PATH}"
+          .hosted-study-venv/bin/python -m pip install --upgrade pip
+          .hosted-study-venv/bin/python -m pip install -e "./target[dev]"
+          .hosted-study-venv/bin/python -m pip check
+          mkdir -p work/pr193-hosted
+          .hosted-study-venv/bin/python -m pip freeze --all \
+            > work/pr193-hosted/pip-freeze.txt
+          git -C target reset --hard "${TARGET_SHA}"
+          git -C target clean -ffdx
+          test -z "$(git -C target status --short)"
+
+      - name: Run source-only registered-design audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import math
+          from pathlib import Path
+
+          import numpy as np
+          from scipy.stats import nct, t
+
+          output = Path("work/pr193-hosted")
+          alpha = 0.05
+
+          def power(n: int, standardized_effect: float) -> float:
+              degrees = n - 1
+              critical = float(t.ppf(1.0 - alpha / 2.0, degrees))
+              noncentrality = standardized_effect * math.sqrt(n)
+              return float(
+                  nct.cdf(-critical, degrees, noncentrality)
+                  + 1.0
+                  - nct.cdf(critical, degrees, noncentrality)
+              )
+
+          def minimum_effect(n: int, target_power: float) -> float:
+              lower, upper = 0.0, 4.0
+              for _ in range(80):
+                  middle = (lower + upper) / 2.0
+                  if power(n, middle) >= target_power:
+                      upper = middle
+                  else:
+                      lower = middle
+              return upper
+
+          effect_grid = [0.0, 0.2, 0.35, 0.5, 0.65, 0.8, 1.0]
+          endpoint_power = [
+              {
+                  "endpoint": endpoint,
+                  "independent_sessions": sessions,
+                  "standardized_session_effect": effect,
+                  "two_sided_alpha": alpha,
+                  "approximate_power": power(sessions, effect),
+              }
+              for endpoint, sessions in (
+                  ("factual_continuation", 18),
+                  ("same_grasp_transfer", 18),
+                  ("new_contact_transfer", 12),
+              )
+              for effect in effect_grid
+          ]
+          precision = [
+              {
+                  "independent_sessions": sessions,
+                  "expected_95_percent_half_width_in_session_sd_units": float(
+                      t.ppf(0.975, sessions - 1) / math.sqrt(sessions)
+                  ),
+                  "minimum_standardized_effect_for_80_percent_power": minimum_effect(
+                      sessions, 0.80
+                  ),
+                  "minimum_standardized_effect_for_90_percent_power": minimum_effect(
+                      sessions, 0.90
+                  ),
+              }
+              for sessions in (12, 18)
+          ]
+
+          rng = np.random.default_rng(20_260_806)
+          draws = 200_000
+          calibration = []
+          factories = {
+              "half_normal": lambda: np.abs(rng.normal(size=(draws, 9))),
+              "lognormal_sigma_0.25": lambda: rng.lognormal(
+                  0.0, 0.25, size=(draws, 9)
+              ),
+              "lognormal_sigma_0.50": lambda: rng.lognormal(
+                  0.0, 0.50, size=(draws, 9)
+              ),
+              "lognormal_sigma_1.00": lambda: rng.lognormal(
+                  0.0, 1.00, size=(draws, 9)
+              ),
+              "absolute_t5": lambda: np.abs(
+                  rng.standard_t(df=5, size=(draws, 9))
+              ),
+          }
+          for name, factory in factories.items():
+              values = factory()
+              ordered = np.sort(values, axis=1)
+              maximum = ordered[:, -1]
+              second = ordered[:, -2]
+              sample_median = np.median(values, axis=1)
+              maximum_to_median = maximum / np.maximum(sample_median, 1e-15)
+              second_to_maximum = second / np.maximum(maximum, 1e-15)
+              calibration.append(
+                  {
+                      "score_distribution": name,
+                      "simulation_draws": draws,
+                      "calibration_units": 9,
+                      "registered_rank_one_based": 9,
+                      "threshold_is_sample_maximum": True,
+                      "max_to_sample_median_quantiles": dict(
+                          zip(
+                              ("q50", "q90", "q95", "q99"),
+                              map(
+                                  float,
+                                  np.quantile(
+                                      maximum_to_median,
+                                      [0.50, 0.90, 0.95, 0.99],
+                                  ),
+                              ),
+                          )
+                      ),
+                      "probability_max_exceeds_twice_sample_median": float(
+                          np.mean(maximum_to_median > 2.0)
+                      ),
+                      "probability_max_exceeds_three_times_sample_median": float(
+                          np.mean(maximum_to_median > 3.0)
+                      ),
+                      "second_largest_to_maximum_quantiles": dict(
+                          zip(
+                              ("q05", "q50", "q95"),
+                              map(
+                                  float,
+                                  np.quantile(
+                                      second_to_maximum,
+                                      [0.05, 0.50, 0.95],
+                                  ),
+                              ),
+                          )
+                      ),
+                      "leave_one_session_out_nominal_90_percent_threshold_finite": False,
+                      "fragility_may_select_or_change_threshold": False,
+                  }
+              )
+              del values, ordered, maximum, second, sample_median
+
+          payload = {
+              "schema_version": 1,
+              "artifact_kind": "Causal4DRegisteredDesignPowerAndFragilityAudit",
+              "protocol_id": "causal4d-sloth-multi-action-v1",
+              "protocol_design_sha256": (
+                  "6d61f2bea96af0ba04faaf3476990b58cd87e0a9c826420c254a012dec647968"
+              ),
+              "session_cluster_is_independent_unit": True,
+              "endpoint_power": endpoint_power,
+              "precision_and_minimum_detectable_effect": precision,
+              "execution_block_calibration_fragility": calibration,
+              "interpretation": {
+                  "not_conditioned_on_target_outcomes": True,
+                  "does_not_change_registered_method_or_threshold": True,
+                  "does_not_substitute_for_the_36_execution_physical_result": True,
+              },
+          }
+          (output / "registered-design-power-fragility.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(precision, indent=2))
+          PY
+
+      - name: Run independent standard controlled replication
+        shell: bash
+        run: |
+          set -euo pipefail
+          python target/scripts/ci/run_self_hosted_evaluation.py \
+            --profile standard \
+            --output-dir work/pr193-hosted/controlled-standard \
+            | tee work/pr193-hosted/controlled-standard-console.log
+
+      - name: Build compact hosted result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+
+          work = Path("work/pr193-hosted")
+          destination = Path(
+              "executor/scientific-results/pr193-hosted/latest"
+          )
+          if destination.exists():
+              shutil.rmtree(destination)
+          destination.mkdir(parents=True, exist_ok=True)
+          audit = json.loads(
+              (work / "registered-design-power-fragility.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          controlled = json.loads(
+              (work / "controlled-standard/summary.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          summary = {
+              "schema_version": 1,
+              "artifact_kind": "Causal4DPR193HostedScientificSummary",
+              "workflow_run_id": os.environ.get("GITHUB_RUN_ID"),
+              "target_sha": os.environ.get("TARGET_SHA"),
+              "profile": "standard",
+              "precision_and_minimum_detectable_effect": audit[
+                  "precision_and_minimum_detectable_effect"
+              ],
+              "controlled_integrity": controlled.get("integrity"),
+              "controlled_summary_sha256": controlled.get("summary_sha256"),
+              "claim_boundary": (
+                  "Independent controlled and source-only design evidence; not a substitute for the registered 18-session/36-execution physical result."
+              ),
+          }
+          (destination / "summary.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True, allow_nan=False) + "\n",
+              encoding="utf-8",
+          )
+          for relative in (
+              "registered-design-power-fragility.json",
+              "controlled-standard/summary.json",
+              "controlled-standard/summary.md",
+              "controlled-standard/manifest.json",
+              "controlled-standard/timings.csv",
+          ):
+              source = work / relative
+              target = destination / relative
+              target.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(source, target)
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          PY
+
+      - name: Publish compact hosted result
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${GITHUB_RUN_ID}" \
+            > executor/scientific-results/pr193-hosted/LATEST_RUN.txt
+          git -C executor config user.name "github-actions[bot]"
+          git -C executor config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C executor add scientific-results/pr193-hosted
+          git -C executor commit -m \
+            "Record PR 193 hosted study ${GITHUB_RUN_ID}"
+          git -C executor push origin \
+            "HEAD:${{ github.event.pull_request.head.ref }}"
+
+      - name: Upload hosted study bundle
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: causal4d-pr193-hosted-${{ github.run_id }}
+          path: work/pr193-hosted/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove isolated environment
+        if: always()
+        run: rm -rf .hosted-study-venv
