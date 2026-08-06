@@ -1,0 +1,305 @@
+name: Temporary post-provision acquisition audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/temporary-post-provision-acquisition-audit.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: temporary-post-provision-acquisition-audit-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUNBUFFERED: "1"
+  CANDIDATE_SHA: 0cac23a0a64cb48dd531a2e94b0c022eb394f033
+  FROZEN_CHECKOUT: /mnt/lexar4tb/causal4d-physical/causal4d-frozen
+  DATASET_ROOT: /mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1
+  AUDIT_OUTPUT: outputs/post-provision-acquisition-audit
+
+jobs:
+  audit:
+    name: Verify persistent scaffold without mutation
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact pull-request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          clean: true
+
+      - name: Verify audit revision and persistent paths
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${EXPECTED_HEAD_SHA}"
+          test -d "${FROZEN_CHECKOUT}"
+          test ! -L "${FROZEN_CHECKOUT}"
+          test -d "${DATASET_ROOT}"
+          test ! -L "${DATASET_ROOT}"
+          test ! -e /mnt/lexar4tb/causal4d-physical/.provisioning-run
+          test "$(git -C "${FROZEN_CHECKOUT}" rev-parse HEAD)" = "${CANDIDATE_SHA}"
+          test -z "$(git -C "${FROZEN_CHECKOUT}" status --porcelain)"
+          test -z "$(git -C "${FROZEN_CHECKOUT}" remote)"
+          test -f "${FROZEN_CHECKOUT}/configs/causal4d/sloth_multi_action_v1.json"
+          if find "${FROZEN_CHECKOUT}" -type l -print -quit | grep -q .; then
+            echo "::error::Persistent candidate checkout contains a symbolic link."
+            exit 1
+          fi
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install the persistent candidate in an isolated environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv "${RUNNER_TEMP}/causal4d-post-provision-audit"
+          "${RUNNER_TEMP}/causal4d-post-provision-audit/bin/python" \
+            -m pip install "${FROZEN_CHECKOUT}"
+          "${RUNNER_TEMP}/causal4d-post-provision-audit/bin/python" -m pip check
+          "${RUNNER_TEMP}/causal4d-post-provision-audit/bin/causal4d" \
+            commands validate --require-installed
+
+      - name: Run independent read-only status gates
+        shell: bash
+        run: |
+          set -u
+          mkdir -p "${AUDIT_OUTPUT}"
+          causal4d="${RUNNER_TEMP}/causal4d-post-provision-audit/bin/causal4d"
+          protocol="${FROZEN_CHECKOUT}/configs/causal4d/sloth_multi_action_v1.json"
+
+          set +e
+          "${causal4d}" protocol readiness source-panel-status \
+            "${FROZEN_CHECKOUT}" \
+            "${DATASET_ROOT}" \
+            --verify-file-hashes \
+            --require-complete \
+            --output-json "${AUDIT_OUTPUT}/source-panel-status.json" \
+            > "${AUDIT_OUTPUT}/source-panel-console.txt" 2>&1
+          source_panel_rc=$?
+
+          "${causal4d}" protocol readiness status \
+            "${FROZEN_CHECKOUT}" \
+            "${DATASET_ROOT}" \
+            --verify-file-hashes \
+            --require-ready \
+            --output-json "${AUDIT_OUTPUT}/preacquisition-readiness.json" \
+            > "${AUDIT_OUTPUT}/preacquisition-console.txt" 2>&1
+          readiness_rc=$?
+
+          "${causal4d}" protocol real status \
+            "${protocol}" \
+            "${DATASET_ROOT}" \
+            --repository-root "${FROZEN_CHECKOUT}" \
+            --verify-file-hashes \
+            --require-complete \
+            --output-json "${AUDIT_OUTPUT}/confirmatory-evidence-status.json" \
+            > "${AUDIT_OUTPUT}/confirmatory-console.txt" 2>&1
+          evidence_rc=$?
+          set -e
+
+          SOURCE_PANEL_RC="${source_panel_rc}" \
+          READINESS_RC="${readiness_rc}" \
+          EVIDENCE_RC="${evidence_rc}" \
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          from typing import Any
+
+          root = Path(os.environ["AUDIT_OUTPUT"])
+
+          def load(name: str) -> dict[str, Any]:
+              value = json.loads((root / name).read_text(encoding="utf-8"))
+              if not isinstance(value, dict):
+                  raise TypeError(f"{name} must contain a JSON object")
+              return value
+
+          exit_codes = {
+              "source_panel_status": int(os.environ["SOURCE_PANEL_RC"]),
+              "preacquisition_readiness": int(os.environ["READINESS_RC"]),
+              "confirmatory_evidence_status": int(os.environ["EVIDENCE_RC"]),
+          }
+          if set(exit_codes.values()) != {3}:
+              raise ValueError(f"unexpected status exit codes: {exit_codes}")
+
+          source = load("source-panel-status.json")
+          readiness = load("preacquisition-readiness.json")
+          evidence = load("confirmatory-evidence-status.json")
+          next_execution = source.get("next_execution")
+          if not isinstance(next_execution, dict):
+              raise ValueError("source panel lacks the next registered execution")
+          collection_gate = readiness.get("collection_gate")
+          confirmatory_collection = readiness.get("confirmatory_collection")
+          if not isinstance(collection_gate, dict):
+              raise ValueError("readiness lacks collection_gate")
+          if not isinstance(confirmatory_collection, dict):
+              raise ValueError("readiness lacks confirmatory_collection")
+
+          assertions = {
+              "source_valid": source.get("valid") is True,
+              "source_incomplete": source.get("complete") is False,
+              "source_specified_12": source.get("specified_executions") == 12,
+              "source_manifests_0": source.get("manifest_executions") == 0,
+              "source_validated_0": source.get("validated_executions") == 0,
+              "next_source_exact": (
+                  next_execution.get("execution_id")
+                  == "sloth-pre-v2-lift_high-r1"
+              ),
+              "readiness_valid": readiness.get("valid") is True,
+              "readiness_false": readiness.get("ready") is False,
+              "confirmatory_not_started": (
+                  confirmatory_collection.get("not_started") is True
+              ),
+              "first_confirmatory_forbidden": (
+                  collection_gate.get("first_confirmatory_execution_allowed")
+                  is False
+              ),
+              "confirmatory_specified_36": (
+                  evidence.get("specified_executions") == 36
+              ),
+              "confirmatory_manifests_0": (
+                  evidence.get("manifest_executions") == 0
+              ),
+              "confirmatory_acquired_0": (
+                  evidence.get("acquired_executions") == 0
+              ),
+              "confirmatory_validated_0": (
+                  evidence.get("validated_executions") == 0
+              ),
+              "claim_not_ready": evidence.get("claim_ready") is False,
+          }
+          failed = sorted(name for name, passed in assertions.items() if not passed)
+          if failed:
+              raise ValueError(f"post-provision assertions failed: {failed}")
+
+          protocol = (
+              Path(os.environ["FROZEN_CHECKOUT"])
+              / "configs/causal4d/sloth_multi_action_v1.json"
+          )
+          summary = {
+              "schema_version": 1,
+              "artifact_kind": "Causal4DPostProvisionAcquisitionAuditV1",
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "runner_name": os.environ.get("RUNNER_NAME"),
+              "candidate_commit": os.environ["CANDIDATE_SHA"],
+              "protocol_sha256": hashlib.sha256(protocol.read_bytes()).hexdigest(),
+              "frozen_checkout": os.environ["FROZEN_CHECKOUT"],
+              "dataset_root": os.environ["DATASET_ROOT"],
+              "exit_codes": exit_codes,
+              "assertions": assertions,
+              "source_panel": {
+                  "valid": source["valid"],
+                  "complete": source["complete"],
+                  "specified_executions": source["specified_executions"],
+                  "manifest_executions": source["manifest_executions"],
+                  "validated_executions": source["validated_executions"],
+                  "next_execution": next_execution,
+                  "status_sha256": source.get("status_sha256"),
+              },
+              "preacquisition": {
+                  "valid": readiness["valid"],
+                  "ready": readiness["ready"],
+                  "first_confirmatory_execution_allowed": False,
+                  "blockers": readiness.get("blockers", []),
+                  "evidence_sha256": readiness.get("evidence_sha256"),
+                  "status_sha256": readiness.get("status_sha256"),
+              },
+              "confirmatory": {
+                  "specified_executions": evidence["specified_executions"],
+                  "manifest_executions": evidence["manifest_executions"],
+                  "acquired_executions": evidence["acquired_executions"],
+                  "validated_executions": evidence["validated_executions"],
+                  "claim_ready": evidence["claim_ready"],
+                  "status_sha256": evidence.get("status_sha256"),
+              },
+              "claim_boundary": (
+                  "This independent run only read the persistent checkout and "
+                  "dataset and wrote status files inside the Actions workspace. "
+                  "It did not publish, seal, approve, attest, or count evidence."
+              ),
+          }
+          output = root / "post-provision-audit-summary.json"
+          output.write_text(
+              json.dumps(summary, indent=2, sort_keys=True, allow_nan=False) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, indent=2, sort_keys=True, allow_nan=False))
+          PY
+
+      - name: Publish audit summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### Causal4D post-provision acquisition audit"
+            echo
+            echo "The persistent tree was read independently; no evidence was created."
+            echo
+            python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          value = json.loads(
+              (Path(os.environ["AUDIT_OUTPUT"]) / "post-provision-audit-summary.json")
+              .read_text(encoding="utf-8")
+          )
+          print(f"- candidate commit: `{value['candidate_commit']}`")
+          print(f"- frozen checkout: `{value['frozen_checkout']}`")
+          print(f"- dataset root: `{value['dataset_root']}`")
+          source = value["source_panel"]
+          print(
+              "- source panel validated: "
+              f"`{source['validated_executions']}/"
+              f"{source['specified_executions']}`"
+          )
+          print(
+              "- next source execution: "
+              f"`{source['next_execution']['execution_id']}`"
+          )
+          confirmatory = value["confirmatory"]
+          print(
+              "- confirmatory acquired/validated: "
+              f"`{confirmatory['acquired_executions']}/"
+              f"{confirmatory['validated_executions']}`"
+          )
+          print(
+              "- first confirmatory execution allowed: "
+              f"`{value['preacquisition']['first_confirmatory_execution_allowed']}`"
+          )
+          PY
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload sanitized audit artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: causal4d-post-provision-acquisition-audit
+          path: outputs/post-provision-acquisition-audit/post-provision-audit-summary.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove isolated environment and unsanitized status files
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "${RUNNER_TEMP}/causal4d-post-provision-audit"
+          find "${AUDIT_OUTPUT}" -type f \
+            ! -name post-provision-audit-summary.json -delete
