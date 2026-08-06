@@ -1,4 +1,4 @@
-name: Temporary PR 193 protocol patch
+name: Temporary PR 193 protocol and typing patch
 
 on:
   push:
@@ -22,9 +22,9 @@ env:
 
 jobs:
   patch:
-    name: Patch and validate PR 193 protocol binding
+    name: Patch and validate PR 193 protocol and typing
     runs-on: [self-hosted, Linux, X64, nvidia-smi]
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Check out execution branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -55,6 +55,7 @@ jobs:
           expected=(
             docs/causal4d_real_analysis_reporting.md
             src/causal4d/real_analysis_reporting.py
+            src/causal4d/real_result_source_verification.py
             tests/test_real_analysis_reporting.py
           )
           printf '%s\n' "${changed[@]}" | sort > "${RUNNER_TEMP}/changed.txt"
@@ -75,7 +76,7 @@ jobs:
           echo "VIRTUAL_ENV=${venv}" >> "${GITHUB_ENV}"
           echo "${venv}/bin" >> "${GITHUB_PATH}"
 
-      - name: Install and validate patched source
+      - name: Install development dependencies
         shell: bash
         working-directory: target
         run: |
@@ -83,8 +84,15 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
           python -m pip check
+
+      - name: Format and validate exact patch
+        shell: bash
+        working-directory: target
+        run: |
+          set -euo pipefail
           python -m ruff format \
             src/causal4d/real_analysis_reporting.py \
+            src/causal4d/real_result_source_verification.py \
             tests/test_real_analysis_reporting.py
           git diff --check
           PYTHONPYCACHEPREFIX="${RUNNER_TEMP}/pr193-patch-syntax" \
@@ -104,6 +112,52 @@ jobs:
           python -m build
           python -m twine check dist/*
 
+      - name: Read exact BayesianPhysTwin pin
+        id: pin
+        working-directory: target
+        run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out pinned BayesianPhysTwin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/BayesianPhysTwin
+          ref: ${{ steps.pin.outputs.sha }}
+          path: target/_bpt
+          persist-credentials: false
+          clean: true
+
+      - name: Build installed-wheel integration pair
+        shell: bash
+        working-directory: target
+        run: |
+          set -euo pipefail
+          wheelhouse="${RUNNER_TEMP}/pr193-wheelhouse-${GITHUB_RUN_ID}"
+          mkdir -p "${wheelhouse}"
+          python -m build --wheel --outdir "${wheelhouse}" .
+          python -m build --wheel --outdir "${wheelhouse}" ./_bpt
+          test "$(find "${wheelhouse}" -maxdepth 1 -name '*.whl' | wc -l)" -eq 2
+          echo "WHEELHOUSE=${wheelhouse}" >> "${GITHUB_ENV}"
+
+      - name: Install and validate isolated wheel pair
+        shell: bash
+        working-directory: target
+        run: |
+          set -euo pipefail
+          integration_venv="${RUNNER_TEMP}/pr193-integration-${GITHUB_RUN_ID}"
+          python -m venv "${integration_venv}"
+          "${integration_venv}/bin/python" -m pip install --upgrade pip
+          "${integration_venv}/bin/python" -m pip install "${WHEELHOUSE}"/*.whl pytest
+          "${integration_venv}/bin/python" -m pip check
+          "${integration_venv}/bin/python" -m causal4d.cli.real_analysis_reporting --help
+          echo "INTEGRATION_VENV=${integration_venv}" >> "${GITHUB_ENV}"
+
+      - name: Run pinned-provider integration tests
+        working-directory: target
+        env:
+          CAUSAL4D_REQUIRE_BPT_PROVIDER: "1"
+        run: |
+          "${INTEGRATION_VENV}/bin/python" scripts/ci/run_bpt_integration_tests.py
+
       - name: Commit and push validated patch
         shell: bash
         working-directory: target
@@ -114,15 +168,16 @@ jobs:
           git add \
             docs/causal4d_real_analysis_reporting.md \
             src/causal4d/real_analysis_reporting.py \
+            src/causal4d/real_result_source_verification.py \
             tests/test_real_analysis_reporting.py
-          git commit -m "Bind real-analysis reporting to validated protocol"
+          git commit -m "Bind reporting to validated protocol and stable types"
           git push origin HEAD:agent/lock-real-analysis-reporting
 
       - name: Upload validation report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: causal4d-pr193-protocol-patch-${{ github.run_id }}
+          name: causal4d-pr193-protocol-typing-${{ github.run_id }}
           path: target/pytest-pr193-patch.xml
           if-no-files-found: warn
           retention-days: 7
