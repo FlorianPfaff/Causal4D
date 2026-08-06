@@ -32,12 +32,12 @@
   },
   "passed": true,
   "performance": {
-    "torch_effective_gb_s": 3032.9369546821395,
+    "torch_effective_gb_s": 2743.4774516800426,
     "torch_peak_allocated_bytes": 134218240,
     "torch_peak_reserved_bytes": 136314880,
-    "torch_seconds": 0.00047478731721639633,
-    "warp_effective_gb_s": 1773.6072414932275,
-    "warp_seconds": 0.0008119046688079834
+    "torch_seconds": 0.0005248812958598137,
+    "warp_effective_gb_s": 2746.41105279892,
+    "warp_seconds": 0.0005243206396698952
   },
   "platform": {
     "implementation": "CPython",

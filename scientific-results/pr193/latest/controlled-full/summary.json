@@ -188,7 +188,7 @@
           }
         ]
       },
-      "elapsed_seconds": 993.4805200072005,
+      "elapsed_seconds": 1004.9265309162438,
       "scenario": "nominal",
       "seeds": [
         0,
@@ -580,7 +580,7 @@
           }
         ]
       },
-      "elapsed_seconds": 488.0206650458276,
+      "elapsed_seconds": 500.9677727147937,
       "scenario": "matched_world",
       "seeds": [
         1000,
@@ -872,7 +872,7 @@
           }
         ]
       },
-      "elapsed_seconds": 494.83953239489347,
+      "elapsed_seconds": 508.24999725911766,
       "scenario": "strong_world_mismatch",
       "seeds": [
         1000,
@@ -1164,7 +1164,7 @@
           }
         ]
       },
-      "elapsed_seconds": 504.33224228955805,
+      "elapsed_seconds": 508.9817434521392,
       "scenario": "high_inference_noise",
       "seeds": [
         1000,
@@ -1284,7 +1284,7 @@
       "json": "/home/github-runner/actions-runner/_work/Causal4D/Causal4D/work/pr193/controlled-full/dynamic-contact/cases.json"
     },
     "case_count": 2000,
-    "elapsed_seconds": 3.5622838167473674,
+    "elapsed_seconds": 3.7399846324697137,
     "gate_pass_fraction": 1.0,
     "maximum_contact_onset_absolute_error_frames": 0.04166666666666785,
     "mean_contact_onset_absolute_error_frames": 0.041666666666666866,
@@ -1320,7 +1320,7 @@
     "platform": "Linux-6.17.0-23-generic-x86_64-with-glibc2.39",
     "processor": "x86_64",
     "python": "3.12.13 (main, Mar  4 2026, 02:26:36) [GCC 13.3.0]",
-    "python_executable": "/home/github-runner/actions-runner/_work/_temp/causal4d-pr193-science-31086790597/bin/python",
+    "python_executable": "/home/github-runner/actions-runner/_work/_temp/causal4d-pr193-science-31086981726/bin/python",
     "runner_arch": "X64",
     "runner_name": "workstation2",
     "runner_os": "Linux",
@@ -1843,7 +1843,7 @@
       "success_gates": "/home/github-runner/actions-runner/_work/Causal4D/Causal4D/work/pr193/controlled-full/latent-contact/success_gates.json",
       "summary": "/home/github-runner/actions-runner/_work/Causal4D/Causal4D/work/pr193/controlled-full/latent-contact/summary.json"
     },
-    "elapsed_seconds": 1085.725847885944,
+    "elapsed_seconds": 1108.286979063414,
     "seeds": [
       2000,
       2001,
@@ -2011,32 +2011,32 @@
   "timings": [
     {
       "case_count": 3600,
-      "elapsed_seconds": 993.4805200072005,
+      "elapsed_seconds": 1004.9265309162438,
       "evaluation": "counterfactual/nominal"
     },
     {
       "case_count": 1800,
-      "elapsed_seconds": 488.0206650458276,
+      "elapsed_seconds": 500.9677727147937,
       "evaluation": "counterfactual/matched_world"
     },
     {
       "case_count": 1800,
-      "elapsed_seconds": 494.83953239489347,
+      "elapsed_seconds": 508.24999725911766,
       "evaluation": "counterfactual/strong_world_mismatch"
     },
     {
       "case_count": 1800,
-      "elapsed_seconds": 504.33224228955805,
+      "elapsed_seconds": 508.9817434521392,
       "evaluation": "counterfactual/high_inference_noise"
     },
     {
       "case_count": 2400,
-      "elapsed_seconds": 1085.725847885944,
+      "elapsed_seconds": 1108.286979063414,
       "evaluation": "latent-contact"
     },
     {
       "case_count": 2000,
-      "elapsed_seconds": 3.5622838167473674,
+      "elapsed_seconds": 3.7399846324697137,
       "evaluation": "dynamic-contact"
     }
   ]

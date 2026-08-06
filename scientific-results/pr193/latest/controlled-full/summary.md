@@ -2,7 +2,7 @@
 
 - Profile: `full`
 - Runner: `workstation2`
-- Commit: `74d7aa80ddf9166397620f64da5075b36a0ecce5`
+- Commit: `2d3382dda28c610e0ca290aac83290bc7ac4df08`
 
 ## Controlled counterfactual benchmark
 
