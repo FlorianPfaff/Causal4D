@@ -1,0 +1,4 @@
+target_sha=fa6a64b2442474321e453e9e8fdccd591e0a282d
+study=registered-design-power-fragility,controlled-standard
+runner=ubuntu-latest
+ready_for_execution=true
