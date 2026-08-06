@@ -4,37 +4,109 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, BinaryIO
 
 import numpy as np
 
+from causal4d.artifact_io import (
+    load_npz_bytes,
+    load_strict_json_object,
+    read_regular_file,
+    read_regular_file_beneath,
+)
+from causal4d.atomic_io import atomic_write_binary, atomic_write_json
+from causal4d.contracts import array_sha256
 from causal4d.immutable_array import readonly_array
 from causal4d.immutable_json import plain_json, validated_json_mapping
-
-from causal4d.contracts import array_sha256
 from causal4d.observation_evidence import GroupedObservationEvidence
 
 
 GRAPH_DISCREPANCY_BELIEF_VERSION = 1
+
+_MANIFEST_FIELDS = frozenset(
+    {
+        "artifact_kind",
+        "version",
+        "artifact_id",
+        "basis_sha256",
+        "component_ids",
+        "transition_model_id",
+        "innovation_model_id",
+        "source_physical_posterior_id",
+        "metadata",
+        "payload",
+    }
+)
+_PAYLOAD_FIELDS = frozenset({"path", "sha256"})
+_PAYLOAD_ARRAYS = frozenset(
+    {
+        "coefficient_mean_m",
+        "coefficient_covariance_m2",
+        "projection_variance_m2",
+    }
+)
 
 
 def _readonly(values: np.ndarray, *, dtype: type | None = float) -> np.ndarray:
     return readonly_array(values, dtype=dtype)
 
 
-def _validate_sha256(value: str, *, name: str) -> None:
-    if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+def _validated_sha256(value: Any, *, name: str) -> str:
+    if (
+        type(value) is not str
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
         raise ValueError(f"{name} must be a lowercase SHA-256 digest")
+    return value
 
 
-def _file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
+def _nonempty_string(value: Any, *, name: str) -> str:
+    if type(value) is not str or not value:
+        raise ValueError(f"{name} must be a nonempty string")
+    return value
+
+
+def _require_mapping(value: Any, *, name: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{name} must be a JSON object")
+    if any(type(key) is not str for key in value):
+        raise ValueError(f"{name} keys must be strings")
+    return value
+
+
+def _require_exact_fields(
+    value: Mapping[str, Any],
+    expected: frozenset[str],
+    *,
+    name: str,
+) -> None:
+    missing = sorted(expected - value.keys())
+    extra = sorted(value.keys() - expected)
+    if missing or extra:
+        raise ValueError(f"{name} fields changed; missing={missing}, extra={extra}")
+
+
+def _validated_component_ids(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, list) or not value:
+        raise ValueError("component_ids must be a nonempty JSON array")
+    result = tuple(
+        _nonempty_string(identifier, name=f"component_ids[{index}]")
+        for index, identifier in enumerate(value)
+    )
+    if len(set(result)) != len(result):
+        raise ValueError("component_ids must be unique")
+    return result
+
+
+def _require_float64_array(values: np.ndarray, *, name: str) -> np.ndarray:
+    result = np.asarray(values)
+    if result.dtype != np.dtype(np.float64):
+        raise ValueError(f"{name} must use float64")
+    return result
 
 
 def _positive_semidefinite(covariance: np.ndarray, *, name: str) -> None:
@@ -70,23 +142,29 @@ class GraphDiscrepancyBelief:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        _validate_sha256(self.basis_sha256, name="basis_sha256")
+        _validated_sha256(self.basis_sha256, name="basis_sha256")
         if self.source_physical_posterior_id is not None:
-            _validate_sha256(
+            _validated_sha256(
                 self.source_physical_posterior_id,
                 name="source_physical_posterior_id",
             )
-        if not self.transition_model_id or not self.innovation_model_id:
-            raise ValueError("discrepancy model identifiers must be nonempty")
-        if not self.component_ids or len(set(self.component_ids)) != len(
-            self.component_ids
+        _nonempty_string(self.transition_model_id, name="transition_model_id")
+        _nonempty_string(self.innovation_model_id, name="innovation_model_id")
+        if isinstance(self.component_ids, (str, bytes)):
+            raise ValueError("component_ids must be a nonempty sequence")
+        component_ids = tuple(self.component_ids)
+        if not component_ids or any(
+            type(identifier) is not str or not identifier
+            for identifier in component_ids
         ):
-            raise ValueError("component_ids must be nonempty and unique")
+            raise ValueError("component_ids must contain nonempty strings")
+        if len(set(component_ids)) != len(component_ids):
+            raise ValueError("component_ids must be unique")
 
         mean = _readonly(self.coefficient_mean_m)
         covariance = _readonly(self.coefficient_covariance_m2)
         projection = _readonly(self.projection_variance_m2)
-        component_count = len(self.component_ids)
+        component_count = len(component_ids)
         if mean.ndim != 3 or mean.shape[0] != component_count or mean.shape[2] != 3:
             raise ValueError("coefficient_mean_m must have shape (K, rank, 3)")
         rank = mean.shape[1]
@@ -104,6 +182,7 @@ class GraphDiscrepancyBelief:
             raise ValueError("projection variance must be nonnegative")
         _positive_semidefinite(covariance, name="coefficient covariance")
 
+        object.__setattr__(self, "component_ids", component_ids)
         object.__setattr__(self, "coefficient_mean_m", mean)
         object.__setattr__(self, "coefficient_covariance_m2", covariance)
         object.__setattr__(self, "projection_variance_m2", projection)
@@ -233,16 +312,25 @@ def write_graph_discrepancy_belief(
     manifest_path: str | Path,
     belief: GraphDiscrepancyBelief,
 ) -> dict[str, Any]:
-    """Write a JSON manifest and non-pickled NPZ payload."""
+    """Atomically write a strict JSON manifest and non-pickled NPZ payload."""
 
     manifest = Path(manifest_path)
     payload = manifest.with_suffix(".npz")
-    manifest.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(
+    if payload == manifest:
+        raise ValueError("graph-discrepancy manifest must not use the .npz suffix")
+
+    def write_payload(handle: BinaryIO) -> None:
+        np.savez_compressed(
+            handle,
+            coefficient_mean_m=belief.coefficient_mean_m,
+            coefficient_covariance_m2=belief.coefficient_covariance_m2,
+            projection_variance_m2=belief.projection_variance_m2,
+        )
+
+    atomic_write_binary(payload, write_payload)
+    payload_snapshot = read_regular_file(
         payload,
-        coefficient_mean_m=belief.coefficient_mean_m,
-        coefficient_covariance_m2=belief.coefficient_covariance_m2,
-        projection_variance_m2=belief.projection_variance_m2,
+        name="graph-discrepancy payload",
     )
     record = {
         "artifact_kind": "GraphDiscrepancyBelief",
@@ -256,42 +344,101 @@ def write_graph_discrepancy_belief(
         "metadata": plain_json(belief.metadata),
         "payload": {
             "path": payload.name,
-            "sha256": _file_sha256(payload),
+            "sha256": payload_snapshot.sha256,
         },
     }
-    manifest.write_text(
-        json.dumps(record, indent=2, sort_keys=True, allow_nan=False) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(manifest, record)
     return record
 
 
 def load_graph_discrepancy_belief(
     manifest_path: str | Path,
 ) -> GraphDiscrepancyBelief:
-    """Load and verify a graph-discrepancy belief artifact."""
+    """Load and verify one graph-discrepancy belief from exact file bytes."""
 
     manifest = Path(manifest_path)
-    record = json.loads(manifest.read_text(encoding="utf-8"))
-    if record.get("artifact_kind") != "GraphDiscrepancyBelief":
+    manifest_snapshot = read_regular_file(
+        manifest,
+        name="graph-discrepancy manifest",
+    )
+    record = load_strict_json_object(
+        manifest_snapshot.payload,
+        name="graph-discrepancy manifest",
+    )
+    _require_exact_fields(record, _MANIFEST_FIELDS, name="graph-discrepancy manifest")
+
+    if record["artifact_kind"] != "GraphDiscrepancyBelief":
         raise ValueError("manifest is not a graph-discrepancy belief")
-    if int(record.get("version", -1)) != GRAPH_DISCREPANCY_BELIEF_VERSION:
+    if type(record["version"]) is not int:
+        raise ValueError("graph-discrepancy version must be an integer")
+    if record["version"] != GRAPH_DISCREPANCY_BELIEF_VERSION:
         raise ValueError("unsupported graph-discrepancy belief version")
-    payload = manifest.parent / str(record["payload"]["path"])
-    if _file_sha256(payload) != record["payload"]["sha256"]:
-        raise ValueError("graph-discrepancy payload checksum changed")
-    with np.load(payload, allow_pickle=False) as arrays:
-        belief = GraphDiscrepancyBelief(
-            basis_sha256=str(record["basis_sha256"]),
-            component_ids=tuple(map(str, record["component_ids"])),
-            coefficient_mean_m=arrays["coefficient_mean_m"],
-            coefficient_covariance_m2=arrays["coefficient_covariance_m2"],
-            projection_variance_m2=arrays["projection_variance_m2"],
-            transition_model_id=str(record["transition_model_id"]),
-            innovation_model_id=str(record["innovation_model_id"]),
-            source_physical_posterior_id=record.get("source_physical_posterior_id"),
-            metadata=record.get("metadata", {}),
+
+    artifact_id = _validated_sha256(record["artifact_id"], name="artifact_id")
+    basis_sha256 = _validated_sha256(
+        record["basis_sha256"],
+        name="basis_sha256",
+    )
+    component_ids = _validated_component_ids(record["component_ids"])
+    transition_model_id = _nonempty_string(
+        record["transition_model_id"],
+        name="transition_model_id",
+    )
+    innovation_model_id = _nonempty_string(
+        record["innovation_model_id"],
+        name="innovation_model_id",
+    )
+    source_physical_posterior_id = record["source_physical_posterior_id"]
+    if source_physical_posterior_id is not None:
+        source_physical_posterior_id = _validated_sha256(
+            source_physical_posterior_id,
+            name="source_physical_posterior_id",
         )
-    if belief.artifact_id != record["artifact_id"]:
+    metadata = _require_mapping(record["metadata"], name="metadata")
+
+    payload_record = _require_mapping(record["payload"], name="payload")
+    _require_exact_fields(payload_record, _PAYLOAD_FIELDS, name="payload")
+    declared_payload_sha256 = _validated_sha256(
+        payload_record["sha256"],
+        name="payload.sha256",
+    )
+    payload_snapshot = read_regular_file_beneath(
+        manifest.parent,
+        payload_record["path"],
+        name="graph-discrepancy payload",
+    )
+    if payload_snapshot.sha256 != declared_payload_sha256:
+        raise ValueError("graph-discrepancy payload checksum changed")
+
+    arrays = load_npz_bytes(
+        payload_snapshot.payload,
+        name="graph-discrepancy payload",
+        expected_arrays=_PAYLOAD_ARRAYS,
+    )
+    coefficient_mean_m = _require_float64_array(
+        arrays["coefficient_mean_m"],
+        name="coefficient_mean_m",
+    )
+    coefficient_covariance_m2 = _require_float64_array(
+        arrays["coefficient_covariance_m2"],
+        name="coefficient_covariance_m2",
+    )
+    projection_variance_m2 = _require_float64_array(
+        arrays["projection_variance_m2"],
+        name="projection_variance_m2",
+    )
+
+    belief = GraphDiscrepancyBelief(
+        basis_sha256=basis_sha256,
+        component_ids=component_ids,
+        coefficient_mean_m=coefficient_mean_m,
+        coefficient_covariance_m2=coefficient_covariance_m2,
+        projection_variance_m2=projection_variance_m2,
+        transition_model_id=transition_model_id,
+        innovation_model_id=innovation_model_id,
+        source_physical_posterior_id=source_physical_posterior_id,
+        metadata=metadata,
+    )
+    if belief.artifact_id != artifact_id:
         raise ValueError("graph-discrepancy artifact identifier changed")
     return belief
