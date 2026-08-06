@@ -164,9 +164,7 @@ def test_bayesian_phystwin_payload_preserves_sign_convention() -> None:
     assert prior.bayesian_phystwin_prior_payload() == {
         "clock_domain": "camera-hardware-clock",
         "mean_offset_s": pytest.approx(-0.010),
-        "standard_deviation_s": pytest.approx(
-            prior.predictive_standard_deviation_s
-        ),
+        "standard_deviation_s": pytest.approx(prior.predictive_standard_deviation_s),
         "source_artifact_id": prior.artifact_id,
         "offset_convention": OBSERVATION_TIME_CORRECTION_CONVENTION,
     }
