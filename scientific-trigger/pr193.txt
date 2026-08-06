@@ -1,0 +1,3 @@
+target_sha=fa6a64b2442474321e453e9e8fdccd591e0a282d
+study=registered-real-gate,design-power-fragility,controlled-full
+runner=self-hosted,Linux,X64,nvidia-smi
