@@ -1,0 +1,232 @@
+name: Temporary acquisition path discovery
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/temporary-acquisition-path-discovery.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: temporary-acquisition-path-discovery-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  discover:
+    name: Discover persistent acquisition roots without mutation
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact pull-request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          clean: true
+
+      - name: Verify checked-out revision
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_head_sha="$(git rev-parse HEAD)"
+          test "${actual_head_sha}" = "${EXPECTED_HEAD_SHA}"
+          echo "CHECKED_OUT_SHA=${actual_head_sha}" >> "${GITHUB_ENV}"
+
+      - name: Inspect bounded persistent-root candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p outputs/acquisition-path-discovery
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+          import shutil
+          import subprocess
+          from pathlib import Path
+          from typing import Any
+
+          output = Path("outputs/acquisition-path-discovery/path-discovery.json")
+          home = Path.home()
+          workspace_raw = os.environ.get("RUNNER_WORKSPACE")
+          roots = [
+              Path("/mnt/lexar4tb"),
+              Path("/mnt"),
+              Path("/data"),
+              Path("/opt"),
+              home,
+          ]
+          if workspace_raw:
+              roots.append(Path(workspace_raw))
+
+          unique_roots: list[Path] = []
+          seen: set[str] = set()
+          for root in roots:
+              text = str(root)
+              if text not in seen:
+                  unique_roots.append(root)
+                  seen.add(text)
+
+          def inspect(path: Path) -> dict[str, Any]:
+              result: dict[str, Any] = {
+                  "path": str(path),
+                  "exists": path.exists(),
+                  "is_directory": path.is_dir(),
+                  "is_symlink": path.is_symlink(),
+                  "writable": os.access(path, os.W_OK) if path.exists() else False,
+              }
+              if path.is_dir() and not path.is_symlink():
+                  try:
+                      usage = shutil.disk_usage(path)
+                  except OSError:
+                      pass
+                  else:
+                      result.update(
+                          {
+                              "free_bytes": usage.free,
+                              "total_bytes": usage.total,
+                          }
+                      )
+              return result
+
+          def bounded_candidates(root: Path) -> list[str]:
+              if not root.is_dir() or root.is_symlink():
+                  return []
+              matches: list[str] = []
+              root_depth = len(root.parts)
+              for current, directories, _files in os.walk(root, followlinks=False):
+                  current_path = Path(current)
+                  depth = len(current_path.parts) - root_depth
+                  directories[:] = sorted(
+                      name
+                      for name in directories
+                      if not (current_path / name).is_symlink()
+                      and name not in {".cache", ".local", "node_modules", ".venv"}
+                  )
+                  if depth >= 4:
+                      directories[:] = []
+                  lowered = current_path.name.lower()
+                  if any(token in lowered for token in ("causal4d", "sloth")):
+                      matches.append(str(current_path))
+                      if len(matches) >= 50:
+                          break
+              return matches
+
+          sudo_binary = shutil.which("sudo")
+          passwordless_sudo = False
+          if sudo_binary is not None:
+              sudo = subprocess.run(
+                  [sudo_binary, "-n", "true"],
+                  check=False,
+                  stdout=subprocess.DEVNULL,
+                  stderr=subprocess.DEVNULL,
+              )
+              passwordless_sudo = sudo.returncode == 0
+
+          root_reports = [inspect(root) for root in unique_roots]
+          candidate_paths: list[str] = []
+          for root in unique_roots:
+              candidate_paths.extend(bounded_candidates(root))
+          candidate_paths = sorted(set(candidate_paths))[:100]
+
+          writable_roots = [
+              report["path"]
+              for report in root_reports
+              if report["is_directory"]
+              and not report["is_symlink"]
+              and report["writable"]
+          ]
+          preferred_parent = next(
+              (
+                  candidate
+                  for candidate in ("/mnt/lexar4tb", "/data", str(home))
+                  if candidate in writable_roots
+              ),
+              None,
+          )
+          recommendation = None
+          if preferred_parent is not None:
+              parent = Path(preferred_parent)
+              recommendation = {
+                  "parent": str(parent),
+                  "frozen_checkout": str(
+                      parent / "causal4d-physical" / "causal4d-frozen"
+                  ),
+                  "dataset_root": str(
+                      parent
+                      / "causal4d-physical"
+                      / "causal4d-sloth-multi-action-v1"
+                  ),
+              }
+
+          payload = {
+              "schema_version": 1,
+              "artifact_kind": "Causal4DAcquisitionPathDiscoveryV1",
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "checked_out_commit": os.environ["CHECKED_OUT_SHA"],
+              "runner_name": os.environ.get("RUNNER_NAME"),
+              "runner_os": os.environ.get("RUNNER_OS"),
+              "runner_arch": os.environ.get("RUNNER_ARCH"),
+              "home": str(home),
+              "runner_workspace": workspace_raw,
+              "passwordless_sudo": passwordless_sudo,
+              "roots": root_reports,
+              "bounded_matching_directories": candidate_paths,
+              "recommended_non_evidence_paths": recommendation,
+              "claim_boundary": (
+                  "This discovery reads directory metadata only. It does not create "
+                  "a checkout, dataset, scaffold, manifest, gate, or evidence."
+              ),
+          }
+          output.write_text(
+              json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False))
+          PY
+
+      - name: Publish discovery summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### Causal4D acquisition path discovery"
+            echo
+            echo "Read-only directory metadata; no scaffold or evidence was created."
+            echo
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "outputs/acquisition-path-discovery/path-discovery.json"
+              ).read_text(encoding="utf-8")
+          )
+          print(f"- runner: `{payload.get('runner_name')}`")
+          print(f"- passwordless sudo: `{payload.get('passwordless_sudo')}`")
+          recommendation = payload.get("recommended_non_evidence_paths")
+          if recommendation is None:
+              print("- recommended writable root: `none found`")
+          else:
+              print(f"- recommended parent: `{recommendation['parent']}`")
+              print(f"- frozen checkout: `{recommendation['frozen_checkout']}`")
+              print(f"- dataset root: `{recommendation['dataset_root']}`")
+          PY
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload discovery artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: causal4d-acquisition-path-discovery
+          path: outputs/acquisition-path-discovery/path-discovery.json
+          if-no-files-found: error
+          retention-days: 14
