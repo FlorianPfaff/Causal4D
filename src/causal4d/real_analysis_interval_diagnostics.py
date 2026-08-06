@@ -14,7 +14,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeAlias
 
 import numpy as np
 from numpy.typing import NDArray
@@ -41,7 +41,7 @@ INTERVAL_COMPARISON_AUDIT_ID = (
     "5a13c416d7efd522f5123f98afacaacd218838583d78256d463eeb5e1d478576"
 )
 
-FloatArray = NDArray[np.float64]
+FloatArray: TypeAlias = NDArray[np.float64]
 
 
 def _canonical_sha256(payload: Mapping[str, Any]) -> str:
