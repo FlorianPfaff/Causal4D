@@ -69,9 +69,7 @@ def _normalize_validity(
         if valid.shape == future.shape[:3]:
             valid = np.repeat(valid[..., None], 3, axis=3)
         if valid.shape != future.shape:
-            raise ValueError(
-                "validity_mask must have shape (K, P, F) or (K, P, F, 3)"
-            )
+            raise ValueError("validity_mask must have shape (K, P, F) or (K, P, F, 3)")
         valid = valid.copy()
     if np.any(valid & ~np.isfinite(future)):
         raise ValueError("coordinates marked valid must be finite")
@@ -108,16 +106,21 @@ def _atomic_write_npz(
         temporary.unlink(missing_ok=True)
 
 
-def _atomic_write_json(path: Path, value: Mapping[str, Any], *, overwrite: bool) -> None:
+def _atomic_write_json(
+    path: Path, value: Mapping[str, Any], *, overwrite: bool
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists() and not overwrite:
         raise FileExistsError(path)
-    payload = json.dumps(
-        value,
-        indent=2,
-        sort_keys=True,
-        allow_nan=False,
-    ) + "\n"
+    payload = (
+        json.dumps(
+            value,
+            indent=2,
+            sort_keys=True,
+            allow_nan=False,
+        )
+        + "\n"
+    )
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.",
         suffix=".tmp",
@@ -225,9 +228,7 @@ def export_bridge_package(
     if anchor.shape != (len(nodes), 3) or not np.all(np.isfinite(anchor)):
         raise ValueError("anchor_positions_world_m must have finite shape (P, 3)")
     if future.ndim != 4 or future.shape[3] != 3:
-        raise ValueError(
-            "future_positions_world_m must have shape (K, P, F, 3)"
-        )
+        raise ValueError("future_positions_world_m must have shape (K, P, F, 3)")
     if future.shape[0] != len(forecast_entries):
         raise ValueError("future forecast count must match repeated --forecast values")
     if future.shape[1] != len(nodes) or future.shape[2] < 1:
@@ -237,11 +238,11 @@ def export_bridge_package(
     future = future.copy()
     future[~validity] = np.nan
     future_count = int(future.shape[2])
-    future_times_s = (
-        np.arange(1, future_count + 1, dtype=np.float64) / float(forecast_fps)
+    future_times_s = np.arange(1, future_count + 1, dtype=np.float64) / float(
+        forecast_fps
     )
-    physical_frames = (
-        float(anchor_physical_frame) + future_times_s * float(physical_fps)
+    physical_frames = float(anchor_physical_frame) + future_times_s * float(
+        physical_fps
     )
 
     producer_arrays = {
@@ -278,8 +279,7 @@ def export_bridge_package(
         "anchor_physical_frame": anchor_physical_frame,
         "physical_fps": float(physical_fps),
         "forecast_metadata": {
-            identifier: {"caption": caption}
-            for identifier, caption in forecast_entries
+            identifier: {"caption": caption} for identifier, caption in forecast_entries
         },
         "metadata": {
             "bridge_helper": "molmomotion_physics_bridge_v1",
