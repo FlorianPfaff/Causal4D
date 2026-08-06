@@ -193,9 +193,7 @@ def verify_real_result_sources(
         "artifact_kind": SOURCE_VERIFICATION_ARTIFACT_KIND,
         "protocol_id": binding.protocol_id,
         "protocol_design_sha256": binding.protocol_design_sha256,
-        "preacquisition_amendment_sha256": (
-            binding.preacquisition_amendment_sha256
-        ),
+        "preacquisition_amendment_sha256": (binding.preacquisition_amendment_sha256),
         "method_freeze": method_descriptor,
         "registered_analysis_manifest": analysis_descriptor,
     }

@@ -565,9 +565,7 @@ def _subgroups(
 
 def _design_diagnostics(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     actions = sorted({str(record["action_id"]) for record in records})
-    conditions = sorted(
-        {str(record["realization_condition_id"]) for record in records}
-    )
+    conditions = sorted({str(record["realization_condition_id"]) for record in records})
     counts = {
         condition: {
             action: sum(

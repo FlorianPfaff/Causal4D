@@ -51,9 +51,7 @@ def _source_pair(tmp_path: Path) -> tuple[Path, Path, str, str]:
             "locked_before_confirmatory_collection": True,
             "target_outcomes_observed_at_freeze": False,
             "protocol": {"design_sha256": EXPECTED_PROTOCOL_DESIGN_SHA256},
-            "preacquisition": {
-                "amendment_sha256": EXPECTED_PREACQUISITION_SHA256
-            },
+            "preacquisition": {"amendment_sha256": EXPECTED_PREACQUISITION_SHA256},
             "analysis_contract": {
                 "target_outcomes_may_select_method_or_hyperparameters": False,
                 "optional_branches_may_change_primary_analysis": False,
@@ -85,9 +83,7 @@ def _factual_payload(
     analysis_sha: str,
 ) -> dict[str, object]:
     protocol = json.loads(PROTOCOL.read_text(encoding="utf-8"))
-    executions = {
-        value["execution_id"]: value for value in protocol["executions"]
-    }
+    executions = {value["execution_id"]: value for value in protocol["executions"]}
     records = []
     for split in protocol["splits"]["factual_continuation"]:
         execution = executions[split["execution_id"]]
@@ -102,9 +98,7 @@ def _factual_payload(
                 "acquisition_execution_index": index,
                 "action_id": execution["command_profile_id"],
                 "contact_region_id": execution["contact_region_id"],
-                "realization_condition_id": execution[
-                    "realization_condition_id"
-                ],
+                "realization_condition_id": execution["realization_condition_id"],
                 "included": True,
                 "exclusion_reason": None,
                 "baseline_value": baseline,
@@ -157,9 +151,10 @@ def test_report_uses_sessions_as_the_resampling_unit(tmp_path: Path) -> None:
     assert primary["confidence_interval"]["lower"] == pytest.approx(1.0)
     assert primary["confidence_interval"]["upper"] == pytest.approx(1.0)
     assert report["claim_boundary"]["object_class_generalization_claimed"] is False
-    assert report["design_diagnostics"][
-        "condition_comparisons_are_descriptive_only"
-    ] is True
+    assert (
+        report["design_diagnostics"]["condition_comparisons_are_descriptive_only"]
+        is True
+    )
 
 
 def test_session_weighting_survives_one_preregistered_exclusion(
@@ -358,8 +353,9 @@ def test_calibration_utility_reports_width_and_fragility() -> None:
     assert summary["target_execution_count"] == 2
     assert summary["target_coordinate_count"] > 0
     assert summary["interval_width_m"]["mean_of_execution_means"] > 0.0
-    assert summary["calibration_fragility"]["maximum_score"] >= summary[
-        "calibration_fragility"
-    ]["second_largest_score"]
+    assert (
+        summary["calibration_fragility"]["maximum_score"]
+        >= summary["calibration_fragility"]["second_largest_score"]
+    )
     assert summary["coverage_without_interval_width_is_sufficient"] is False
     assert summary["fragility_may_select_threshold"] is False
