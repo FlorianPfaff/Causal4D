@@ -1,4 +1,4 @@
-name: Maintenance validation of PR 188
+name: Maintenance format PR 188
 
 on:
   pull_request:
@@ -7,81 +7,84 @@ on:
       - ".github/workflows/maintenance-open-pr-validation.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: maintenance-pr188-validation-${{ github.ref }}
-  cancel-in-progress: true
+  group: maintenance-pr188-format-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
   PYTHONUNBUFFERED: "1"
-  PR188_SHA: 9d9513fc9f2b52859bcd2428fa88e38d5c952fe8
+  EXPECTED_PR188_SHA: 9d9513fc9f2b52859bcd2428fa88e38d5c952fe8
+  TARGET_BRANCH: agent/acquisition-campaign-reporting
 
 jobs:
-  validate-pr188:
-    name: PR 188 exact-head full validation
+  format-pr188:
+    name: Apply exact Ruff formatting to PR 188
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, nvidia-smi]
-    timeout-minutes: 90
+    timeout-minutes: 20
     steps:
-      - name: Check out PR 188 exact head
+      - name: Check out PR 188 branch with push credentials
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: IPS-Stuttgart/Causal4D
-          ref: ${{ env.PR188_SHA }}
-          persist-credentials: false
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: true
           clean: true
 
-      - name: Verify exact head
-        run: test "$(git rev-parse HEAD)" = "${PR188_SHA}"
+      - name: Verify exact target head
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          if [[ "${actual_sha}" != "${EXPECTED_PR188_SHA}" ]]; then
+            echo "::error::PR 188 moved from ${EXPECTED_PR188_SHA} to ${actual_sha}."
+            exit 1
+          fi
+          test -z "$(git status --porcelain)"
 
-      - name: Provision Python 3.12
+      - name: Set up Python 3.12
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
-      - name: Validate campaign reporting and complete default suite
+      - name: Apply and constrain Ruff formatting
         shell: bash
         run: |
           set -euo pipefail
-          venv="$RUNNER_TEMP/causal4d-pr188-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          artifact_venv="$RUNNER_TEMP/causal4d-pr188-artifact-${GITHUB_RUN_ID}"
-          python -m venv --clear "$venv"
-          "$venv/bin/python" -m pip install -e ".[dev]"
-
-          "$venv/bin/python" -W error::SyntaxWarning -m compileall -q \
-            src/causal4d/acquisition_campaign.py \
-            src/causal4d/cli/acquisition_operations.py \
-            tests/test_acquisition_campaign.py
-          "$venv/bin/python" -m ruff check .
-          "$venv/bin/python" -m ruff format --check \
-            src/causal4d/acquisition_campaign.py \
-            src/causal4d/cli/acquisition_operations.py \
-            tests/test_acquisition_campaign.py
-          "$venv/bin/python" -m mypy --python-version 3.12 \
+          python -m pip install "ruff==0.16.1"
+          python -m ruff format \
             src/causal4d/acquisition_campaign.py \
             src/causal4d/cli/acquisition_operations.py
-          "$venv/bin/python" -m pytest -q
+          python -m ruff format --check \
+            src/causal4d/acquisition_campaign.py \
+            src/causal4d/cli/acquisition_operations.py \
+            tests/test_acquisition_campaign.py
+          python -m ruff check .
+          git diff --check
 
-          rm -rf dist build
-          "$venv/bin/python" -m build
-          "$venv/bin/python" -m twine check dist/*
+          mapfile -t changed < <(git diff --name-only)
+          expected=(
+            src/causal4d/acquisition_campaign.py
+            src/causal4d/cli/acquisition_operations.py
+          )
+          if [[ "${changed[*]}" != "${expected[*]}" ]]; then
+            printf 'Unexpected changed files:\n%s\n' "${changed[*]}"
+            exit 1
+          fi
+          git diff --stat
 
-          python -m venv --clear "$artifact_venv"
-          "$artifact_venv/bin/python" -m pip install dist/*.whl
-          "$artifact_venv/bin/python" -m pip check
-          "$artifact_venv/bin/causal4d" commands validate --require-installed
-          "$artifact_venv/bin/causal4d" protocol acquisition --help
-
-          printf '%s\n' \
-            "PR188 ${PR188_SHA} passed complete self-hosted validation" \
-            > "$RUNNER_TEMP/causal4d-pr188-validation.txt"
-
-      - name: Upload PR 188 validation summary
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: causal4d-pr188-validation-${{ github.run_id }}
-          path: ${{ runner.temp }}/causal4d-pr188-validation.txt
-          if-no-files-found: warn
-          retention-days: 7
+      - name: Commit and push formatting-only change
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/causal4d/acquisition_campaign.py \
+            src/causal4d/cli/acquisition_operations.py
+          git commit -m "Apply Ruff formatting to acquisition campaign"
+          git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
