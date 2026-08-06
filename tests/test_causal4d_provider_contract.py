@@ -196,7 +196,7 @@ def test_exact_provider_descriptor_constructs_the_same_manifest() -> None:
     (
         ({"provider_name": None}, "provider_name must be a nonempty string"),
         ({"schema_version": True}, "schema_version must be a positive integer"),
-        ({"capabilities": ("valid", 3)}, "capabilities\[1\]"),
+        ({"capabilities": ("valid", 3)}, r"capabilities\[1\]"),
         (
             {"artifact_schema_versions": {1: 1}},
             "artifact_schema_versions key must be a nonempty string",
@@ -227,7 +227,7 @@ def test_provider_descriptor_rejects_schema_and_type_drift() -> None:
     malformed.append((missing, "fields do not match schema"))
 
     unknown = _descriptor(unregistered="value")
-    malformed.append((unknown, "unexpected=\['unregistered'\]"))
+    malformed.append((unknown, r"unexpected=\['unregistered'\]"))
 
     non_string_key = _descriptor()
     non_string_key[1] = "value"
@@ -253,9 +253,9 @@ def test_provider_descriptor_rejects_schema_and_type_drift() -> None:
 def test_compatibility_requirements_reject_coercible_values() -> None:
     manifest = _manifest()
 
-    with pytest.raises(ValueError, match="required_capabilities\[0\]"):
+    with pytest.raises(ValueError, match=r"required_capabilities\[0\]"):
         validate_provider_compatibility(manifest, required_capabilities=(1,))
-    with pytest.raises(ValueError, match="supported_schema_versions\[0\]"):
+    with pytest.raises(ValueError, match=r"supported_schema_versions\[0\]"):
         validate_provider_compatibility(manifest, supported_schema_versions=(True,))
     with pytest.raises(
         ValueError, match="supported_provider_versions must be a string"
