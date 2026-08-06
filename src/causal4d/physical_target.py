@@ -20,6 +20,7 @@ from causal4d.contracts import (
     PhysicalPosterior,
     array_sha256,
 )
+from causal4d.immutable_array import readonly_array
 from causal4d.immutable_json import plain_json, validated_json_mapping
 from causal4d.stage_provenance import EvaluationTarget
 
@@ -225,8 +226,8 @@ class PhysicalTargetBundle:
         if not np.any(valid[o_plus_offset:]):
             raise ValueError("physical target has no valid O+ point frames")
 
-        points.setflags(write=False)
-        valid.setflags(write=False)
+        points = readonly_array(points)
+        valid = readonly_array(valid)
         metadata = validated_json_mapping(
             self.metadata,
             error_message="physical target metadata must be finite JSON data",
