@@ -1,0 +1,125 @@
+name: Temporary PR 193 protocol lock v3
+
+on:
+  push:
+    branches: [ci/validate-pr-193]
+    paths: [.github/workflows/temporary-pr193-protocol-lock-v3.yml]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-pr193-protocol-lock-v3
+  cancel-in-progress: true
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUNBUFFERED: "1"
+  EXPECTED_HEAD_SHA: 96c6b420c0ac5f56f5819bcd77f336cef735d6e8
+
+jobs:
+  harden:
+    name: Patch and validate PR 193 protocol binding
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 45
+    steps:
+      - name: Check out execution branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ci/validate-pr-193
+          path: executor
+          persist-credentials: false
+          clean: true
+
+      - name: Check out exact target branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/lock-real-analysis-reporting
+          path: target
+          fetch-depth: 0
+          persist-credentials: true
+          clean: true
+
+      - name: Verify target and apply reviewed patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git -C target rev-parse HEAD)"
+          test "${actual}" = "${EXPECTED_HEAD_SHA}"
+          test -z "$(git -C target status --short)"
+          python executor/scripts/ci/temporary_pr193_protocol_lock.py target
+          mapfile -t changed < <(git -C target diff --name-only)
+          expected=(
+            docs/causal4d_real_analysis_reporting.md
+            src/causal4d/real_analysis_reporting.py
+            tests/test_real_analysis_reporting.py
+          )
+          printf '%s\n' "${changed[@]}" | sort > "${RUNNER_TEMP}/changed.txt"
+          printf '%s\n' "${expected[@]}" | sort > "${RUNNER_TEMP}/expected.txt"
+          diff -u "${RUNNER_TEMP}/expected.txt" "${RUNNER_TEMP}/changed.txt"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Create isolated environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          venv="${RUNNER_TEMP}/causal4d-pr193-v3-${GITHUB_RUN_ID}"
+          python -m venv "${venv}"
+          echo "VIRTUAL_ENV=${venv}" >> "${GITHUB_ENV}"
+          echo "${venv}/bin" >> "${GITHUB_PATH}"
+
+      - name: Install and validate patched source
+        shell: bash
+        working-directory: target
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python -m pip check
+          python -m ruff format \
+            src/causal4d/real_analysis_reporting.py \
+            tests/test_real_analysis_reporting.py
+          git diff --check
+          PYTHONPYCACHEPREFIX="${RUNNER_TEMP}/pr193-v3-syntax" \
+            python -W error::SyntaxWarning -m compileall -q -f src tests scripts
+          python -m ruff check .
+          python -m ruff format --check \
+            src/causal4d/real_analysis_reporting.py \
+            src/causal4d/real_result_source_verification.py \
+            src/causal4d/cli/real_analysis_reporting.py \
+            tests/test_real_analysis_reporting.py
+          python -m mypy --python-version 3.12 \
+            src/causal4d/real_analysis_reporting.py \
+            src/causal4d/real_result_source_verification.py \
+            src/causal4d/cli/real_analysis_reporting.py
+          python -m pytest --junitxml=pytest-pr193-v3.xml
+          rm -rf build dist
+          python -m build
+          python -m twine check dist/*
+
+      - name: Commit and push validated patch
+        shell: bash
+        working-directory: target
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            docs/causal4d_real_analysis_reporting.md \
+            src/causal4d/real_analysis_reporting.py \
+            tests/test_real_analysis_reporting.py
+          git commit -m "Bind real-analysis reporting to validated protocol"
+          git push origin HEAD:agent/lock-real-analysis-reporting
+
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: causal4d-pr193-protocol-v3-${{ github.run_id }}
+          path: target/pytest-pr193-v3.xml
+          if-no-files-found: warn
+          retention-days: 7
