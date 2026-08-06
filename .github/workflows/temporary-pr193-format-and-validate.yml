@@ -4,13 +4,16 @@ on:
   push:
     branches: [ci/validate-pr-193]
     paths: [.github/workflows/temporary-pr193-format-and-validate.yml]
+  pull_request:
+    branches: [main]
+    paths: [.github/workflows/temporary-pr193-format-and-validate.yml]
 
 permissions:
   contents: write
 
 concurrency:
   group: temporary-pr193-format-and-validate
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
