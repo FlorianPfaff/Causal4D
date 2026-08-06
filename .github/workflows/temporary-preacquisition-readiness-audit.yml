@@ -1,0 +1,358 @@
+name: Temporary pre-acquisition readiness audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/temporary-preacquisition-readiness-audit.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: temporary-preacquisition-readiness-audit-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUNBUFFERED: "1"
+  FROZEN_CHECKOUT: /opt/causal4d-frozen
+  DATASET_ROOT: /data/causal4d-sloth-multi-action-v1
+  AUDIT_OUTPUT: outputs/preacquisition-audit
+
+jobs:
+  audit:
+    name: Inspect physical acquisition readiness without mutation
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 60
+    steps:
+      - name: Check out exact pull-request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Record runner and path availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${AUDIT_OUTPUT}"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          def inspect_path(raw: str) -> dict[str, object]:
+              path = Path(raw)
+              return {
+                  "configured_path": raw,
+                  "exists": path.exists(),
+                  "is_directory": path.is_dir(),
+                  "is_symlink": path.is_symlink(),
+              }
+
+          payload = {
+              "schema_version": 1,
+              "artifact_kind": "Causal4DPreacquisitionAuditEnvironmentV1",
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "commit": os.environ["GITHUB_SHA"],
+              "pull_request_head": os.environ.get("GITHUB_HEAD_REF"),
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "runner_name": os.environ.get("RUNNER_NAME"),
+              "runner_os": os.environ.get("RUNNER_OS"),
+              "runner_arch": os.environ.get("RUNNER_ARCH"),
+              "frozen_checkout": inspect_path(os.environ["FROZEN_CHECKOUT"]),
+              "dataset_root": inspect_path(os.environ["DATASET_ROOT"]),
+          }
+          output = Path(os.environ["AUDIT_OUTPUT"]) / "environment.json"
+          output.write_text(
+              json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False))
+          PY
+
+      - name: Install an isolated audit environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv .preacquisition-audit-venv
+          .preacquisition-audit-venv/bin/python -m pip install --upgrade pip
+          .preacquisition-audit-venv/bin/python -m pip install .
+          .preacquisition-audit-venv/bin/python -m pip check
+
+      - name: Run read-only protocol status commands
+        shell: bash
+        run: |
+          set -u
+          mkdir -p "${AUDIT_OUTPUT}"
+
+          if [[ ! -d "${FROZEN_CHECKOUT}" || -L "${FROZEN_CHECKOUT}" || \
+                ! -d "${DATASET_ROOT}" || -L "${DATASET_ROOT}" ]]; then
+            cat > "${AUDIT_OUTPUT}/exit-codes.json" <<'JSON'
+          {
+            "source_panel_status": null,
+            "preacquisition_readiness": null,
+            "confirmatory_evidence_status": null,
+            "commands_executed": false
+          }
+          JSON
+            exit 0
+          fi
+
+          set +e
+          .preacquisition-audit-venv/bin/causal4d \
+            protocol readiness source-panel-status \
+            "${FROZEN_CHECKOUT}" \
+            "${DATASET_ROOT}" \
+            --verify-file-hashes \
+            --require-complete \
+            --output-json "${AUDIT_OUTPUT}/source-panel-status.json" \
+            > "${AUDIT_OUTPUT}/source-panel-console.txt" 2>&1
+          source_panel_rc=$?
+
+          .preacquisition-audit-venv/bin/causal4d \
+            protocol readiness status \
+            "${FROZEN_CHECKOUT}" \
+            "${DATASET_ROOT}" \
+            --verify-file-hashes \
+            --require-ready \
+            --output-json "${AUDIT_OUTPUT}/preacquisition-readiness.json" \
+            > "${AUDIT_OUTPUT}/preacquisition-console.txt" 2>&1
+          readiness_rc=$?
+
+          .preacquisition-audit-venv/bin/causal4d \
+            protocol real status \
+            configs/causal4d/sloth_multi_action_v1.json \
+            "${DATASET_ROOT}" \
+            --verify-file-hashes \
+            --require-complete \
+            --output-json "${AUDIT_OUTPUT}/confirmatory-evidence-status.json" \
+            > "${AUDIT_OUTPUT}/confirmatory-console.txt" 2>&1
+          evidence_rc=$?
+          set -e
+
+          SOURCE_PANEL_RC="${source_panel_rc}" \
+          READINESS_RC="${readiness_rc}" \
+          EVIDENCE_RC="${evidence_rc}" \
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              "source_panel_status": int(os.environ["SOURCE_PANEL_RC"]),
+              "preacquisition_readiness": int(os.environ["READINESS_RC"]),
+              "confirmatory_evidence_status": int(os.environ["EVIDENCE_RC"]),
+              "commands_executed": True,
+          }
+          output = Path(os.environ["AUDIT_OUTPUT"]) / "exit-codes.json"
+          output.write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Build a non-claim-bearing audit summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from typing import Any
+
+          root = Path(os.environ["AUDIT_OUTPUT"])
+
+          def load(name: str) -> dict[str, Any] | None:
+              path = root / name
+              if not path.is_file():
+                  return None
+              try:
+                  value = json.loads(path.read_text(encoding="utf-8"))
+              except (OSError, json.JSONDecodeError):
+                  return None
+              return value if isinstance(value, dict) else None
+
+          def project(value: dict[str, Any] | None, keys: tuple[str, ...]) -> dict[str, Any] | None:
+              if value is None:
+                  return None
+              return {key: value[key] for key in keys if key in value}
+
+          environment = load("environment.json") or {}
+          exit_codes = load("exit-codes.json") or {
+              "commands_executed": False,
+              "source_panel_status": None,
+              "preacquisition_readiness": None,
+              "confirmatory_evidence_status": None,
+          }
+          source_panel = load("source-panel-status.json")
+          readiness = load("preacquisition-readiness.json")
+          evidence = load("confirmatory-evidence-status.json")
+
+          summary = {
+              "schema_version": 1,
+              "artifact_kind": "Causal4DPreacquisitionReadinessAuditV1",
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "commit": os.environ["GITHUB_SHA"],
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "runner_name": os.environ.get("RUNNER_NAME"),
+              "environment": {
+                  "frozen_checkout": environment.get("frozen_checkout"),
+                  "dataset_root": environment.get("dataset_root"),
+              },
+              "exit_codes": exit_codes,
+              "source_panel": project(
+                  source_panel,
+                  (
+                      "valid",
+                      "complete",
+                      "completed_execution_count",
+                      "registered_execution_count",
+                      "next_execution",
+                      "missing_execution_ids",
+                      "invalid_execution_ids",
+                      "blockers",
+                  ),
+              ),
+              "preacquisition_readiness": project(
+                  readiness,
+                  (
+                      "valid",
+                      "complete",
+                      "ready",
+                      "first_confirmatory_execution_allowed",
+                      "confirmatory_manifest_count",
+                      "blockers",
+                      "evidence_sha256",
+                      "status_sha256",
+                  ),
+              ),
+              "confirmatory_evidence": project(
+                  evidence,
+                  (
+                      "valid",
+                      "complete",
+                      "claim_ready",
+                      "acquired_execution_count",
+                      "validated_execution_count",
+                      "specified_execution_count",
+                      "next_pending_execution",
+                      "missing_execution_ids",
+                      "incomplete_execution_ids",
+                      "invalid_execution_ids",
+                      "blockers",
+                      "status_sha256",
+                  ),
+              ),
+              "claim_boundary": (
+                  "This read-only audit does not scaffold, seal, publish, repair, "
+                  "or count any source-panel or confirmatory execution. Workflow "
+                  "artifacts and status reports are not physical evidence."
+              ),
+          }
+          output = root / "audit-summary.json"
+          output.write_text(
+              json.dumps(summary, indent=2, sort_keys=True, allow_nan=False) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, indent=2, sort_keys=True, allow_nan=False))
+          PY
+
+      - name: Publish audit job summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### Causal4D pre-acquisition audit"
+            echo
+            echo "This job is read-only and does not increment source-panel or confirmatory evidence."
+            echo
+            if [[ -f "${AUDIT_OUTPUT}/audit-summary.json" ]]; then
+              python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          summary = json.loads(
+              (Path(os.environ["AUDIT_OUTPUT"]) / "audit-summary.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          environment = summary["environment"]
+          for name in ("frozen_checkout", "dataset_root"):
+              value = environment.get(name) or {}
+              print(
+                  f"- {name}: exists=`{value.get('exists')}`, "
+                  f"directory=`{value.get('is_directory')}`, "
+                  f"symlink=`{value.get('is_symlink')}`"
+              )
+          print(f"- commands executed: `{summary['exit_codes'].get('commands_executed')}`")
+          readiness = summary.get("preacquisition_readiness") or {}
+          evidence = summary.get("confirmatory_evidence") or {}
+          print(f"- ready: `{readiness.get('ready')}`")
+          print(
+              "- first confirmatory execution allowed: "
+              f"`{readiness.get('first_confirmatory_execution_allowed')}`"
+          )
+          print(f"- claim ready: `{evidence.get('claim_ready')}`")
+          PY
+            else
+              echo "- audit stopped before summary creation"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload sanitized audit artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: causal4d-preacquisition-readiness-audit
+          path: outputs/preacquisition-audit/audit-summary.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Fail on malformed present evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          summary = json.loads(
+              (Path(os.environ["AUDIT_OUTPUT"]) / "audit-summary.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          exit_codes = summary["exit_codes"]
+          if not exit_codes.get("commands_executed"):
+              print("Acquisition paths are not provisioned on this runner; audit recorded the blocker.")
+              raise SystemExit(0)
+          malformed = {
+              name: code
+              for name, code in exit_codes.items()
+              if name != "commands_executed" and code not in (0, 3)
+          }
+          if malformed:
+              raise SystemExit(f"Present acquisition evidence is invalid: {malformed}")
+          print("Present acquisition evidence is internally valid; incomplete status is allowed.")
+          PY
+
+      - name: Remove isolated environment and unsanitized status files
+        if: always()
+        shell: bash
+        run: |
+          rm -rf .preacquisition-audit-venv
+          find "${AUDIT_OUTPUT}" -type f ! -name audit-summary.json -delete
