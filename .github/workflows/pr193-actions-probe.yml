@@ -13,6 +13,9 @@ concurrency:
   group: pr193-actions-probe-v1
   cancel-in-progress: true
 
+env:
+  PROBE_REVISION: "2"
+
 jobs:
   probe:
     runs-on: ubuntu-latest
@@ -39,6 +42,7 @@ jobs:
 
           value = {
               "schema_version": 1,
+              "probe_revision": int(os.environ["PROBE_REVISION"]),
               "status": "passed",
               "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
               "workflow_run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
