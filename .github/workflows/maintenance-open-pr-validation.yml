@@ -55,15 +55,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install "ruff==0.16.1"
-          python -m ruff format \
+          venv="${RUNNER_TEMP}/causal4d-pr188-format-${GITHUB_RUN_ID}"
+          python -m venv --clear "${venv}"
+          "${venv}/bin/python" -m pip install "ruff==0.16.1"
+          "${venv}/bin/python" -m ruff format \
             src/causal4d/acquisition_campaign.py \
             src/causal4d/cli/acquisition_operations.py
-          python -m ruff format --check \
+          "${venv}/bin/python" -m ruff format --check \
             src/causal4d/acquisition_campaign.py \
             src/causal4d/cli/acquisition_operations.py \
             tests/test_acquisition_campaign.py
-          python -m ruff check .
+          "${venv}/bin/python" -m ruff check .
           git diff --check
 
           mapfile -t changed < <(git diff --name-only)
