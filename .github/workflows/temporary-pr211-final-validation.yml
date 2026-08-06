@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  TARGET_SHA: b7f899ed616b4615d2a2805abbec73d8bf5de70b
+  TARGET_SHA: 2a44d055a491b57dafc203f45698614c8e883def
   BASE_SHA: 17e04a16b2a999ccd28b3196841f84951e0d48e2
   ISSUE_NUMBER: "213"
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
@@ -47,7 +47,7 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Verify immutable revision and intended seven-file scope
+      - name: Verify immutable revision and intended nine-file scope
         shell: bash
         run: |
           set -euo pipefail
@@ -59,8 +59,10 @@ jobs:
           docs/causal4d_source_panel_staging_preflight.md
           src/causal4d/cli/preacquisition_readiness.py
           src/causal4d/preacquisition_next_action.py
+          src/causal4d/preacquisition_operator_flow.py
           src/causal4d/preacquisition_source_panel_staging.py
           tests/test_preacquisition_next_action.py
+          tests/test_preacquisition_operator_flow.py
           tests/test_preacquisition_source_panel_staging.py
           EOF
           diff -u expected.txt actual.txt
@@ -82,18 +84,22 @@ jobs:
           files=(
             src/causal4d/cli/preacquisition_readiness.py
             src/causal4d/preacquisition_next_action.py
+            src/causal4d/preacquisition_operator_flow.py
             src/causal4d/preacquisition_source_panel_staging.py
             tests/test_preacquisition_next_action.py
+            tests/test_preacquisition_operator_flow.py
             tests/test_preacquisition_source_panel_staging.py
           )
           python -m ruff check .
           python -m ruff format --check "${files[@]}"
           python -m mypy \
             src/causal4d/preacquisition_next_action.py \
+            src/causal4d/preacquisition_operator_flow.py \
             src/causal4d/preacquisition_source_panel_staging.py
           python -W error -m compileall -q src tests scripts
           python -m pytest -q -p no:cacheprovider \
             tests/test_preacquisition_next_action.py \
+            tests/test_preacquisition_operator_flow.py \
             tests/test_preacquisition_source_panel_staging.py
           python scripts/ci/check_acquisition_runbook_commands.py
 
@@ -350,7 +356,9 @@ jobs:
           git -C cleanup rm --ignore-unmatch \
             .github/workflows/temporary-pr211-dispatch.yml \
             .github/workflows/temporary-pr211-final-validation.yml \
-            .github/workflows/temporary-pr211-scheduled-validation.yml
+            .github/workflows/temporary-pr211-scheduled-validation.yml \
+            .github/workflows/temporary-pr211-hardened-validation.yml \
+            .github/workflows/temporary-pr211-operator-sequence-validation.yml
           if ! git -C cleanup diff --cached --quiet; then
             git -C cleanup commit -m \
               "Remove temporary PR 211 validation workflows"
