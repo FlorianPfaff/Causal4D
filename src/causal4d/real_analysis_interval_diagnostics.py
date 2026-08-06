@@ -31,9 +31,7 @@ from causal4d.real_analysis_reporting import (
 
 
 REAL_ANALYSIS_INTERVAL_DIAGNOSTICS_SCHEMA_VERSION = 1
-OPERATING_CHARACTERISTIC_TARGET_SHA = (
-    "fa6a64b2442474321e453e9e8fdccd591e0a282d"
-)
+OPERATING_CHARACTERISTIC_TARGET_SHA = "fa6a64b2442474321e453e9e8fdccd591e0a282d"
 BOOTSTRAP_OPERATING_CHARACTERISTIC_RUN_ID = 31091137654
 BOOTSTRAP_OPERATING_CHARACTERISTIC_AUDIT_ID = (
     "7dbea2a9b99cbc98acd03fa28af9583f0e95d4d0772e58853af4f05d0584267a"
@@ -108,9 +106,7 @@ def student_t_sensitivity_interval(
     sample_sd = float(np.std(array, ddof=1))
     standard_error = sample_sd / math.sqrt(len(array))
     tail = 0.5 * (1.0 - confidence_level)
-    critical_value = float(
-        student_t_distribution.ppf(1.0 - tail, df=len(array) - 1)
-    )
+    critical_value = float(student_t_distribution.ppf(1.0 - tail, df=len(array) - 1))
     half_width = critical_value * standard_error
     return {
         "estimable": True,
@@ -254,9 +250,7 @@ def _included_session_effects(
             continue
         baseline = float(record["baseline_value"])
         candidate = float(record["candidate_value"])
-        improvement = (
-            baseline - candidate if lower_is_better else candidate - baseline
-        )
+        improvement = baseline - candidate if lower_is_better else candidate - baseline
         grouped[str(record["session_id"])].append(improvement)
     return tuple(float(np.mean(values)) for values in grouped.values())
 
@@ -287,9 +281,13 @@ def build_real_analysis_interval_diagnostics(
     actual_point = None if not values else float(np.mean(values))
     if expected_point is None:
         if actual_point is not None:
-            raise ValueError("companion interval point estimate differs from primary report")
+            raise ValueError(
+                "companion interval point estimate differs from primary report"
+            )
     elif actual_point is None or not np.isclose(expected_point, actual_point):
-        raise ValueError("companion interval point estimate differs from primary report")
+        raise ValueError(
+            "companion interval point estimate differs from primary report"
+        )
 
     payload: dict[str, Any] = {
         "schema_version": REAL_ANALYSIS_INTERVAL_DIAGNOSTICS_SCHEMA_VERSION,
