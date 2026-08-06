@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  TARGET_SHA: fcea4770718a729ed464fce4336cc38905c0cc51
+  TARGET_SHA: c986181bf8382f05dae3afe8c9d39ee207bf15ec
   BASE_SHA: 17e04a16b2a999ccd28b3196841f84951e0d48e2
   ISSUE_NUMBER: "213"
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
