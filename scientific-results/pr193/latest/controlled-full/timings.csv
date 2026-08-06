@@ -1,0 +1,7 @@
+evaluation,case_count,elapsed_seconds
+counterfactual/nominal,3600,946.0590624911711
+counterfactual/matched_world,1800,462.24055875558406
+counterfactual/strong_world_mismatch,1800,491.39189357403666
+counterfactual/high_inference_noise,1800,498.8153066728264
+latent-contact,2400,1102.9652209281921
+dynamic-contact,2000,3.763549513183534

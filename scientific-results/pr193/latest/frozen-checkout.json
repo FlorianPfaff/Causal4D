@@ -1,0 +1,10 @@
+{
+  "actual_commit": "fa6a64b2442474321e453e9e8fdccd591e0a282d",
+  "artifact_kind": "Causal4DFrozenCheckoutResolution",
+  "clean_worktree": true,
+  "commit_matches": false,
+  "expected_commit": null,
+  "repository_root": "/home/github-runner/actions-runner/_work/Causal4D/Causal4D/target",
+  "schema_version": 1,
+  "used_target_head_fallback": true
+}
