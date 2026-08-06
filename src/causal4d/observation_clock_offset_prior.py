@@ -3,7 +3,7 @@
 The existing actuator-realization diagnostic estimates one timestamp correction
 per independent source or dry-run execution. This module aggregates those
 execution-level artifacts into a content-addressed predictive prior without
-changing the original calibration implementation or any frozen evidence.
+changing the original calibration implementation or frozen evidence.
 """
 
 from __future__ import annotations
@@ -28,6 +28,16 @@ OBSERVATION_TIME_CORRECTION_CONVENTION = (
     "aligned_observation_time_s = observation_time_s + offset_s"
 )
 
+_INFORMATION_BOUNDARY: dict[str, bool] = {
+    "source_or_dry_run_only": True,
+    "target_outcomes_used": False,
+    "hardware_timestamps_authoritative": True,
+    "equal_weight_per_execution": True,
+}
+_CLAIM_BOUNDARY = (
+    "This predictive timing prior does not identify contact slip, material "
+    "relaxation, controller-frame physics, or downstream physical-query benefit."
+)
 _PRIOR_FIELDS = frozenset(
     {
         "schema",
@@ -88,11 +98,61 @@ def _revision(value: object, *, name: str) -> str:
 def _finite_float(value: object, *, name: str) -> float:
     if isinstance(value, (bool, np.bool_)):
         raise ValueError(f"{name} must be finite")
-    try:
-        result = float(value)
-    except (TypeError, ValueError) as error:
-        raise ValueError(f"{name} must be finite") from error
+    array = np.asarray(value)
+    if array.shape != () or not np.issubdtype(array.dtype, np.number):
+        raise ValueError(f"{name} must be finite")
+    raw = array.item()
+    if isinstance(raw, bool) or not isinstance(
+        raw,
+        (int, float, np.integer, np.floating),
+    ):
+        raise ValueError(f"{name} must be finite")
+    result = float(raw)
     _require(np.isfinite(result), f"{name} must be finite")
+    return result
+
+
+def _positive_integer(value: object, *, name: str) -> int:
+    if isinstance(value, (bool, np.bool_)) or not isinstance(
+        value,
+        (int, np.integer),
+    ):
+        raise ValueError(f"{name} must be a positive integer")
+    result = int(value)
+    _require(result >= 1, f"{name} must be a positive integer")
+    return result
+
+
+def _sequence(value: object, *, name: str) -> Sequence[object]:
+    _require(
+        not isinstance(value, (str, bytes)) and isinstance(value, Sequence),
+        f"{name} must be a sequence",
+    )
+    return value
+
+
+def _ordered_unique_strings(value: object, *, name: str) -> tuple[str, ...]:
+    values = _sequence(value, name=name)
+    result = tuple(
+        _nonempty_string(item, name=f"{name} entry") for item in values
+    )
+    _require(bool(result), f"{name} must not be empty")
+    _require(len(set(result)) == len(result), f"{name} must be unique")
+    return result
+
+
+def _ordered_sha256s(value: object, *, name: str) -> tuple[str, ...]:
+    values = _sequence(value, name=name)
+    result = tuple(_sha256(item, name=f"{name} entry") for item in values)
+    _require(bool(result), f"{name} must not be empty")
+    _require(len(set(result)) == len(result), f"{name} must be unique")
+    return result
+
+
+def _ordered_finite_floats(value: object, *, name: str) -> tuple[float, ...]:
+    values = _sequence(value, name=name)
+    result = tuple(_finite_float(item, name=f"{name} entry") for item in values)
+    _require(bool(result), f"{name} must not be empty")
     return result
 
 
@@ -115,44 +175,11 @@ def _content_id(value: Mapping[str, Any]) -> str:
     return hashlib.sha256(_canonical_json_bytes(canonical)).hexdigest()
 
 
-def _ordered_unique_strings(
-    values: Sequence[object],
-    *,
-    name: str,
-) -> tuple[str, ...]:
-    _require(
-        not isinstance(values, (str, bytes)) and isinstance(values, Sequence),
-        f"{name} must be a sequence",
-    )
-    result = tuple(
-        _nonempty_string(value, name=f"{name} entry") for value in values
-    )
-    _require(bool(result), f"{name} must not be empty")
-    _require(len(set(result)) == len(result), f"{name} must be unique")
-    return result
-
-
-def _ordered_finite_floats(
-    values: Sequence[object],
-    *,
-    name: str,
-) -> tuple[float, ...]:
-    _require(
-        not isinstance(values, (str, bytes)) and isinstance(values, Sequence),
-        f"{name} must be a sequence",
-    )
-    result = tuple(
-        _finite_float(value, name=f"{name} entry") for value in values
-    )
-    _require(bool(result), f"{name} must not be empty")
-    return result
-
-
-def _predictive_standard_deviation(
+def _predictive_summary(
     offsets_s: Sequence[float],
     *,
-    grid_quantization_standard_deviation_s: float,
-    minimum_predictive_standard_deviation_s: float,
+    grid_standard_deviation_s: float,
+    minimum_standard_deviation_s: float,
 ) -> tuple[float, float, float]:
     values = np.asarray(offsets_s, dtype=np.float64)
     _require(len(values) >= 3, "at least three source executions are required")
@@ -160,10 +187,10 @@ def _predictive_standard_deviation(
     sample_standard_deviation = float(np.std(values, ddof=1))
     predictive_variance = (
         (1.0 + 1.0 / len(values)) * sample_standard_deviation**2
-        + grid_quantization_standard_deviation_s**2
+        + grid_standard_deviation_s**2
     )
     predictive_standard_deviation = max(
-        minimum_predictive_standard_deviation_s,
+        minimum_standard_deviation_s,
         math.sqrt(max(0.0, predictive_variance)),
     )
     return mean, sample_standard_deviation, predictive_standard_deviation
@@ -200,13 +227,10 @@ class ObservationClockOffsetPriorV1:
             "clock and reference clock domains must differ",
         )
         time_scale = _nonempty_string(self.time_scale, name="time_scale")
-        source_revision = _revision(
-            self.source_revision,
-            name="source_revision",
-        )
-        source_artifact_ids = tuple(
-            _sha256(value, name="source_artifact_ids entry")
-            for value in self.source_artifact_ids
+        source_revision = _revision(self.source_revision, name="source_revision")
+        source_artifact_ids = _ordered_sha256s(
+            self.source_artifact_ids,
+            name="source_artifact_ids",
         )
         execution_ids = _ordered_unique_strings(
             self.execution_ids,
@@ -215,11 +239,6 @@ class ObservationClockOffsetPriorV1:
         source_offsets = _ordered_finite_floats(
             self.source_offsets_s,
             name="source_offsets_s",
-        )
-        _require(
-            source_artifact_ids
-            and len(set(source_artifact_ids)) == len(source_artifact_ids),
-            "source artifact IDs must be nonempty and unique",
         )
         _require(
             len(source_artifact_ids)
@@ -231,11 +250,12 @@ class ObservationClockOffsetPriorV1:
             execution_ids == tuple(sorted(execution_ids)),
             "execution IDs must use deterministic sorted order",
         )
+        source_group_count = _positive_integer(
+            self.source_group_count,
+            name="source_group_count",
+        )
         _require(
-            isinstance(self.source_group_count, int)
-            and not isinstance(self.source_group_count, bool)
-            and self.source_group_count == len(execution_ids)
-            and self.source_group_count >= 3,
+            source_group_count == len(execution_ids) and source_group_count >= 3,
             "source_group_count must equal at least three executions",
         )
         _require(
@@ -258,16 +278,12 @@ class ObservationClockOffsetPriorV1:
             minimum_standard_deviation > 0.0,
             "minimum predictive standard deviation must be positive",
         )
-        expected_mean, expected_sample, expected_predictive = (
-            _predictive_standard_deviation(
-                source_offsets,
-                grid_quantization_standard_deviation_s=grid_standard_deviation,
-                minimum_predictive_standard_deviation_s=(
-                    minimum_standard_deviation
-                ),
-            )
+        expected = _predictive_summary(
+            source_offsets,
+            grid_standard_deviation_s=grid_standard_deviation,
+            minimum_standard_deviation_s=minimum_standard_deviation,
         )
-        supplied_values = (
+        supplied = (
             _finite_float(self.mean_offset_s, name="mean_offset_s"),
             _finite_float(
                 self.sample_standard_deviation_s,
@@ -278,20 +294,15 @@ class ObservationClockOffsetPriorV1:
                 name="predictive_standard_deviation_s",
             ),
         )
-        expected_values = (expected_mean, expected_sample, expected_predictive)
         _require(
             all(
-                np.isclose(supplied, expected, rtol=1e-13, atol=1e-15)
-                for supplied, expected in zip(
-                    supplied_values,
-                    expected_values,
-                    strict=True,
-                )
+                np.isclose(actual, wanted, rtol=1e-13, atol=1e-15)
+                for actual, wanted in zip(supplied, expected, strict=True)
             ),
             "clock-offset prior summary does not match source offsets",
         )
         _require(
-            supplied_values[2] >= minimum_standard_deviation,
+            supplied[2] >= minimum_standard_deviation,
             "predictive standard deviation is below its declared floor",
         )
 
@@ -306,12 +317,9 @@ class ObservationClockOffsetPriorV1:
         object.__setattr__(self, "source_artifact_ids", source_artifact_ids)
         object.__setattr__(self, "execution_ids", execution_ids)
         object.__setattr__(self, "source_offsets_s", source_offsets)
-        object.__setattr__(self, "mean_offset_s", supplied_values[0])
-        object.__setattr__(
-            self,
-            "sample_standard_deviation_s",
-            supplied_values[1],
-        )
+        object.__setattr__(self, "source_group_count", source_group_count)
+        object.__setattr__(self, "mean_offset_s", supplied[0])
+        object.__setattr__(self, "sample_standard_deviation_s", supplied[1])
         object.__setattr__(
             self,
             "grid_quantization_standard_deviation_s",
@@ -322,11 +330,7 @@ class ObservationClockOffsetPriorV1:
             "minimum_predictive_standard_deviation_s",
             minimum_standard_deviation,
         )
-        object.__setattr__(
-            self,
-            "predictive_standard_deviation_s",
-            supplied_values[2],
-        )
+        object.__setattr__(self, "predictive_standard_deviation_s", supplied[2])
 
         expected_id = _content_id(self.identity_record())
         if self.artifact_id is not None:
@@ -353,9 +357,7 @@ class ObservationClockOffsetPriorV1:
             "source_offsets_s": list(self.source_offsets_s),
             "source_group_count": self.source_group_count,
             "mean_offset_s": self.mean_offset_s,
-            "sample_standard_deviation_s": (
-                self.sample_standard_deviation_s
-            ),
+            "sample_standard_deviation_s": self.sample_standard_deviation_s,
             "grid_quantization_standard_deviation_s": (
                 self.grid_quantization_standard_deviation_s
             ),
@@ -365,17 +367,8 @@ class ObservationClockOffsetPriorV1:
             "predictive_standard_deviation_s": (
                 self.predictive_standard_deviation_s
             ),
-            "information_boundary": {
-                "source_or_dry_run_only": True,
-                "target_outcomes_used": False,
-                "hardware_timestamps_authoritative": True,
-                "equal_weight_per_execution": True,
-            },
-            "claim_boundary": (
-                "This predictive timing prior does not identify contact slip, "
-                "material relaxation, controller-frame physics, or downstream "
-                "physical-query benefit."
-            ),
+            "information_boundary": dict(_INFORMATION_BOUNDARY),
+            "claim_boundary": _CLAIM_BOUNDARY,
         }
 
     def to_record(self) -> dict[str, Any]:
@@ -384,7 +377,7 @@ class ObservationClockOffsetPriorV1:
         return {**self.identity_record(), "artifact_id": self.artifact_id}
 
     def bayesian_phystwin_prior_payload(self) -> dict[str, Any]:
-        """Return the fields required by BayesianPhysTwin's timing prior."""
+        """Return fields required by BayesianPhysTwin's timing prior."""
 
         return {
             "clock_domain": self.clock_domain,
@@ -415,43 +408,68 @@ class ObservationClockOffsetPriorV1:
             "unsupported observation clock-offset prior version",
         )
         _require(
-            value.get("information_boundary")
-            == {
-                "source_or_dry_run_only": True,
-                "target_outcomes_used": False,
-                "hardware_timestamps_authoritative": True,
-                "equal_weight_per_execution": True,
-            },
+            value.get("information_boundary") == _INFORMATION_BOUNDARY,
             "observation clock-offset information boundary changed",
         )
         _require(
-            isinstance(value.get("claim_boundary"), str),
+            value.get("claim_boundary") == _CLAIM_BOUNDARY,
             "observation clock-offset claim boundary changed",
         )
         return cls(
-            clock_domain=value["clock_domain"],
-            reference_clock_domain=value["reference_clock_domain"],
-            time_scale=value["time_scale"],
-            offset_convention=value["offset_convention"],
-            source_revision=value["source_revision"],
-            source_artifact_ids=tuple(value["source_artifact_ids"]),
-            execution_ids=tuple(value["execution_ids"]),
-            source_offsets_s=tuple(value["source_offsets_s"]),
-            source_group_count=value["source_group_count"],
-            mean_offset_s=value["mean_offset_s"],
-            sample_standard_deviation_s=value[
-                "sample_standard_deviation_s"
-            ],
-            grid_quantization_standard_deviation_s=value[
-                "grid_quantization_standard_deviation_s"
-            ],
-            minimum_predictive_standard_deviation_s=value[
-                "minimum_predictive_standard_deviation_s"
-            ],
-            predictive_standard_deviation_s=value[
-                "predictive_standard_deviation_s"
-            ],
-            artifact_id=value["artifact_id"],
+            clock_domain=_nonempty_string(
+                value.get("clock_domain"),
+                name="clock_domain",
+            ),
+            reference_clock_domain=_nonempty_string(
+                value.get("reference_clock_domain"),
+                name="reference_clock_domain",
+            ),
+            time_scale=_nonempty_string(value.get("time_scale"), name="time_scale"),
+            offset_convention=_nonempty_string(
+                value.get("offset_convention"),
+                name="offset_convention",
+            ),
+            source_revision=_revision(
+                value.get("source_revision"),
+                name="source_revision",
+            ),
+            source_artifact_ids=_ordered_sha256s(
+                value.get("source_artifact_ids"),
+                name="source_artifact_ids",
+            ),
+            execution_ids=_ordered_unique_strings(
+                value.get("execution_ids"),
+                name="execution_ids",
+            ),
+            source_offsets_s=_ordered_finite_floats(
+                value.get("source_offsets_s"),
+                name="source_offsets_s",
+            ),
+            source_group_count=_positive_integer(
+                value.get("source_group_count"),
+                name="source_group_count",
+            ),
+            mean_offset_s=_finite_float(
+                value.get("mean_offset_s"),
+                name="mean_offset_s",
+            ),
+            sample_standard_deviation_s=_finite_float(
+                value.get("sample_standard_deviation_s"),
+                name="sample_standard_deviation_s",
+            ),
+            grid_quantization_standard_deviation_s=_finite_float(
+                value.get("grid_quantization_standard_deviation_s"),
+                name="grid_quantization_standard_deviation_s",
+            ),
+            minimum_predictive_standard_deviation_s=_finite_float(
+                value.get("minimum_predictive_standard_deviation_s"),
+                name="minimum_predictive_standard_deviation_s",
+            ),
+            predictive_standard_deviation_s=_finite_float(
+                value.get("predictive_standard_deviation_s"),
+                name="predictive_standard_deviation_s",
+            ),
+            artifact_id=_sha256(value.get("artifact_id"), name="artifact_id"),
         )
 
 
@@ -471,10 +489,7 @@ def _validated_calibration(
         artifact_id == _content_id(value),
         "actuator-realization calibration artifact ID mismatch",
     )
-    execution_id = _nonempty_string(
-        value.get("execution_id"),
-        name="execution_id",
-    )
+    execution_id = _nonempty_string(value.get("execution_id"), name="execution_id")
     boundary = value.get("information_boundary")
     _require(
         isinstance(boundary, Mapping)
@@ -493,10 +508,7 @@ def _validated_calibration(
         == "aligned_measurement_time_s = measurement_time_s + offset_s",
         "actuator timing convention changed",
     )
-    offset = _finite_float(
-        alignment.get("best_offset_s"),
-        name="best_offset_s",
-    )
+    offset = _finite_float(alignment.get("best_offset_s"), name="best_offset_s")
     grid = _ordered_finite_floats(
         alignment.get("offset_grid_s"),
         name="offset_grid_s",
@@ -508,8 +520,7 @@ def _validated_calibration(
         grid[0] <= offset <= grid[-1],
         "best offset lies outside the declared grid",
     )
-    maximum_step = float(np.max(differences))
-    return execution_id, artifact_id, offset, maximum_step
+    return execution_id, artifact_id, offset, float(np.max(differences))
 
 
 def fit_observation_clock_offset_prior(
@@ -521,13 +532,7 @@ def fit_observation_clock_offset_prior(
     source_revision: str,
     minimum_predictive_standard_deviation_s: float = 5e-4,
 ) -> ObservationClockOffsetPriorV1:
-    """Aggregate independent source executions into a predictive timing prior.
-
-    Executions receive equal weight. The predictive variance includes the
-    between-execution sample variance, the finite-mean factor ``1 + 1/n``, and
-    the largest source grid's uniform quantization variance. The declared floor
-    prevents a zero-width prior when source offsets happen to coincide.
-    """
+    """Aggregate independent source executions into a predictive timing prior."""
 
     _require(
         not isinstance(calibrations, (str, bytes))
@@ -562,10 +567,10 @@ def fit_observation_clock_offset_prior(
     maximum_grid_step = max(row[3] for row in validated)
     grid_standard_deviation = maximum_grid_step / math.sqrt(12.0)
     mean, sample_standard_deviation, predictive_standard_deviation = (
-        _predictive_standard_deviation(
+        _predictive_summary(
             offsets,
-            grid_quantization_standard_deviation_s=grid_standard_deviation,
-            minimum_predictive_standard_deviation_s=minimum_standard_deviation,
+            grid_standard_deviation_s=grid_standard_deviation,
+            minimum_standard_deviation_s=minimum_standard_deviation,
         )
     )
     return ObservationClockOffsetPriorV1(
@@ -665,11 +670,11 @@ def write_observation_clock_offset_prior(
                     "observation clock-offset prior target must not be a symlink"
                 ) from None
             existing = load_observation_clock_offset_prior(artifact_path)
-            _require(
-                existing.artifact_id == prior.artifact_id,
-                "observation clock-offset prior publication raced with "
-                "different content",
-            )
+            if existing.artifact_id != prior.artifact_id:
+                raise ValueError(
+                    "observation clock-offset prior publication raced with "
+                    "different content"
+                ) from None
     finally:
         temporary_path.unlink(missing_ok=True)
 
