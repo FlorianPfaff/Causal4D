@@ -1,5 +1,6 @@
 name: Temporary PR 193 protocol lock v3
 
+# Reviewed execution trigger.
 on:
   push:
     branches: [ci/validate-pr-193]
