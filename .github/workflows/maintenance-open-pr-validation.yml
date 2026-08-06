@@ -13,114 +13,159 @@ concurrency:
   group: maintenance-open-pr-validation-${{ github.ref }}
   cancel-in-progress: true
 
-jobs:
-  validate:
-    name: Exact-head validation on workstation2
-    runs-on: [self-hosted, Linux, X64, nvidia-smi]
-    timeout-minutes: 90
-    steps:
-      - name: Check out validation branch
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          clean: true
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUNBUFFERED: "1"
 
+jobs:
+  validate-pr186:
+    name: PR 186 exact-head quality validation
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 45
+    steps:
       - name: Check out PR 186 exact head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: IPS-Stuttgart/Causal4D
           ref: 4d02092609329ad05e65ef40e02249101528340c
-          path: _validation/pr186
           persist-credentials: false
           clean: true
-
-      - name: Check out PR 187 exact head
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: IPS-Stuttgart/Causal4D
-          ref: a12a0b35e0ebcb34f12aaf8bf3c6e0c1c43432cd
-          path: _validation/pr187
-          persist-credentials: false
-          clean: true
-
-      - name: Check out PR 188 exact head
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: IPS-Stuttgart/Causal4D
-          ref: 9d9513fc9f2b52859bcd2428fa88e38d5c952fe8
-          path: _validation/pr188
-          persist-credentials: false
-          clean: true
-
+      - name: Verify exact head
+        run: test "$(git rev-parse HEAD)" = 4d02092609329ad05e65ef40e02249101528340c
       - name: Provision Python 3.12
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-
-      - name: Validate PR 186 quality split
+      - name: Validate quality split
         shell: bash
         run: |
           set -euo pipefail
           venv="$RUNNER_TEMP/causal4d-pr186-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           python -m venv --clear "$venv"
-          "$venv/bin/python" -m ensurepip --upgrade
-          "$venv/bin/python" -m pip install --upgrade pip
-          "$venv/bin/python" -m pip install -e "./_validation/pr186[dev]"
-          cd _validation/pr186
+          "$venv/bin/python" -m pip install -e ".[dev]"
           "$venv/bin/python" -m ruff check .
-          "$venv/bin/python" -m ruff format --check tests/test_release_workflow_policy.py
-          "$venv/bin/python" -m mypy \
+          "$venv/bin/python" -m ruff format --check \
+            tests/test_release_workflow_policy.py
+          "$venv/bin/python" -m mypy --python-version 3.12 \
+            scripts/ci \
             src/causal4d/artifact_io.py \
-            src/causal4d/discrepancy_belief.py
+            src/causal4d/atomic_io.py \
+            src/causal4d/discrepancy_belief.py \
+            src/causal4d/result_bundle_publication.py \
+            src/causal4d/trusted_pickle.py \
+            src/causal4d/immutable_array.py \
+            src/causal4d/immutable_json.py \
+            src/causal4d/provider_contract.py \
+            src/causal4d/replay_provider_contract.py
           "$venv/bin/python" -m pytest -q tests/test_release_workflow_policy.py
-          echo "PR186 4d02092609329ad05e65ef40e02249101528340c passed" >> "$RUNNER_TEMP/causal4d-open-pr-validation.txt"
+          printf '%s\n' \
+            "PR186 4d02092609329ad05e65ef40e02249101528340c passed" \
+            > "$RUNNER_TEMP/causal4d-pr186-validation.txt"
+      - name: Upload PR 186 validation summary
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: causal4d-pr186-validation-${{ github.run_id }}
+          path: ${{ runner.temp }}/causal4d-pr186-validation.txt
+          if-no-files-found: warn
+          retention-days: 7
 
-      - name: Validate PR 187 syntax-warning gate
+  validate-pr187:
+    name: PR 187 exact-head syntax validation
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 45
+    steps:
+      - name: Check out PR 187 exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/Causal4D
+          ref: a12a0b35e0ebcb34f12aaf8bf3c6e0c1c43432cd
+          persist-credentials: false
+          clean: true
+      - name: Verify exact head
+        run: test "$(git rev-parse HEAD)" = a12a0b35e0ebcb34f12aaf8bf3c6e0c1c43432cd
+      - name: Provision Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Validate syntax-warning gate
         shell: bash
         run: |
           set -euo pipefail
           venv="$RUNNER_TEMP/causal4d-pr187-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           python -m venv --clear "$venv"
-          "$venv/bin/python" -m ensurepip --upgrade
-          "$venv/bin/python" -m pip install --upgrade pip
-          "$venv/bin/python" -m pip install -e "./_validation/pr187[dev]"
-          cd _validation/pr187
-          "$venv/bin/python" -W error::SyntaxWarning -m compileall -q src tests scripts
+          "$venv/bin/python" -m pip install -e ".[dev]"
+          "$venv/bin/python" -W error::SyntaxWarning -m compileall -q \
+            src tests scripts
           "$venv/bin/python" -m ruff check .
           "$venv/bin/python" -m pytest -q \
             tests/test_merge_gate_workflow_policy.py \
             tests/test_causal4d_provider_contract.py
-          echo "PR187 a12a0b35e0ebcb34f12aaf8bf3c6e0c1c43432cd passed" >> "$RUNNER_TEMP/causal4d-open-pr-validation.txt"
+          printf '%s\n' \
+            "PR187 a12a0b35e0ebcb34f12aaf8bf3c6e0c1c43432cd passed" \
+            > "$RUNNER_TEMP/causal4d-pr187-validation.txt"
+      - name: Upload PR 187 validation summary
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: causal4d-pr187-validation-${{ github.run_id }}
+          path: ${{ runner.temp }}/causal4d-pr187-validation.txt
+          if-no-files-found: warn
+          retention-days: 7
 
-      - name: Validate PR 188 campaign reporting
+  validate-pr188:
+    name: PR 188 exact-head full validation
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 90
+    steps:
+      - name: Check out PR 188 exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/Causal4D
+          ref: 9d9513fc9f2b52859bcd2428fa88e38d5c952fe8
+          persist-credentials: false
+          clean: true
+      - name: Verify exact head
+        run: test "$(git rev-parse HEAD)" = 9d9513fc9f2b52859bcd2428fa88e38d5c952fe8
+      - name: Provision Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Validate campaign reporting and complete default suite
         shell: bash
         run: |
           set -euo pipefail
           venv="$RUNNER_TEMP/causal4d-pr188-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           python -m venv --clear "$venv"
-          "$venv/bin/python" -m ensurepip --upgrade
-          "$venv/bin/python" -m pip install --upgrade pip
-          "$venv/bin/python" -m pip install -e "./_validation/pr188[dev]"
-          cd _validation/pr188
-          "$venv/bin/python" -m ruff check \
-            src/causal4d/acquisition_campaign.py \
-            src/causal4d/cli/acquisition_operations.py \
-            tests/test_acquisition_campaign.py
+          "$venv/bin/python" -m pip install -e ".[dev]"
+          "$venv/bin/python" -W error::SyntaxWarning -m compileall -q \
+            src tests scripts
+          "$venv/bin/python" -m ruff check .
           "$venv/bin/python" -m ruff format --check \
             src/causal4d/acquisition_campaign.py \
             src/causal4d/cli/acquisition_operations.py \
             tests/test_acquisition_campaign.py
-          "$venv/bin/python" -m mypy \
+          "$venv/bin/python" -m mypy --python-version 3.12 \
             src/causal4d/acquisition_campaign.py \
             src/causal4d/cli/acquisition_operations.py
           "$venv/bin/python" -m pytest -q
-          echo "PR188 9d9513fc9f2b52859bcd2428fa88e38d5c952fe8 passed" >> "$RUNNER_TEMP/causal4d-open-pr-validation.txt"
-
-      - name: Upload compact validation summary
+          rm -rf dist build
+          "$venv/bin/python" -m build
+          "$venv/bin/python" -m twine check dist/*
+          artifact_venv="$RUNNER_TEMP/causal4d-pr188-artifact-${GITHUB_RUN_ID}"
+          python -m venv --clear "$artifact_venv"
+          "$artifact_venv/bin/python" -m pip install dist/*.whl
+          "$artifact_venv/bin/python" -m pip check
+          "$artifact_venv/bin/causal4d" commands validate --require-installed
+          "$artifact_venv/bin/causal4d" protocol acquisition --help
+          printf '%s\n' \
+            "PR188 9d9513fc9f2b52859bcd2428fa88e38d5c952fe8 passed" \
+            > "$RUNNER_TEMP/causal4d-pr188-validation.txt"
+      - name: Upload PR 188 validation summary
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: causal4d-open-pr-validation-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/causal4d-open-pr-validation.txt
+          name: causal4d-pr188-validation-${{ github.run_id }}
+          path: ${{ runner.temp }}/causal4d-pr188-validation.txt
           if-no-files-found: warn
           retention-days: 7
