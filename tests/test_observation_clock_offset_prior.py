@@ -6,7 +6,6 @@ import math
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pytest
 
 from causal4d.observation_clock_offset_prior import (
@@ -44,15 +43,49 @@ def _calibration(
         "timestamp_alignment": {
             "convention": convention,
             "best_offset_s": offset_s,
-            "offset_grid_s": [-0.020, -0.019, -0.018, -0.017, -0.016,
-                              -0.015, -0.014, -0.013, -0.012, -0.011,
-                              -0.010, -0.009, -0.008, -0.007, -0.006,
-                              -0.005, -0.004, -0.003, -0.002, -0.001,
-                              0.000, 0.001, 0.002, 0.003, 0.004,
-                              0.005, 0.006, 0.007, 0.008, 0.009,
-                              0.010, 0.011, 0.012, 0.013, 0.014,
-                              0.015, 0.016, 0.017, 0.018, 0.019,
-                              0.020],
+            "offset_grid_s": [
+                -0.020,
+                -0.019,
+                -0.018,
+                -0.017,
+                -0.016,
+                -0.015,
+                -0.014,
+                -0.013,
+                -0.012,
+                -0.011,
+                -0.010,
+                -0.009,
+                -0.008,
+                -0.007,
+                -0.006,
+                -0.005,
+                -0.004,
+                -0.003,
+                -0.002,
+                -0.001,
+                0.000,
+                0.001,
+                0.002,
+                0.003,
+                0.004,
+                0.005,
+                0.006,
+                0.007,
+                0.008,
+                0.009,
+                0.010,
+                0.011,
+                0.012,
+                0.013,
+                0.014,
+                0.015,
+                0.016,
+                0.017,
+                0.018,
+                0.019,
+                0.020,
+            ],
         },
         "information_boundary": {
             "source_or_dry_run_only": True,
@@ -93,9 +126,7 @@ def test_fit_uses_equal_execution_predictive_variance() -> None:
     assert prior.sample_standard_deviation_s == pytest.approx(0.001)
     quantization = 0.001 / math.sqrt(12.0)
     expected = math.sqrt((1.0 + 1.0 / 3.0) * 0.001**2 + quantization**2)
-    assert prior.grid_quantization_standard_deviation_s == pytest.approx(
-        quantization
-    )
+    assert prior.grid_quantization_standard_deviation_s == pytest.approx(quantization)
     assert prior.predictive_standard_deviation_s == pytest.approx(expected)
     assert prior.source_group_count == 3
 
