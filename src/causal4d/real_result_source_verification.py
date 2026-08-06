@@ -1,4 +1,4 @@
-"""Verify the concrete source artifacts bound by a real-result gate summary."""
+"""Verify the concrete source artifacts bound by registered real analysis."""
 
 from __future__ import annotations
 
@@ -6,15 +6,34 @@ import hashlib
 import json
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Protocol, cast
 
+from causal4d.artifact_io import load_strict_json_object, read_regular_file
 from causal4d.real_experiment_freeze import MILESTONE_ID, SCHEMA_VERSION
-from causal4d.real_result_interpretation import RealResultGateSummary
 
 REGISTERED_ANALYSIS_SCHEMA_VERSION: Final = 1
 REGISTERED_ANALYSIS_ARTIFACT_KIND: Final = "Causal4DRegisteredRealAnalysisManifest"
 SOURCE_VERIFICATION_SCHEMA_VERSION: Final = 1
 SOURCE_VERIFICATION_ARTIFACT_KIND: Final = "Causal4DRealResultSourceVerification"
+
+
+class RealResultSourceBinding(Protocol):
+    """Minimum provenance identity needed to verify registered analysis sources."""
+
+    @property
+    def protocol_id(self) -> str: ...
+
+    @property
+    def protocol_design_sha256(self) -> str: ...
+
+    @property
+    def preacquisition_amendment_sha256(self) -> str: ...
+
+    @property
+    def method_freeze_sha256(self) -> str: ...
+
+    @property
+    def analysis_manifest_sha256(self) -> str: ...
 
 
 def _require(condition: bool, message: str) -> None:
@@ -34,37 +53,32 @@ def _canonical_sha256(values: Mapping[str, Any], *, omitted_field: str) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _artifact_descriptor(path: str | Path, *, name: str) -> dict[str, object]:
+def _read_source_json(
+    path: str | Path,
+    *,
+    name: str,
+) -> tuple[dict[str, object], dict[str, Any]]:
     source = Path(path)
     _require(not source.is_symlink(), f"{name} must not be a symlink")
-    _require(source.is_file(), f"{name} is not a regular file")
-    digest = hashlib.sha256()
-    byte_count = 0
     try:
-        with source.open("rb") as handle:
-            for block in iter(lambda: handle.read(1024 * 1024), b""):
-                digest.update(block)
-                byte_count += len(block)
+        snapshot = read_regular_file(source, name=name)
+        payload = load_strict_json_object(snapshot.payload, name=name)
+    except ValueError:
+        raise
     except OSError as error:
         raise ValueError(f"cannot read {name}") from error
-    return {
-        "sha256": digest.hexdigest(),
-        "bytes": byte_count,
-    }
-
-
-def _read_json_object(path: str | Path, *, name: str) -> dict[str, Any]:
-    try:
-        payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
-        raise ValueError(f"{name} must be readable JSON") from error
-    _require(isinstance(payload, Mapping), f"{name} must contain a JSON object")
-    return dict(payload)
+    return (
+        {
+            "sha256": snapshot.sha256,
+            "bytes": snapshot.byte_count,
+        },
+        payload,
+    )
 
 
 def _validate_method_freeze(
     payload: Mapping[str, Any],
-    gates: RealResultGateSummary,
+    binding: RealResultSourceBinding,
 ) -> None:
     _require(
         payload.get("schema_version") == SCHEMA_VERSION,
@@ -83,23 +97,33 @@ def _validate_method_freeze(
         payload.get("target_outcomes_observed_at_freeze") is False,
         "method freeze records target access before locking",
     )
-    protocol = payload.get("protocol")
-    _require(isinstance(protocol, Mapping), "method freeze lacks protocol provenance")
+    protocol_value = payload.get("protocol")
     _require(
-        protocol.get("design_sha256") == gates.protocol_design_sha256,
+        isinstance(protocol_value, Mapping),
+        "method freeze lacks protocol provenance",
+    )
+    protocol = cast(Mapping[str, Any], protocol_value)
+    _require(
+        protocol.get("design_sha256") == binding.protocol_design_sha256,
         "method freeze protocol digest differs from the gate summary",
     )
-    preacquisition = payload.get("preacquisition")
+    preacquisition_value = payload.get("preacquisition")
     _require(
-        isinstance(preacquisition, Mapping),
+        isinstance(preacquisition_value, Mapping),
         "method freeze lacks pre-acquisition provenance",
     )
+    preacquisition = cast(Mapping[str, Any], preacquisition_value)
     _require(
-        preacquisition.get("amendment_sha256") == gates.preacquisition_amendment_sha256,
+        preacquisition.get("amendment_sha256")
+        == binding.preacquisition_amendment_sha256,
         "method freeze amendment digest differs from the gate summary",
     )
-    analysis = payload.get("analysis_contract")
-    _require(isinstance(analysis, Mapping), "method freeze lacks an analysis contract")
+    analysis_value = payload.get("analysis_contract")
+    _require(
+        isinstance(analysis_value, Mapping),
+        "method freeze lacks an analysis contract",
+    )
+    analysis = cast(Mapping[str, Any], analysis_value)
     _require(
         analysis.get("target_outcomes_may_select_method_or_hyperparameters") is False,
         "method freeze permits target-informed analysis selection",
@@ -112,7 +136,7 @@ def _validate_method_freeze(
 
 def _validate_registered_analysis(
     payload: Mapping[str, Any],
-    gates: RealResultGateSummary,
+    binding: RealResultSourceBinding,
 ) -> None:
     _require(
         payload.get("schema_version") == REGISTERED_ANALYSIS_SCHEMA_VERSION,
@@ -128,13 +152,13 @@ def _validate_registered_analysis(
         "registered analysis manifest lacks analysis_id",
     )
     for field, expected in (
-        ("protocol_id", gates.protocol_id),
-        ("protocol_design_sha256", gates.protocol_design_sha256),
+        ("protocol_id", binding.protocol_id),
+        ("protocol_design_sha256", binding.protocol_design_sha256),
         (
             "preacquisition_amendment_sha256",
-            gates.preacquisition_amendment_sha256,
+            binding.preacquisition_amendment_sha256,
         ),
-        ("method_freeze_sha256", gates.method_freeze_sha256),
+        ("method_freeze_sha256", binding.method_freeze_sha256),
     ):
         _require(
             payload.get(field) == expected,
@@ -155,47 +179,39 @@ def _validate_registered_analysis(
 
 
 def verify_real_result_sources(
-    gates: RealResultGateSummary,
+    binding: RealResultSourceBinding,
     *,
     method_freeze_path: str | Path,
     analysis_manifest_path: str | Path,
 ) -> dict[str, Any]:
-    """Verify exact files and their protocol bindings before interpretation."""
+    """Verify exact files and their protocol bindings before reporting."""
 
-    method_descriptor = _artifact_descriptor(
+    method_descriptor, method_payload = _read_source_json(
         method_freeze_path,
         name="method freeze",
     )
     _require(
-        method_descriptor["sha256"] == gates.method_freeze_sha256,
+        method_descriptor["sha256"] == binding.method_freeze_sha256,
         "method-freeze file SHA-256 differs from the gate summary",
     )
-    method_payload = _read_json_object(
-        method_freeze_path,
-        name="method freeze",
-    )
-    _validate_method_freeze(method_payload, gates)
+    _validate_method_freeze(method_payload, binding)
 
-    analysis_descriptor = _artifact_descriptor(
+    analysis_descriptor, analysis_payload = _read_source_json(
         analysis_manifest_path,
         name="registered analysis manifest",
     )
     _require(
-        analysis_descriptor["sha256"] == gates.analysis_manifest_sha256,
+        analysis_descriptor["sha256"] == binding.analysis_manifest_sha256,
         "analysis-manifest file SHA-256 differs from the gate summary",
     )
-    analysis_payload = _read_json_object(
-        analysis_manifest_path,
-        name="registered analysis manifest",
-    )
-    _validate_registered_analysis(analysis_payload, gates)
+    _validate_registered_analysis(analysis_payload, binding)
 
     result: dict[str, Any] = {
         "schema_version": SOURCE_VERIFICATION_SCHEMA_VERSION,
         "artifact_kind": SOURCE_VERIFICATION_ARTIFACT_KIND,
-        "protocol_id": gates.protocol_id,
-        "protocol_design_sha256": gates.protocol_design_sha256,
-        "preacquisition_amendment_sha256": (gates.preacquisition_amendment_sha256),
+        "protocol_id": binding.protocol_id,
+        "protocol_design_sha256": binding.protocol_design_sha256,
+        "preacquisition_amendment_sha256": (binding.preacquisition_amendment_sha256),
         "method_freeze": method_descriptor,
         "registered_analysis_manifest": analysis_descriptor,
     }
@@ -227,8 +243,12 @@ def validate_real_result_source_verification(
         value = payload.get(field)
         _require(isinstance(value, str) and bool(value), f"{field} is missing")
     for field in ("method_freeze", "registered_analysis_manifest"):
-        descriptor = payload.get(field)
-        _require(isinstance(descriptor, Mapping), f"{field} descriptor is missing")
+        descriptor_value = payload.get(field)
+        _require(
+            isinstance(descriptor_value, Mapping),
+            f"{field} descriptor is missing",
+        )
+        descriptor = cast(Mapping[str, Any], descriptor_value)
         digest = descriptor.get("sha256")
         byte_count = descriptor.get("bytes")
         _require(
@@ -254,6 +274,7 @@ def validate_real_result_source_verification(
 __all__ = [
     "REGISTERED_ANALYSIS_ARTIFACT_KIND",
     "REGISTERED_ANALYSIS_SCHEMA_VERSION",
+    "RealResultSourceBinding",
     "SOURCE_VERIFICATION_ARTIFACT_KIND",
     "SOURCE_VERIFICATION_SCHEMA_VERSION",
     "validate_real_result_source_verification",
