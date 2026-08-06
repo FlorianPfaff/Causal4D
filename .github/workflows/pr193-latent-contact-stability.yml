@@ -5,13 +5,14 @@ on:
     branches: [ci/pr193-latent-contact-stability-500-v1]
     paths:
       - ".github/workflows/pr193-latent-contact-stability.yml"
+      - "scripts/ci/run_pr193_latent_contact_stability.py"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: pr193-latent-contact-stability-500-v1
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   TARGET_SHA: fa6a64b2442474321e453e9e8fdccd591e0a282d
@@ -20,6 +21,7 @@ env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
   PYTHONHASHSEED: "0"
   PYTHONUNBUFFERED: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
   OMP_NUM_THREADS: "1"
   OPENBLAS_NUM_THREADS: "1"
   MKL_NUM_THREADS: "1"
@@ -29,26 +31,44 @@ jobs:
   stability:
     name: Frozen 500-seed latent-contact stability study
     runs-on: [self-hosted, Linux, X64, nvidia-smi]
-    timeout-minutes: 720
+    timeout-minutes: 360
     steps:
+      - name: Check out exact execution revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: executor
+          fetch-depth: 0
+          persist-credentials: true
+          clean: true
+
       - name: Check out immutable registered-analysis target
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: IPS-Stuttgart/Causal4D
           ref: ${{ env.TARGET_SHA }}
+          path: target
           fetch-depth: 1
           persist-credentials: false
           clean: true
 
-      - name: Verify exact target and runner identity
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Verify exact revisions and runner identity
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${TARGET_SHA}"
-          test -z "$(git status --porcelain=v1)"
+          test "$(git -C executor rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(git -C target rev-parse HEAD)" = "${TARGET_SHA}"
+          test -z "$(git -C executor status --porcelain=v1)"
+          test -z "$(git -C target status --porcelain=v1)"
           mkdir -p outputs/contact-posterior
           {
             echo "repository=${GITHUB_REPOSITORY}"
+            echo "executor_sha=${GITHUB_SHA}"
             echo "target_sha=${TARGET_SHA}"
             echo "workflow_run_id=${GITHUB_RUN_ID}"
             echo "workflow_run_attempt=${GITHUB_RUN_ATTEMPT}"
@@ -61,10 +81,45 @@ jobs:
           } | tee outputs/contact-posterior/environment.txt
           nvidia-smi | tee outputs/contact-posterior/nvidia-smi.txt
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.12"
+      - name: Publish active-run identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          result_root="executor/scientific-results/pr193/latent-contact-stability/latest"
+          mkdir -p "${result_root}"
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          path = Path(
+              "executor/scientific-results/pr193/"
+              "latent-contact-stability/latest/RUNNING.json"
+          )
+          value = {
+              "schema_version": 1,
+              "status": "running",
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "workflow_run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "executor_sha": os.environ["GITHUB_SHA"],
+              "target_sha": os.environ["TARGET_SHA"],
+              "seed_range": os.environ["DIAGNOSTIC_SEEDS"],
+              "started_at_utc": datetime.now(timezone.utc).isoformat(),
+          }
+          path.write_text(
+              json.dumps(value, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          git -C executor config user.name "github-actions[bot]"
+          git -C executor config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C executor add scientific-results/pr193/latent-contact-stability
+          git -C executor commit -m \
+            "Start latent-contact stability run ${GITHUB_RUN_ID}"
+          git -C executor push origin \
+            HEAD:ci/pr193-latent-contact-stability-500-v1
 
       - name: Install isolated frozen evaluation environment
         shell: bash
@@ -78,256 +133,63 @@ jobs:
             "pip==25.2" \
             "setuptools==80.9.0" \
             "wheel==0.45.1"
-          "${venv}/bin/python" -m pip install -e ".[dev]"
+          "${venv}/bin/python" -m pip install -e "./target[dev]"
           "${venv}/bin/python" -m pip check
           "${venv}/bin/python" -m pip freeze --all \
             > outputs/contact-posterior/pip-freeze.txt
-          git reset --hard "${TARGET_SHA}"
-          git clean -ffdx -e outputs/
-          test "$(git rev-parse HEAD)" = "${TARGET_SHA}"
-          test -z "$(git status --porcelain=v1 --untracked-files=no)"
+          "${venv}/bin/python" -m py_compile \
+            executor/scripts/ci/run_pr193_latent_contact_stability.py
+          git -C target reset --hard "${TARGET_SHA}"
+          git -C target clean -ffdx
+          test "$(git -C target rev-parse HEAD)" = "${TARGET_SHA}"
+          test -z "$(git -C target status --porcelain=v1)"
 
-      - name: Produce fresh frozen latent-contact bundle
+      - name: Run fixed-design fresh-seed stability study
         shell: bash
         run: |
           set -euo pipefail
-          python -m causal4d.cli.latent_contact_benchmark \
-            --output-dir outputs/contact-posterior/independent-seeds \
+          python executor/scripts/ci/run_pr193_latent_contact_stability.py \
+            --target-root target \
+            --output-root outputs/contact-posterior \
+            --target-sha "${TARGET_SHA}" \
             --seeds "${DIAGNOSTIC_SEEDS}" \
-            --frames 56 \
-            --training-repeats 2 \
-            --parameter-grid-count 5 \
-            --contact-parameter-particles 12 \
-            --observation-fraction 0.20 \
-            --observation-noise-mm 1.5 \
-            | tee outputs/contact-posterior/benchmark-console.json
-          python scripts/ci/verify_result_bundle.py \
-            outputs/contact-posterior/independent-seeds/manifest.json \
-            | tee outputs/contact-posterior/bundle-verification.json
+            --threshold "${REGISTERED_NODE_ACCURACY_THRESHOLD}"
 
-      - name: Recompute topology-aware posterior diagnostics
+      - name: Publish compact validated result
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/ci/analyze_contact_posterior.py \
-            outputs/contact-posterior/independent-seeds \
-            --output-dir outputs/contact-posterior/diagnostics \
-            --diffusion-strength 1.0 \
-            --force-field-equivalence-threshold 0.90 \
-            | tee outputs/contact-posterior/diagnostic-console.json
-
-      - name: Build fixed-design stability report
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from __future__ import annotations
-
-          import csv
-          import hashlib
-          import json
-          import math
-          from collections import defaultdict
-          from pathlib import Path
-
-          root = Path("outputs/contact-posterior")
-          recovery_path = root / "independent-seeds" / "contact_recovery.csv"
-          diagnostic_path = (
-              root / "diagnostics" / "contact-posterior-diagnostics.json"
-          )
-          threshold = float("0.80")
-          expected_seeds = list(range(3000, 3500))
-          expected_objects = ("cloth", "rope", "soft_block")
-
-          with recovery_path.open(encoding="utf-8", newline="") as stream:
-              rows = list(csv.DictReader(stream))
-          selected = [
-              row
-              for row in rows
-              if row["setting"] == "online_adaptation"
-              and row["world_condition"] == "shifted_contact"
-          ]
-          identities = [
-              (int(row["seed"]), row["object"])
-              for row in selected
-          ]
-          if len(identities) != len(set(identities)):
-              raise SystemExit("duplicate shifted online seed/object rows")
-          expected_identities = {
-              (seed, object_name)
-              for seed in expected_seeds
-              for object_name in expected_objects
-          }
-          if set(identities) != expected_identities:
-              missing = sorted(expected_identities - set(identities))[:10]
-              extra = sorted(set(identities) - expected_identities)[:10]
-              raise SystemExit(
-                  f"unexpected shifted online panel: missing={missing}, extra={extra}"
-              )
-
-          def truth(value: str) -> bool:
-              if value == "True":
-                  return True
-              if value == "False":
-                  return False
-              raise ValueError(f"noncanonical boolean {value!r}")
-
-          def wilson(successes: int, count: int) -> list[float]:
-              z = 1.959963984540054
-              proportion = successes / count
-              denominator = 1.0 + z * z / count
-              centre = (proportion + z * z / (2.0 * count)) / denominator
-              radius = (
-                  z
-                  * math.sqrt(
-                      proportion * (1.0 - proportion) / count
-                      + z * z / (4.0 * count * count)
-                  )
-                  / denominator
-              )
-              return [centre - radius, centre + radius]
-
-          def summarize(group: list[dict[str, str]]) -> dict[str, object]:
-              successes = sum(truth(row["node_correct"]) for row in group)
-              count = len(group)
-              return {
-                  "case_count": count,
-                  "correct_count": successes,
-                  "accuracy": successes / count,
-                  "wilson_95_interval": wilson(successes, count),
-                  "credible_coverage": sum(
-                      truth(row["node_credible_covered"]) for row in group
-                  ) / count,
-                  "mean_confidence": sum(
-                      float(row["node_confidence"]) for row in group
-                  ) / count,
-                  "mean_truth_probability": sum(
-                      float(row["node_truth_probability"]) for row in group
-                  ) / count,
-                  "mean_brier": sum(float(row["node_brier"]) for row in group)
-                  / count,
-              }
-
-          by_object: dict[str, list[dict[str, str]]] = defaultdict(list)
-          by_seed: dict[int, list[dict[str, str]]] = defaultdict(list)
-          for row in selected:
-              by_object[row["object"]].append(row)
-              by_seed[int(row["seed"])].append(row)
-
-          blocks: list[dict[str, object]] = []
-          block_size = 50
-          for block_index, start in enumerate(range(3000, 3500, block_size)):
-              block_rows = [
-                  row
-                  for seed in range(start, start + block_size)
-                  for row in by_seed[seed]
-              ]
-              block = summarize(block_rows)
-              block.update(
-                  {
-                      "block_index": block_index,
-                      "seed_start_inclusive": start,
-                      "seed_stop_exclusive": start + block_size,
-                      "passes_frozen_threshold": block["accuracy"] >= threshold,
-                  }
-              )
-              blocks.append(block)
-
-          diagnostic = json.loads(diagnostic_path.read_text(encoding="utf-8"))
-          overall = summarize(selected)
-          seed_panel_sha256 = hashlib.sha256(
-              json.dumps(expected_seeds, separators=(",", ":")).encode("ascii")
-          ).hexdigest()
-          report = {
-              "schema_version": 1,
-              "artifact_kind": "Causal4DLatentContactStabilityDiagnostic",
-              "target_sha": "fa6a64b2442474321e453e9e8fdccd591e0a282d",
-              "seed_range": "3000:3500",
-              "seed_count": len(expected_seeds),
-              "seed_panel_sha256": seed_panel_sha256,
-              "frozen_node_accuracy_threshold": threshold,
-              "method_or_threshold_changed": False,
-              "overall_shifted_online": overall,
-              "threshold_margin": float(overall["accuracy"]) - threshold,
-              "passes_frozen_threshold_on_this_diagnostic_panel": (
-                  float(overall["accuracy"]) >= threshold
-              ),
-              "per_object": {
-                  name: summarize(by_object[name]) for name in expected_objects
-              },
-              "consecutive_50_seed_blocks": blocks,
-              "block_pass_count": sum(
-                  bool(block["passes_frozen_threshold"]) for block in blocks
-              ),
-              "block_count": len(blocks),
-              "topology_diagnostic_overall": diagnostic["overall"],
-              "admission_boundary": diagnostic["admission_boundary"],
-              "recomputation_parity": diagnostic["recomputation_parity"],
-              "claim_boundary": (
-                  "Fresh-seed diagnostic only. It does not change or rescue the "
-                  "registered exact-node threshold, estimator, physical protocol, "
-                  "or real-evidence claim boundary."
-              ),
-          }
-          output = root / "stability"
-          output.mkdir(parents=True, exist_ok=True)
-          (output / "summary.json").write_text(
-              json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n",
-              encoding="utf-8",
-          )
-
-          lines = [
-              "# Frozen latent-contact stability diagnostic",
-              "",
-              f"- Target: `{report['target_sha']}`",
-              f"- Fresh seeds: `{report['seed_range']}` ({report['seed_count']})",
-              "- Estimator/configuration/threshold changed: `false`",
-              f"- Shifted exact-node accuracy: `{overall['accuracy']:.4%}` "
-              f"({overall['correct_count']}/{overall['case_count']})",
-              f"- Wilson 95% interval: "
-              f"`[{overall['wilson_95_interval'][0]:.4%}, "
-              f"{overall['wilson_95_interval'][1]:.4%}]`",
-              f"- Frozen threshold: `{threshold:.2%}`",
-              f"- Threshold margin: `{report['threshold_margin']:.4%}`",
-              f"- 50-seed blocks passing threshold: "
-              f"`{report['block_pass_count']}/{report['block_count']}`",
-              "",
-              "## Per topology",
-              "",
-              "| Object | Correct | Accuracy | Wilson 95% interval |",
-              "|---|---:|---:|---:|",
-          ]
-          for name in expected_objects:
-              item = report["per_object"][name]
-              lines.append(
-                  f"| {name} | {item['correct_count']}/{item['case_count']} | "
-                  f"{item['accuracy']:.2%} | "
-                  f"[{item['wilson_95_interval'][0]:.2%}, "
-                  f"{item['wilson_95_interval'][1]:.2%}] |"
-              )
-          lines.extend(
-              [
-                  "",
-                  "This panel characterizes fresh-seed stability only. The registered "
-                  "gate remains authoritative and cannot be revised by this diagnostic.",
-              ]
-          )
-          (output / "summary.md").write_text(
-              "\n".join(lines) + "\n", encoding="utf-8"
-          )
-          print(json.dumps(report, sort_keys=True))
-          PY
+          result_root="executor/scientific-results/pr193/latent-contact-stability/latest"
+          rm -f "${result_root}/RUNNING.json"
+          cp outputs/contact-posterior/stability/summary.json \
+            "${result_root}/summary.json"
+          cp outputs/contact-posterior/stability/summary.md \
+            "${result_root}/summary.md"
+          cp outputs/contact-posterior/environment.txt \
+            "${result_root}/environment.txt"
+          sha256sum outputs/contact-posterior/stability/summary.json \
+            | awk '{print $1}' > "${result_root}/SUMMARY_SHA256.txt"
+          printf '%s\n' "${GITHUB_RUN_ID}" \
+            > "executor/scientific-results/pr193/latent-contact-stability/LATEST_RUN.txt"
+          git -C executor add scientific-results/pr193/latent-contact-stability
+          git -C executor diff --cached --check
+          git -C executor commit -m \
+            "Record latent-contact stability run ${GITHUB_RUN_ID}"
+          git -C executor push origin \
+            HEAD:ci/pr193-latent-contact-stability-500-v1
 
       - name: Publish concise job summary
         shell: bash
-        run: cat outputs/contact-posterior/stability/summary.md >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          cat outputs/contact-posterior/stability/summary.md \
+            >> "${GITHUB_STEP_SUMMARY}"
 
-      - name: Verify frozen checkout remained unchanged
+      - name: Verify immutable target remained unchanged
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${TARGET_SHA}"
-          test -z "$(git status --porcelain=v1 --untracked-files=no)"
+          test "$(git -C target rev-parse HEAD)" = "${TARGET_SHA}"
+          test -z "$(git -C target status --porcelain=v1)"
 
       - name: Upload complete diagnostic evidence
         if: always()
@@ -335,7 +197,7 @@ jobs:
         with:
           name: pr193-latent-contact-stability-${{ github.run_id }}-${{ github.run_attempt }}
           path: outputs/contact-posterior/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Remove isolated environment
