@@ -22,6 +22,10 @@ from causal4d.preacquisition_source_panel_control import (
     publish_source_panel_manifest,
     write_source_panel_status,
 )
+from causal4d.preacquisition_source_panel_staging import (
+    verify_staged_source_panel_manifest,
+    write_staged_source_panel_verification,
+)
 
 
 _VALID_BUT_INCOMPLETE = 3
@@ -78,6 +82,15 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="return exit code 3 while the valid source panel is incomplete",
     )
+
+    source_verify = subparsers.add_parser(
+        "source-panel-verify-staged",
+        help="hash-verify the next staged source manifest without publishing it",
+    )
+    source_verify.add_argument("repository_root")
+    source_verify.add_argument("dataset_root")
+    source_verify.add_argument("source_json")
+    source_verify.add_argument("--output-json")
 
     source_publish = subparsers.add_parser(
         "source-panel-publish",
@@ -140,6 +153,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             if args.output_json:
                 write_source_panel_status(args.output_json, result)
+        elif args.command == "source-panel-verify-staged":
+            result = verify_staged_source_panel_manifest(
+                args.repository_root,
+                args.dataset_root,
+                args.source_json,
+            )
+            if args.output_json:
+                write_staged_source_panel_verification(
+                    args.output_json,
+                    result,
+                )
         elif args.command == "source-panel-publish":
             result = publish_source_panel_manifest(
                 args.repository_root,
