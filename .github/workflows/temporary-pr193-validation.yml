@@ -50,7 +50,7 @@ jobs:
           actual="$(git -C target rev-parse HEAD)"
           test "${actual}" = "${EXPECTED_HEAD_SHA}"
           test -z "$(git -C target status --short)"
-          python executor/scripts/ci/temporary_pr193_protocol_lock.py target
+          python3 executor/scripts/ci/temporary_pr193_protocol_lock.py target
           mapfile -t changed < <(git -C target diff --name-only)
           expected=(
             docs/causal4d_real_analysis_reporting.md
