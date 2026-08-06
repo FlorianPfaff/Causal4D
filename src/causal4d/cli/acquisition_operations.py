@@ -32,6 +32,17 @@ def _json_object(path: Path, *, name: str) -> dict[str, Any]:
     return load_strict_json_object(snapshot.payload, name=name)
 
 
+def _require_distinct_campaign_output(source: Path, output: Path) -> None:
+    try:
+        same_file = source.samefile(output)
+    except (FileNotFoundError, OSError):
+        same_file = source.resolve() == output.resolve()
+    if same_file:
+        raise ValueError(
+            "campaign output must differ from the source doctor report"
+        )
+
+
 def _gib(value: str | float) -> int:
     amount = float(value)
     if amount < 0.0:
@@ -190,6 +201,10 @@ def _campaign(arguments: argparse.Namespace) -> int:
     summary = build_acquisition_campaign_summary(report)
     if arguments.campaign_command == "status":
         if arguments.output_json is not None:
+            _require_distinct_campaign_output(
+                arguments.doctor_report_json,
+                arguments.output_json,
+            )
             atomic_write_json(
                 arguments.output_json,
                 summary,
@@ -219,6 +234,10 @@ def _campaign(arguments: argparse.Namespace) -> int:
             return 3
         return 0
     if arguments.campaign_command == "report":
+        _require_distinct_campaign_output(
+            arguments.doctor_report_json,
+            arguments.output,
+        )
         selected_format = arguments.format
         if selected_format is None:
             selected_format = (
