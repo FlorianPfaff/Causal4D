@@ -1,145 +1,179 @@
 name: Audit Causal4D open physical issues
 
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
+  push:
+    branches: [agent/open-issues-acquisition-audit-20260807]
     paths:
       - ".github/workflows/open-issues-acquisition-audit.yml"
-      - "scripts/ci/run_open_issues_acquisition_audit.py"
 
 permissions:
   contents: write
 
 concurrency:
-  group: open-issues-acquisition-audit-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
+  group: hybrid-reliability-derived-validation-v2
+  cancel-in-progress: true
 
 env:
+  TARGET_SHA: 315cde925e255538e4ca38dc393391ac26232300
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
   PYTHONHASHSEED: "0"
   PYTHONUNBUFFERED: "1"
-  FROZEN_CHECKOUT: /mnt/lexar4tb/causal4d-physical/causal4d-frozen
-  DATASET_ROOT: /mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1
-  AUDIT_OUTPUT: issue-audit/latest
+  PYTHONDONTWRITEBYTECODE: "1"
+  OMP_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+  NUMEXPR_NUM_THREADS: "1"
 
 jobs:
-  audit:
-    name: Read-only acquisition-state audit
-    if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, Linux, X64, nvidia-smi]
-    timeout-minutes: 60
-
+  validate:
+    name: Exact-head hybrid reliability validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
-      - name: Check out exact execution revision
+      - name: Check out validation harness
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: agent/open-issues-acquisition-audit-20260807
           fetch-depth: 0
           persist-credentials: true
           clean: true
 
-      - name: Verify source revision and runner
-        shell: bash
-        run: |
-          set -euo pipefail
-          source_sha="$(git rev-parse HEAD)"
-          test "${source_sha}" = "${{ github.event.pull_request.head.sha }}"
-          test -z "$(git status --porcelain=v1)"
-          echo "AUDIT_SOURCE_SHA=${source_sha}" >> "${GITHUB_ENV}"
-          {
-            echo "source_sha=${source_sha}"
-            echo "runner_name=${RUNNER_NAME}"
-            echo "runner_os=${RUNNER_OS}"
-            echo "runner_arch=${RUNNER_ARCH}"
-          }
+      - name: Check out exact corrective head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/Causal4D
+          ref: ${{ env.TARGET_SHA }}
+          path: _target
+          fetch-depth: 1
+          persist-credentials: false
+          clean: true
 
       - name: Set up Python 3.12
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
-      - name: Install isolated audit environment
+      - name: Install isolated exact-head environment
         shell: bash
         run: |
           set -euo pipefail
-          venv="${RUNNER_TEMP}/causal4d-open-issues-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          venv="${RUNNER_TEMP}/hybrid-reliability-v2-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           python -m venv "${venv}"
-          echo "AUDIT_VENV=${venv}" >> "${GITHUB_ENV}"
+          echo "VALIDATION_VENV=${venv}" >> "${GITHUB_ENV}"
           echo "${venv}/bin" >> "${GITHUB_PATH}"
           "${venv}/bin/python" -m pip install \
             "pip==25.2" \
             "setuptools==80.9.0" \
             "wheel==0.45.1"
-          "${venv}/bin/python" -m pip install .
+          "${venv}/bin/python" -m pip install -e "./_target[dev]"
           "${venv}/bin/python" -m pip check
-          "${venv}/bin/python" -m pip freeze --all > "${RUNNER_TEMP}/audit-pip-freeze.txt"
+          mkdir -p validation/hybrid-reliability-v2/latest
+          {
+            echo "harness_sha=$(git rev-parse HEAD)"
+            echo "target_sha=$(git -C _target rev-parse HEAD)"
+            echo "runner_name=${RUNNER_NAME}"
+            echo "runner_os=${RUNNER_OS}"
+            echo "runner_arch=${RUNNER_ARCH}"
+            "${venv}/bin/python" --version
+            "${venv}/bin/python" -m pip freeze --all
+          } > validation/hybrid-reliability-v2/latest/environment.txt
+          test "$(git -C _target rev-parse HEAD)" = "${TARGET_SHA}"
+          test -z "$(git -C _target status --porcelain=v1)"
 
-      - name: Run fail-closed read-only audit
+      - name: Run exact-head quality and test suite
+        id: validate
+        continue-on-error: true
         shell: bash
+        working-directory: _target
         run: |
           set -euo pipefail
-          rm -rf "${AUDIT_OUTPUT}"
-          python scripts/ci/run_open_issues_acquisition_audit.py \
-            --frozen-checkout "${FROZEN_CHECKOUT}" \
-            --dataset-root "${DATASET_ROOT}" \
-            --output-root "${AUDIT_OUTPUT}" \
-            | tee "${RUNNER_TEMP}/open-issues-audit-console.json"
+          files=(
+            src/causal4d/hybrid_reliability.py
+            tests/test_hybrid_reliability.py
+            tests/test_hybrid_reliability_integrity.py
+            tests/test_hybrid_reliability_schema_v2.py
+          )
+          {
+            python -m ruff check "${files[@]}"
+            python -m ruff format --check "${files[@]}"
+            python -m mypy src/causal4d/hybrid_reliability.py
+            python -m pytest -q -p no:cacheprovider \
+              tests/test_hybrid_reliability.py \
+              tests/test_hybrid_reliability_integrity.py \
+              tests/test_hybrid_reliability_schema_v2.py
+            python -m pytest -q -p no:cacheprovider
+            python -m py_compile "${files[@]}"
+          } 2>&1 | tee ../validation/hybrid-reliability-v2/latest/validation.log
+          test "$(git rev-parse HEAD)" = "${TARGET_SHA}"
+          test -z "$(git status --porcelain=v1)"
 
-      - name: Publish concise job summary
-        shell: bash
-        run: cat "${AUDIT_OUTPUT}/audit-summary.md" >> "${GITHUB_STEP_SUMMARY}"
-
-      - name: Commit sanitized audit result
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            "${AUDIT_OUTPUT}/audit-summary.json" \
-            "${AUDIT_OUTPUT}/audit-summary.md"
-          if git diff --cached --quiet; then
-            echo "No sanitized audit-result change to publish."
-          else
-            git commit -m "Record open-issue acquisition audit ${GITHUB_RUN_ID}"
-            git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
-          fi
-
-      - name: Upload sanitized audit evidence
+      - name: Publish exact validation result
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: causal4d-open-issues-audit-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            issue-audit/latest/audit-summary.json
-            issue-audit/latest/audit-summary.md
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Enforce audit integrity
-        if: always()
+        env:
+          VALIDATION_OUTCOME: ${{ steps.validate.outcome }}
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
+          import hashlib
           import json
+          import os
+          from datetime import datetime, timezone
           from pathlib import Path
 
-          path = Path("issue-audit/latest/audit-summary.json")
-          if not path.is_file():
-              raise SystemExit("sanitized audit summary was not produced")
-          summary = json.loads(path.read_text(encoding="utf-8"))
-          if not summary.get("filesystem_unchanged"):
-              raise SystemExit("audit commands changed the persistent acquisition workspace")
-          if summary.get("commands_executed") and not summary.get("present_evidence_valid"):
-              raise SystemExit(
-                  f"present acquisition evidence failed closed: {summary.get('exit_codes')}"
-              )
-          print("Read-only audit integrity checks passed.")
+          root = Path("validation/hybrid-reliability-v2/latest")
+          log_path = root / "validation.log"
+          environment_path = root / "environment.txt"
+          value = {
+              "schema_version": 1,
+              "artifact_kind": "Causal4DHybridReliabilityV2Validation",
+              "status": (
+                  "passed"
+                  if os.environ["VALIDATION_OUTCOME"] == "success"
+                  else "failed"
+              ),
+              "validation_outcome": os.environ["VALIDATION_OUTCOME"],
+              "target_sha": os.environ["TARGET_SHA"],
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "workflow_run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "completed_at_utc": datetime.now(timezone.utc).isoformat(),
+              "validation_log_sha256": (
+                  hashlib.sha256(log_path.read_bytes()).hexdigest()
+                  if log_path.is_file()
+                  else None
+              ),
+              "environment_sha256": (
+                  hashlib.sha256(environment_path.read_bytes()).hexdigest()
+                  if environment_path.is_file()
+                  else None
+              ),
+              "claim_boundary": (
+                  "Software validation only; no controlled or physical result is "
+                  "changed by this harness."
+              ),
+          }
+          (root / "result.json").write_text(
+              json.dumps(value, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
           PY
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git add validation/hybrid-reliability-v2/latest
+          git diff --cached --check
+          git commit -m "Record hybrid reliability v2 validation ${GITHUB_RUN_ID}"
+          git push origin HEAD:agent/open-issues-acquisition-audit-20260807
+
+      - name: Enforce validation success
+        if: always()
+        env:
+          VALIDATION_OUTCOME: ${{ steps.validate.outcome }}
+        shell: bash
+        run: |
+          test "${VALIDATION_OUTCOME}" = "success"
 
       - name: Remove isolated environment
         if: always()
         shell: bash
-        run: rm -rf "${AUDIT_VENV:-}" || true
+        run: rm -rf "${VALIDATION_VENV:-}" || true
