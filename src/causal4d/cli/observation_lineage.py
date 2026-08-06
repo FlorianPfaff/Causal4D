@@ -54,7 +54,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate_factor = subparsers.add_parser(
         "validate-factor-bundle",
-        help="validate an exact Prob4D schema-v3 factor bundle",
+        help="validate an exact Prob4D schema-v3 or schema-v4 factor bundle",
     )
     validate_factor.add_argument("factor_bundle_manifest", type=Path)
     _add_twin_argument(validate_factor)
@@ -62,7 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     bind_factor = subparsers.add_parser(
         "bind-factor-bundle",
-        help="bind the exact Prob4D factor bundle consumed by the estimator",
+        help="bind the exact Prob4D schema-v3 or schema-v4 factor bundle consumed",
     )
     bind_factor.add_argument("factor_bundle_manifest", type=Path)
     _add_twin_argument(bind_factor)
@@ -113,9 +113,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             result["output"] = str(args.output_twin_belief.resolve())
             result["source_twin_belief_id"] = artifact.artifact_id
     else:
-        lineage = load_observation_factor_lineage(
-            args.factor_bundle_manifest
-        )
+        lineage = load_observation_factor_lineage(args.factor_bundle_manifest)
         if args.command == "validate-factor-bundle":
             result = validate_twin_belief_observation_factor_lineage(
                 artifact,
