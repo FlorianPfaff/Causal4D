@@ -1,0 +1,685 @@
+"""Source-only predictive clock-offset priors for downstream observation models.
+
+The existing actuator-realization diagnostic estimates one timestamp correction
+per independent source or dry-run execution. This module aggregates those
+execution-level artifacts into a content-addressed predictive prior without
+changing the original calibration implementation or any frozen evidence.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import math
+import os
+import tempfile
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+OBSERVATION_CLOCK_OFFSET_PRIOR_SCHEMA = (
+    "causal4d.observation-clock-offset-prior"
+)
+OBSERVATION_CLOCK_OFFSET_PRIOR_VERSION = 1
+OBSERVATION_TIME_CORRECTION_CONVENTION = (
+    "aligned_observation_time_s = observation_time_s + offset_s"
+)
+
+_PRIOR_FIELDS = frozenset(
+    {
+        "schema",
+        "schema_version",
+        "artifact_id",
+        "clock_domain",
+        "reference_clock_domain",
+        "time_scale",
+        "offset_convention",
+        "source_revision",
+        "source_artifact_ids",
+        "execution_ids",
+        "source_offsets_s",
+        "source_group_count",
+        "mean_offset_s",
+        "sample_standard_deviation_s",
+        "grid_quantization_standard_deviation_s",
+        "minimum_predictive_standard_deviation_s",
+        "predictive_standard_deviation_s",
+        "information_boundary",
+        "claim_boundary",
+    }
+)
+
+
+def _require(condition: bool | np.bool_, message: str) -> None:
+    if not bool(condition):
+        raise ValueError(message)
+
+
+def _nonempty_string(value: object, *, name: str) -> str:
+    _require(isinstance(value, str) and bool(value), f"{name} must be nonempty")
+    result = str(value)
+    _require(result == result.strip(), f"{name} has surrounding whitespace")
+    return result
+
+
+def _sha256(value: object, *, name: str) -> str:
+    digest = _nonempty_string(value, name=name)
+    _require(
+        len(digest) == 64
+        and all(character in "0123456789abcdef" for character in digest),
+        f"{name} must be a lowercase SHA-256 digest",
+    )
+    return digest
+
+
+def _revision(value: object, *, name: str) -> str:
+    revision = _nonempty_string(value, name=name)
+    _require(
+        len(revision) in {40, 64}
+        and all(character in "0123456789abcdef" for character in revision),
+        f"{name} must be an exact lowercase Git commit",
+    )
+    return revision
+
+
+def _finite_float(value: object, *, name: str) -> float:
+    if isinstance(value, (bool, np.bool_)):
+        raise ValueError(f"{name} must be finite")
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"{name} must be finite") from error
+    _require(np.isfinite(result), f"{name} must be finite")
+    return result
+
+
+def _canonical_json_bytes(value: Mapping[str, Any]) -> bytes:
+    try:
+        encoded = json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+    except (TypeError, ValueError) as error:
+        raise ValueError("artifact contains non-JSON or non-finite values") from error
+    return encoded.encode("utf-8")
+
+
+def _content_id(value: Mapping[str, Any]) -> str:
+    canonical = dict(value)
+    canonical.pop("artifact_id", None)
+    return hashlib.sha256(_canonical_json_bytes(canonical)).hexdigest()
+
+
+def _ordered_unique_strings(
+    values: Sequence[object],
+    *,
+    name: str,
+) -> tuple[str, ...]:
+    _require(
+        not isinstance(values, (str, bytes)) and isinstance(values, Sequence),
+        f"{name} must be a sequence",
+    )
+    result = tuple(
+        _nonempty_string(value, name=f"{name} entry") for value in values
+    )
+    _require(bool(result), f"{name} must not be empty")
+    _require(len(set(result)) == len(result), f"{name} must be unique")
+    return result
+
+
+def _ordered_finite_floats(
+    values: Sequence[object],
+    *,
+    name: str,
+) -> tuple[float, ...]:
+    _require(
+        not isinstance(values, (str, bytes)) and isinstance(values, Sequence),
+        f"{name} must be a sequence",
+    )
+    result = tuple(
+        _finite_float(value, name=f"{name} entry") for value in values
+    )
+    _require(bool(result), f"{name} must not be empty")
+    return result
+
+
+def _predictive_standard_deviation(
+    offsets_s: Sequence[float],
+    *,
+    grid_quantization_standard_deviation_s: float,
+    minimum_predictive_standard_deviation_s: float,
+) -> tuple[float, float, float]:
+    values = np.asarray(offsets_s, dtype=np.float64)
+    _require(len(values) >= 3, "at least three source executions are required")
+    mean = float(np.mean(values))
+    sample_standard_deviation = float(np.std(values, ddof=1))
+    predictive_variance = (
+        (1.0 + 1.0 / len(values)) * sample_standard_deviation**2
+        + grid_quantization_standard_deviation_s**2
+    )
+    predictive_standard_deviation = max(
+        minimum_predictive_standard_deviation_s,
+        math.sqrt(max(0.0, predictive_variance)),
+    )
+    return mean, sample_standard_deviation, predictive_standard_deviation
+
+
+@dataclass(frozen=True, slots=True)
+class ObservationClockOffsetPriorV1:
+    """Equal-execution predictive prior for one observation clock domain."""
+
+    clock_domain: str
+    reference_clock_domain: str
+    time_scale: str
+    source_revision: str
+    source_artifact_ids: tuple[str, ...]
+    execution_ids: tuple[str, ...]
+    source_offsets_s: tuple[float, ...]
+    mean_offset_s: float
+    sample_standard_deviation_s: float
+    grid_quantization_standard_deviation_s: float
+    minimum_predictive_standard_deviation_s: float
+    predictive_standard_deviation_s: float
+    source_group_count: int
+    offset_convention: str = OBSERVATION_TIME_CORRECTION_CONVENTION
+    artifact_id: str | None = None
+
+    def __post_init__(self) -> None:
+        clock_domain = _nonempty_string(self.clock_domain, name="clock_domain")
+        reference_clock_domain = _nonempty_string(
+            self.reference_clock_domain,
+            name="reference_clock_domain",
+        )
+        _require(
+            clock_domain != reference_clock_domain,
+            "clock and reference clock domains must differ",
+        )
+        time_scale = _nonempty_string(self.time_scale, name="time_scale")
+        source_revision = _revision(
+            self.source_revision,
+            name="source_revision",
+        )
+        source_artifact_ids = tuple(
+            _sha256(value, name="source_artifact_ids entry")
+            for value in self.source_artifact_ids
+        )
+        execution_ids = _ordered_unique_strings(
+            self.execution_ids,
+            name="execution_ids",
+        )
+        source_offsets = _ordered_finite_floats(
+            self.source_offsets_s,
+            name="source_offsets_s",
+        )
+        _require(
+            source_artifact_ids
+            and len(set(source_artifact_ids)) == len(source_artifact_ids),
+            "source artifact IDs must be nonempty and unique",
+        )
+        _require(
+            len(source_artifact_ids)
+            == len(execution_ids)
+            == len(source_offsets),
+            "source timing evidence counts differ",
+        )
+        _require(
+            execution_ids == tuple(sorted(execution_ids)),
+            "execution IDs must use deterministic sorted order",
+        )
+        _require(
+            isinstance(self.source_group_count, int)
+            and not isinstance(self.source_group_count, bool)
+            and self.source_group_count == len(execution_ids)
+            and self.source_group_count >= 3,
+            "source_group_count must equal at least three executions",
+        )
+        _require(
+            self.offset_convention == OBSERVATION_TIME_CORRECTION_CONVENTION,
+            "observation time-correction convention changed",
+        )
+        grid_standard_deviation = _finite_float(
+            self.grid_quantization_standard_deviation_s,
+            name="grid_quantization_standard_deviation_s",
+        )
+        minimum_standard_deviation = _finite_float(
+            self.minimum_predictive_standard_deviation_s,
+            name="minimum_predictive_standard_deviation_s",
+        )
+        _require(
+            grid_standard_deviation > 0.0,
+            "grid quantization standard deviation must be positive",
+        )
+        _require(
+            minimum_standard_deviation > 0.0,
+            "minimum predictive standard deviation must be positive",
+        )
+        expected_mean, expected_sample, expected_predictive = (
+            _predictive_standard_deviation(
+                source_offsets,
+                grid_quantization_standard_deviation_s=grid_standard_deviation,
+                minimum_predictive_standard_deviation_s=(
+                    minimum_standard_deviation
+                ),
+            )
+        )
+        supplied_values = (
+            _finite_float(self.mean_offset_s, name="mean_offset_s"),
+            _finite_float(
+                self.sample_standard_deviation_s,
+                name="sample_standard_deviation_s",
+            ),
+            _finite_float(
+                self.predictive_standard_deviation_s,
+                name="predictive_standard_deviation_s",
+            ),
+        )
+        expected_values = (expected_mean, expected_sample, expected_predictive)
+        _require(
+            all(
+                np.isclose(supplied, expected, rtol=1e-13, atol=1e-15)
+                for supplied, expected in zip(
+                    supplied_values,
+                    expected_values,
+                    strict=True,
+                )
+            ),
+            "clock-offset prior summary does not match source offsets",
+        )
+        _require(
+            supplied_values[2] >= minimum_standard_deviation,
+            "predictive standard deviation is below its declared floor",
+        )
+
+        object.__setattr__(self, "clock_domain", clock_domain)
+        object.__setattr__(
+            self,
+            "reference_clock_domain",
+            reference_clock_domain,
+        )
+        object.__setattr__(self, "time_scale", time_scale)
+        object.__setattr__(self, "source_revision", source_revision)
+        object.__setattr__(self, "source_artifact_ids", source_artifact_ids)
+        object.__setattr__(self, "execution_ids", execution_ids)
+        object.__setattr__(self, "source_offsets_s", source_offsets)
+        object.__setattr__(self, "mean_offset_s", supplied_values[0])
+        object.__setattr__(
+            self,
+            "sample_standard_deviation_s",
+            supplied_values[1],
+        )
+        object.__setattr__(
+            self,
+            "grid_quantization_standard_deviation_s",
+            grid_standard_deviation,
+        )
+        object.__setattr__(
+            self,
+            "minimum_predictive_standard_deviation_s",
+            minimum_standard_deviation,
+        )
+        object.__setattr__(
+            self,
+            "predictive_standard_deviation_s",
+            supplied_values[2],
+        )
+
+        expected_id = _content_id(self.identity_record())
+        if self.artifact_id is not None:
+            supplied_id = _sha256(self.artifact_id, name="artifact_id")
+            _require(
+                supplied_id == expected_id,
+                "observation clock-offset prior artifact ID mismatch",
+            )
+        object.__setattr__(self, "artifact_id", expected_id)
+
+    def identity_record(self) -> dict[str, Any]:
+        """Return the canonical payload without its derived content ID."""
+
+        return {
+            "schema": OBSERVATION_CLOCK_OFFSET_PRIOR_SCHEMA,
+            "schema_version": OBSERVATION_CLOCK_OFFSET_PRIOR_VERSION,
+            "clock_domain": self.clock_domain,
+            "reference_clock_domain": self.reference_clock_domain,
+            "time_scale": self.time_scale,
+            "offset_convention": self.offset_convention,
+            "source_revision": self.source_revision,
+            "source_artifact_ids": list(self.source_artifact_ids),
+            "execution_ids": list(self.execution_ids),
+            "source_offsets_s": list(self.source_offsets_s),
+            "source_group_count": self.source_group_count,
+            "mean_offset_s": self.mean_offset_s,
+            "sample_standard_deviation_s": (
+                self.sample_standard_deviation_s
+            ),
+            "grid_quantization_standard_deviation_s": (
+                self.grid_quantization_standard_deviation_s
+            ),
+            "minimum_predictive_standard_deviation_s": (
+                self.minimum_predictive_standard_deviation_s
+            ),
+            "predictive_standard_deviation_s": (
+                self.predictive_standard_deviation_s
+            ),
+            "information_boundary": {
+                "source_or_dry_run_only": True,
+                "target_outcomes_used": False,
+                "hardware_timestamps_authoritative": True,
+                "equal_weight_per_execution": True,
+            },
+            "claim_boundary": (
+                "This predictive timing prior does not identify contact slip, "
+                "material relaxation, controller-frame physics, or downstream "
+                "physical-query benefit."
+            ),
+        }
+
+    def to_record(self) -> dict[str, Any]:
+        """Return the complete portable JSON record."""
+
+        return {**self.identity_record(), "artifact_id": self.artifact_id}
+
+    def bayesian_phystwin_prior_payload(self) -> dict[str, Any]:
+        """Return the fields required by BayesianPhysTwin's timing prior."""
+
+        return {
+            "clock_domain": self.clock_domain,
+            "mean_offset_s": self.mean_offset_s,
+            "standard_deviation_s": self.predictive_standard_deviation_s,
+            "source_artifact_id": self.artifact_id,
+            "offset_convention": self.offset_convention,
+        }
+
+    @classmethod
+    def from_record(
+        cls,
+        value: Mapping[str, Any],
+    ) -> ObservationClockOffsetPriorV1:
+        """Load and fully revalidate one closed-schema JSON value."""
+
+        _require(
+            set(value) == _PRIOR_FIELDS,
+            "observation clock-offset prior fields changed",
+        )
+        _require(
+            value.get("schema") == OBSERVATION_CLOCK_OFFSET_PRIOR_SCHEMA,
+            "unexpected observation clock-offset prior schema",
+        )
+        _require(
+            value.get("schema_version")
+            == OBSERVATION_CLOCK_OFFSET_PRIOR_VERSION,
+            "unsupported observation clock-offset prior version",
+        )
+        _require(
+            value.get("information_boundary")
+            == {
+                "source_or_dry_run_only": True,
+                "target_outcomes_used": False,
+                "hardware_timestamps_authoritative": True,
+                "equal_weight_per_execution": True,
+            },
+            "observation clock-offset information boundary changed",
+        )
+        _require(
+            isinstance(value.get("claim_boundary"), str),
+            "observation clock-offset claim boundary changed",
+        )
+        return cls(
+            clock_domain=value["clock_domain"],
+            reference_clock_domain=value["reference_clock_domain"],
+            time_scale=value["time_scale"],
+            offset_convention=value["offset_convention"],
+            source_revision=value["source_revision"],
+            source_artifact_ids=tuple(value["source_artifact_ids"]),
+            execution_ids=tuple(value["execution_ids"]),
+            source_offsets_s=tuple(value["source_offsets_s"]),
+            source_group_count=value["source_group_count"],
+            mean_offset_s=value["mean_offset_s"],
+            sample_standard_deviation_s=value[
+                "sample_standard_deviation_s"
+            ],
+            grid_quantization_standard_deviation_s=value[
+                "grid_quantization_standard_deviation_s"
+            ],
+            minimum_predictive_standard_deviation_s=value[
+                "minimum_predictive_standard_deviation_s"
+            ],
+            predictive_standard_deviation_s=value[
+                "predictive_standard_deviation_s"
+            ],
+            artifact_id=value["artifact_id"],
+        )
+
+
+def _validated_calibration(
+    value: Mapping[str, Any],
+) -> tuple[str, str, float, float]:
+    _require(
+        value.get("artifact_kind") == "ActuatorRealizationCalibration",
+        "source artifact is not an actuator-realization calibration",
+    )
+    _require(
+        value.get("schema_version") == 1,
+        "unsupported actuator-realization calibration schema",
+    )
+    artifact_id = _sha256(value.get("artifact_id"), name="source artifact ID")
+    _require(
+        artifact_id == _content_id(value),
+        "actuator-realization calibration artifact ID mismatch",
+    )
+    execution_id = _nonempty_string(
+        value.get("execution_id"),
+        name="execution_id",
+    )
+    boundary = value.get("information_boundary")
+    _require(
+        isinstance(boundary, Mapping)
+        and boundary.get("source_or_dry_run_only") is True
+        and boundary.get("target_outcomes_used") is False
+        and boundary.get("hardware_timestamps_authoritative") is True,
+        "actuator timing artifact violates the source-only information boundary",
+    )
+    alignment = value.get("timestamp_alignment")
+    _require(
+        isinstance(alignment, Mapping),
+        "actuator timing artifact lacks timestamp alignment",
+    )
+    _require(
+        alignment.get("convention")
+        == "aligned_measurement_time_s = measurement_time_s + offset_s",
+        "actuator timing convention changed",
+    )
+    offset = _finite_float(
+        alignment.get("best_offset_s"),
+        name="best_offset_s",
+    )
+    grid = _ordered_finite_floats(
+        alignment.get("offset_grid_s"),
+        name="offset_grid_s",
+    )
+    _require(len(grid) >= 2, "offset grid must contain at least two points")
+    differences = np.diff(np.asarray(grid, dtype=np.float64))
+    _require(np.all(differences > 0.0), "offset grid must be strictly increasing")
+    _require(
+        grid[0] <= offset <= grid[-1],
+        "best offset lies outside the declared grid",
+    )
+    maximum_step = float(np.max(differences))
+    return execution_id, artifact_id, offset, maximum_step
+
+
+def fit_observation_clock_offset_prior(
+    calibrations: Sequence[Mapping[str, Any]],
+    *,
+    clock_domain: str,
+    reference_clock_domain: str,
+    time_scale: str,
+    source_revision: str,
+    minimum_predictive_standard_deviation_s: float = 5e-4,
+) -> ObservationClockOffsetPriorV1:
+    """Aggregate independent source executions into a predictive timing prior.
+
+    Executions receive equal weight. The predictive variance includes the
+    between-execution sample variance, the finite-mean factor ``1 + 1/n``, and
+    the largest source grid's uniform quantization variance. The declared floor
+    prevents a zero-width prior when source offsets happen to coincide.
+    """
+
+    _require(
+        not isinstance(calibrations, (str, bytes))
+        and isinstance(calibrations, Sequence),
+        "calibrations must be a sequence",
+    )
+    validated = [_validated_calibration(value) for value in calibrations]
+    _require(
+        len(validated) >= 3,
+        "at least three source executions are required",
+    )
+    validated.sort(key=lambda row: row[0])
+    execution_ids = tuple(row[0] for row in validated)
+    artifact_ids = tuple(row[1] for row in validated)
+    offsets = tuple(row[2] for row in validated)
+    _require(
+        len(set(execution_ids)) == len(execution_ids),
+        "source execution IDs must be unique",
+    )
+    _require(
+        len(set(artifact_ids)) == len(artifact_ids),
+        "source calibration artifact IDs must be unique",
+    )
+    minimum_standard_deviation = _finite_float(
+        minimum_predictive_standard_deviation_s,
+        name="minimum_predictive_standard_deviation_s",
+    )
+    _require(
+        minimum_standard_deviation > 0.0,
+        "minimum predictive standard deviation must be positive",
+    )
+    maximum_grid_step = max(row[3] for row in validated)
+    grid_standard_deviation = maximum_grid_step / math.sqrt(12.0)
+    mean, sample_standard_deviation, predictive_standard_deviation = (
+        _predictive_standard_deviation(
+            offsets,
+            grid_quantization_standard_deviation_s=grid_standard_deviation,
+            minimum_predictive_standard_deviation_s=minimum_standard_deviation,
+        )
+    )
+    return ObservationClockOffsetPriorV1(
+        clock_domain=clock_domain,
+        reference_clock_domain=reference_clock_domain,
+        time_scale=time_scale,
+        source_revision=source_revision,
+        source_artifact_ids=artifact_ids,
+        execution_ids=execution_ids,
+        source_offsets_s=offsets,
+        source_group_count=len(offsets),
+        mean_offset_s=mean,
+        sample_standard_deviation_s=sample_standard_deviation,
+        grid_quantization_standard_deviation_s=grid_standard_deviation,
+        minimum_predictive_standard_deviation_s=minimum_standard_deviation,
+        predictive_standard_deviation_s=predictive_standard_deviation,
+    )
+
+
+def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key {key!r}")
+        result[key] = value
+    return result
+
+
+def load_observation_clock_offset_prior(
+    path: str | Path,
+) -> ObservationClockOffsetPriorV1:
+    """Load an exact JSON snapshot and revalidate all derived values."""
+
+    artifact_path = Path(path)
+    if artifact_path.is_symlink():
+        raise ValueError("observation clock-offset prior must not be a symlink")
+    try:
+        payload = artifact_path.read_bytes()
+    except OSError as error:
+        raise ValueError("observation clock-offset prior is unreadable") from error
+    try:
+        value = json.loads(
+            payload.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_keys,
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as error:
+        raise ValueError("observation clock-offset prior is invalid JSON") from error
+    _require(
+        isinstance(value, Mapping),
+        "observation clock-offset prior must be a JSON object",
+    )
+    return ObservationClockOffsetPriorV1.from_record(value)
+
+
+def write_observation_clock_offset_prior(
+    prior: ObservationClockOffsetPriorV1,
+    path: str | Path,
+) -> None:
+    """Publish one complete prior without replacing different content."""
+
+    artifact_path = Path(path)
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    if artifact_path.is_symlink():
+        raise ValueError("observation clock-offset prior target must not be a symlink")
+    if artifact_path.exists():
+        existing = load_observation_clock_offset_prior(artifact_path)
+        _require(
+            existing.artifact_id == prior.artifact_id,
+            "observation clock-offset prior path contains different content",
+        )
+        return
+    payload = (
+        json.dumps(
+            prior.to_record(),
+            sort_keys=True,
+            indent=2,
+            allow_nan=False,
+        )
+        + "\n"
+    ).encode("utf-8")
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{artifact_path.name}.",
+        suffix=".tmp",
+        dir=artifact_path.parent,
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        try:
+            os.link(temporary_path, artifact_path)
+        except FileExistsError:
+            if artifact_path.is_symlink():
+                raise ValueError(
+                    "observation clock-offset prior target must not be a symlink"
+                ) from None
+            existing = load_observation_clock_offset_prior(artifact_path)
+            _require(
+                existing.artifact_id == prior.artifact_id,
+                "observation clock-offset prior publication raced with "
+                "different content",
+            )
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+__all__ = [
+    "OBSERVATION_CLOCK_OFFSET_PRIOR_SCHEMA",
+    "OBSERVATION_CLOCK_OFFSET_PRIOR_VERSION",
+    "OBSERVATION_TIME_CORRECTION_CONVENTION",
+    "ObservationClockOffsetPriorV1",
+    "fit_observation_clock_offset_prior",
+    "load_observation_clock_offset_prior",
+    "write_observation_clock_offset_prior",
+]
