@@ -213,13 +213,12 @@ def test_companion_artifact_preserves_primary_interval_and_sources(
     assert first["source_primary_report_id"] == primary["report_id"]
     assert first["source_verification"] == primary["source_verification"]
     assert first["included_session_count"] == 18
-    assert first["primary_percentile_interval"]["interval"] == primary[
-        "primary_session_clustered_effect"
-    ]["confidence_interval"]
     assert (
-        first["primary_percentile_interval"][
-            "finite_sample_coverage_guaranteed"
-        ]
+        first["primary_percentile_interval"]["interval"]
+        == primary["primary_session_clustered_effect"]["confidence_interval"]
+    )
+    assert (
+        first["primary_percentile_interval"]["finite_sample_coverage_guaranteed"]
         is False
     )
     assert first["sensitivity_intervals"]["may_change_primary_decision"] is False
@@ -230,7 +229,10 @@ def test_companion_artifact_preserves_primary_interval_and_sources(
         is True
     )
     assert first["interpretation"]["target_informed_selection"] is False
-    assert first["claim_boundary"]["physical_target_outcomes_used_to_choose_interval"] is False
+    assert (
+        first["claim_boundary"]["physical_target_outcomes_used_to_choose_interval"]
+        is False
+    )
 
 
 def test_cli_publishes_atomically_and_requires_explicit_overwrite(
