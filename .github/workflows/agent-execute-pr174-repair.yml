@@ -1,0 +1,107 @@
+name: Execute reviewed PR 174 repair now
+
+on:
+  push:
+    branches: [agent/schema4-factor-lineage]
+    paths: [.github/workflows/agent-execute-pr174-repair.yml]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: execute-reviewed-pr174-repair-now
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the reviewed repair
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ci/fix-pr-174
+          path: executor
+          persist-credentials: false
+          clean: true
+
+      - name: Check out the target PR branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/schema4-factor-lineage
+          path: target
+          fetch-depth: 0
+          persist-credentials: true
+          clean: true
+
+      - name: Apply and validate the reviewed repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install pyyaml
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          import subprocess
+          import yaml
+
+          workflow = yaml.safe_load(
+              Path("executor/.github/workflows/fix-pr-174-exact-bytes.yml")
+              .read_text(encoding="utf-8")
+          )
+          scripts = [
+              step["run"]
+              for step in workflow["jobs"]["repair"]["steps"]
+              if "run" in step
+          ]
+          if len(scripts) != 3:
+              raise SystemExit(f"unexpected repair step count: {len(scripts)}")
+
+          def strip_yaml(value: str) -> str:
+              suffix = "\n" if value.endswith("\n") else ""
+              lines = value.splitlines()
+              return "\n".join(
+                  line[10:] if line.startswith("          ") else line
+                  for line in lines
+              ) + suffix
+
+          for index, script in enumerate(scripts[:2], start=1):
+              if index == 1:
+                  script = script.replace(
+                      "from pathlib import Path\n",
+                      "from pathlib import Path\n\n"
+                      + "def strip_yaml(value: str) -> str:\n"
+                      + "    suffix = \\\"\\n\\\" if value.endswith(\\\"\\n\\\") else \\\"\\\"\n"
+                      + "    lines = value.splitlines()\n"
+                      + "    return \\\"\\n\\\".join(\n"
+                      + "        line[10:] if line.startswith(\\\"          \\\") else line\n"
+                      + "        for line in lines\n"
+                      + "    ) + suffix\n\n",
+                      1,
+                  )
+                  script = re.sub(
+                      r"(?s)('''.*?''')\.replace\(\" {10}\", \"\"\)",
+                      r"strip_yaml(\1)",
+                      script,
+                  )
+              print(f"::group::reviewed repair step {index}")
+              subprocess.run(
+                  ["bash", "-euo", "pipefail", "-c", script],
+                  cwd="target",
+                  check=True,
+              )
+              print("::endgroup::")
+          PY
+
+      - name: Commit the repair and remove this executor
+        shell: bash
+        working-directory: target
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/agent-execute-pr174-repair.yml
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Validate factor lineage from exact hashed bytes"
+          git push origin HEAD:agent/schema4-factor-lineage
