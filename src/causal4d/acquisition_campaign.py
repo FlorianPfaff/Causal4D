@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from html import escape
 from typing import Any, Literal
@@ -10,6 +11,8 @@ from causal4d.acquisition_flight_common import (
     DOCTOR_REPORT_KIND,
     _canonical_sha256,
     _is_sha256,
+    _parse_utc,
+    _reject_target_outcomes,
     _require,
 )
 
@@ -17,6 +20,45 @@ CAMPAIGN_SCHEMA_VERSION = 1
 CAMPAIGN_SUMMARY_KIND = "Causal4DAcquisitionCampaignSummary"
 CampaignState = Literal["invalid", "blocked", "ready", "complete"]
 _CHECK_STATUSES = frozenset({"pass", "warn", "fail", "skipped"})
+_DOCTOR_CHECK_IDS = frozenset(
+    {
+        "protocol_schedule",
+        "frozen_checkout",
+        "sealed_readiness",
+        "storage_capacity",
+        "storage_write_probe",
+        "real_evidence_status",
+        "execution_manifests",
+        "next_execution",
+        "session_journal",
+    }
+)
+_INVALID_CHECK_IDS = frozenset(
+    {
+        "frozen_checkout",
+        "sealed_readiness",
+        "real_evidence_status",
+        "execution_manifests",
+        "session_journal",
+    }
+)
+_NEXT_EXECUTION_FIELDS = (
+    "acquisition_execution_index",
+    "execution_id",
+    "session_id",
+    "pair_order",
+    "contact_region_id",
+    "command_profile_id",
+    "realization_condition_id",
+    "replicate_block",
+)
+_NEXT_EXECUTION_INTEGER_FIELDS = frozenset(
+    {
+        "acquisition_execution_index",
+        "pair_order",
+        "replicate_block",
+    }
+)
 
 
 def _nonnegative_integer(value: Any, *, name: str) -> int:
@@ -24,15 +66,32 @@ def _nonnegative_integer(value: Any, *, name: str) -> int:
     return value
 
 
+def _nonnegative_number(value: Any, *, name: str) -> float:
+    _require(
+        type(value) in {int, float}
+        and math.isfinite(float(value))
+        and float(value) >= 0.0,
+        f"{name} must be a finite nonnegative number",
+    )
+    return float(value)
+
+
 def _boolean(value: Any, *, name: str) -> bool:
     _require(type(value) is bool, f"{name} must be Boolean")
     return value
 
 
-def _validated_checks(value: Any) -> list[dict[str, Any]]:
+def _nonempty_string(value: Any, *, name: str) -> str:
+    _require(type(value) is str and bool(value), f"{name} must be a nonempty string")
+    return value
+
+
+def _validated_checks(
+    value: Any,
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
     _require(isinstance(value, list), "doctor report checks must be a list")
     checks: list[dict[str, Any]] = []
-    identifiers: set[str] = set()
+    by_identifier: dict[str, dict[str, Any]] = {}
     for index, raw in enumerate(value):
         _require(isinstance(raw, Mapping), f"doctor check {index} must be an object")
         check = dict(raw)
@@ -43,7 +102,10 @@ def _validated_checks(value: Any) -> list[dict[str, Any]]:
             type(identifier) is str and bool(identifier),
             f"doctor check {index} lacks check_id",
         )
-        _require(identifier not in identifiers, f"duplicate doctor check: {identifier}")
+        _require(
+            identifier not in by_identifier,
+            f"duplicate doctor check: {identifier}",
+        )
         _require(
             type(status) is str and status in _CHECK_STATUSES,
             f"doctor check {identifier} has invalid status",
@@ -52,10 +114,66 @@ def _validated_checks(value: Any) -> list[dict[str, Any]]:
             type(message) is str and bool(message),
             f"doctor check {identifier} lacks message",
         )
-        identifiers.add(identifier)
+        by_identifier[identifier] = check
         checks.append(check)
-    _require(bool(checks), "doctor report must contain checks")
-    return checks
+    _require(
+        set(by_identifier) == _DOCTOR_CHECK_IDS,
+        "doctor check inventory differs from schema version 1",
+    )
+    return checks, by_identifier
+
+
+def _validated_next_execution(value: Any) -> dict[str, Any] | None:
+    _require(
+        value is None or isinstance(value, Mapping),
+        "doctor next_execution must be an object or null",
+    )
+    if value is None:
+        return None
+    result = dict(value)
+    _require(
+        set(result) == set(_NEXT_EXECUTION_FIELDS),
+        "doctor next_execution inventory differs from the registered summary contract",
+    )
+    for field in _NEXT_EXECUTION_FIELDS:
+        if field in _NEXT_EXECUTION_INTEGER_FIELDS:
+            result[field] = _nonnegative_integer(
+                result[field],
+                name=f"doctor next_execution {field}",
+            )
+        else:
+            result[field] = _nonempty_string(
+                result[field],
+                name=f"doctor next_execution {field}",
+            )
+    return result
+
+
+def _validate_thresholds(value: Any) -> dict[str, Any]:
+    _require(isinstance(value, Mapping), "doctor thresholds must be an object")
+    thresholds = dict(value)
+    _require(
+        set(thresholds)
+        == {
+            "minimum_free_bytes",
+            "write_probe_bytes",
+            "minimum_write_mib_s",
+        },
+        "doctor threshold inventory differs from schema version 1",
+    )
+    thresholds["minimum_free_bytes"] = _nonnegative_integer(
+        thresholds["minimum_free_bytes"],
+        name="doctor minimum_free_bytes",
+    )
+    thresholds["write_probe_bytes"] = _nonnegative_integer(
+        thresholds["write_probe_bytes"],
+        name="doctor write_probe_bytes",
+    )
+    thresholds["minimum_write_mib_s"] = _nonnegative_number(
+        thresholds["minimum_write_mib_s"],
+        name="doctor minimum_write_mib_s",
+    )
+    return thresholds
 
 
 def validate_acquisition_doctor_report(
@@ -64,18 +182,34 @@ def validate_acquisition_doctor_report(
     """Validate one complete doctor artifact before deriving operator summaries."""
 
     values = dict(report)
+    schema_version = values.get("schema_version")
     _require(
-        values.get("schema_version") == 1,
+        type(schema_version) is int and schema_version == 1,
         "unsupported acquisition-doctor schema version",
     )
     _require(
-        values.get("artifact_kind") == DOCTOR_REPORT_KIND,
+        type(values.get("artifact_kind")) is str
+        and values["artifact_kind"] == DOCTOR_REPORT_KIND,
         "wrong acquisition-doctor artifact kind",
     )
-    protocol_id = values.get("protocol_id")
+    _parse_utc(
+        values.get("generated_at_utc"),
+        name="acquisition-doctor generated_at_utc",
+    )
+    protocol_id = _nonempty_string(
+        values.get("protocol_id"),
+        name="doctor report protocol_id",
+    )
     _require(
-        type(protocol_id) is str and bool(protocol_id),
-        "doctor report protocol_id is missing",
+        _is_sha256(values.get("protocol_design_sha256")),
+        "doctor protocol_design_sha256 is invalid",
+    )
+    _nonempty_string(values.get("repository_root"), name="doctor repository_root")
+    _nonempty_string(values.get("dataset_root"), name="doctor dataset_root")
+    thresholds = _validate_thresholds(values.get("thresholds"))
+    resume_acknowledged = _boolean(
+        values.get("resume_acknowledged"),
+        name="resume_acknowledged",
     )
     source_sha = values.get("report_sha256")
     _require(_is_sha256(source_sha), "doctor report SHA-256 is invalid")
@@ -83,10 +217,12 @@ def validate_acquisition_doctor_report(
         source_sha == _canonical_sha256(values, omitted="report_sha256"),
         "doctor report checksum mismatch",
     )
+    _reject_target_outcomes(values)
     _require(
         values.get("target_outcomes_used") is False,
         "doctor report must preserve the target-outcome boundary",
     )
+
     completed = _nonnegative_integer(
         values.get("completed_executions"),
         name="completed_executions",
@@ -105,45 +241,81 @@ def validate_acquisition_doctor_report(
         values.get("warning_count"),
         name="warning_count",
     )
-    checks = _validated_checks(values.get("checks"))
+    checks, check_by_identifier = _validated_checks(values.get("checks"))
+    actual_failure_count = sum(check["status"] == "fail" for check in checks)
+    actual_warning_count = sum(check["status"] == "warn" for check in checks)
     _require(
-        failure_count == sum(check["status"] == "fail" for check in checks),
+        failure_count == actual_failure_count,
         "doctor failure_count differs from its checks",
     )
     _require(
-        warning_count == sum(check["status"] == "warn" for check in checks),
+        warning_count == actual_warning_count,
         "doctor warning_count differs from its checks",
     )
+
     valid = _boolean(values.get("valid"), name="valid")
     ready = _boolean(values.get("ready_to_record"), name="ready_to_record")
     complete = _boolean(values.get("collection_complete"), name="collection_complete")
     passed = _boolean(values.get("passed"), name="passed")
+    expected_valid = not any(
+        check["status"] == "fail" and identifier in _INVALID_CHECK_IDS
+        for identifier, check in check_by_identifier.items()
+    )
+    _require(valid == expected_valid, "doctor valid flag is contradictory")
+
+    session_journal = check_by_identifier["session_journal"]
+    if session_journal["status"] == "warn":
+        journal_resume = _boolean(
+            session_journal.get("resume_acknowledged"),
+            name="session_journal resume_acknowledged",
+        )
+        _require(
+            journal_resume == resume_acknowledged,
+            "session-journal resume acknowledgement differs from the doctor report",
+        )
+        journal_requires_review = not resume_acknowledged
+    else:
+        _require(
+            "resume_acknowledged" not in session_journal,
+            "non-warning session_journal check must not contain resume acknowledgement",
+        )
+        journal_requires_review = False
+
+    next_execution = _validated_next_execution(values.get("next_execution"))
+    if next_execution is None:
+        _require(
+            completed == total,
+            "doctor without a next execution must report all executions completed",
+        )
+    else:
+        _require(
+            completed < total,
+            "doctor with a next execution must have remaining executions",
+        )
+        _require(
+            next_execution["acquisition_execution_index"] == completed,
+            "doctor next-execution index differs from completed execution count",
+        )
+
+    expected_complete = next_execution is None and failure_count == 0
+    expected_ready = (
+        next_execution is not None
+        and failure_count == 0
+        and not journal_requires_review
+    )
+    _require(
+        complete == expected_complete,
+        "doctor collection_complete flag is contradictory",
+    )
+    _require(ready == expected_ready, "doctor ready_to_record flag is contradictory")
     _require(not (ready and complete), "campaign cannot be ready and complete")
     _require(passed == (ready or complete), "doctor passed flag is contradictory")
-    next_execution = values.get("next_execution")
-    _require(
-        next_execution is None or isinstance(next_execution, Mapping),
-        "doctor next_execution must be an object or null",
-    )
-    if next_execution is not None:
-        identifier = next_execution.get("execution_id")
-        _require(
-            type(identifier) is str and bool(identifier),
-            "doctor next_execution lacks execution_id",
-        )
-    _require(
-        complete
-        == (
-            completed == total
-            and next_execution is None
-            and failure_count == 0
-        ),
-        "doctor completion fields are contradictory",
-    )
+
+    values["protocol_id"] = protocol_id
+    values["thresholds"] = thresholds
     values["checks"] = checks
-    values["next_execution"] = (
-        None if next_execution is None else dict(next_execution)
-    )
+    values["next_execution"] = next_execution
+    values["resume_acknowledged"] = resume_acknowledged
     values["valid"] = valid
     values["ready_to_record"] = ready
     values["collection_complete"] = complete
@@ -209,12 +381,26 @@ def build_acquisition_campaign_summary(
     return summary
 
 
+def _markdown_text(value: Any) -> str:
+    return (
+        escape(str(value))
+        .replace("|", "&#124;")
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .replace("\n", "<br>")
+    )
+
+
+def _markdown_code(value: Any) -> str:
+    return f"<code>{_markdown_text(value)}</code>"
+
+
 def _next_execution_markdown(next_execution: Mapping[str, Any] | None) -> list[str]:
     if next_execution is None:
         return ["No registered execution remains."]
     rows = ["| Field | Value |", "| --- | --- |"]
     for key, value in next_execution.items():
-        rows.append(f"| `{key}` | `{value}` |")
+        rows.append(f"| {_markdown_code(key)} | {_markdown_code(value)} |")
     return rows
 
 
@@ -229,8 +415,8 @@ def render_acquisition_campaign_markdown(
     lines = [
         "# Causal4D acquisition campaign",
         "",
-        f"- **Protocol:** `{summary['protocol_id']}`",
-        f"- **State:** `{summary['state']}`",
+        f"- **Protocol:** {_markdown_code(summary['protocol_id'])}",
+        f"- **State:** {_markdown_code(summary['state'])}",
         (
             "- **Progress:** "
             f"{summary['completed_executions']}/{summary['total_executions']} "
@@ -238,9 +424,9 @@ def render_acquisition_campaign_markdown(
         ),
         (
             "- **Source doctor report:** "
-            f"`{summary['source_doctor_report_sha256']}`"
+            f"{_markdown_code(summary['source_doctor_report_sha256'])}"
         ),
-        "- **Target outcomes used:** `false`",
+        "- **Target outcomes used:** <code>false</code>",
         "",
         "## Next registered execution",
         "",
@@ -251,7 +437,8 @@ def render_acquisition_campaign_markdown(
     ]
     if summary["blocking_checks"]:
         lines.extend(
-            f"- `{check['check_id']}`: {check['message']}"
+            f"- {_markdown_code(check['check_id'])}: "
+            f"{_markdown_text(check['message'])}"
             for check in summary["blocking_checks"]
         )
     else:
@@ -259,7 +446,8 @@ def render_acquisition_campaign_markdown(
     lines.extend(["", "## Warnings", ""])
     if summary["warnings"]:
         lines.extend(
-            f"- `{check['check_id']}`: {check['message']}"
+            f"- {_markdown_code(check['check_id'])}: "
+            f"{_markdown_text(check['message'])}"
             for check in summary["warnings"]
         )
     else:
@@ -274,8 +462,11 @@ def render_acquisition_campaign_markdown(
         ]
     )
     for check in values["checks"]:
-        message = check["message"].replace("|", "\\|")
-        lines.append(f"| `{check['status']}` | `{check['check_id']}` | {message} |")
+        lines.append(
+            f"| {_markdown_code(check['status'])} | "
+            f"{_markdown_code(check['check_id'])} | "
+            f"{_markdown_text(check['message'])} |"
+        )
     lines.extend(
         [
             "",
