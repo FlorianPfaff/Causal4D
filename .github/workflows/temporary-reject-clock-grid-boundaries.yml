@@ -1,8 +1,8 @@
 name: Temporary reject censored clock-offset fits
 
 on:
-  push:
-    branches: [agent/source-clock-offset-prior-v1]
+  pull_request:
+    branches: [main]
     paths:
       - ".github/workflows/temporary-reject-clock-grid-boundaries.yml"
 
@@ -10,11 +10,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: temporary-reject-clock-grid-boundaries
+  group: temporary-reject-clock-grid-boundaries-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   patch-validate-publish:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -75,7 +76,10 @@ jobs:
                       ]
                   )
           '''
-          regression = "\n".join(line[10:] if line.startswith("          ") else line for line in regression.splitlines())
+          regression = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in regression.splitlines()
+          )
           if "def test_boundary_censored_source_offset_is_rejected" not in tests:
               if marker not in tests:
                   raise RuntimeError("clock-grid test insertion point changed")
