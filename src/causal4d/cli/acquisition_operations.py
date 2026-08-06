@@ -7,6 +7,11 @@ import json
 from pathlib import Path
 from typing import Any, Sequence
 
+from causal4d.acquisition_campaign import (
+    build_acquisition_campaign_summary,
+    render_acquisition_campaign_html,
+    render_acquisition_campaign_markdown,
+)
 from causal4d.acquisition_flight_recorder import (
     DoctorThresholds,
     HealthThresholds,
@@ -17,15 +22,14 @@ from causal4d.acquisition_flight_recorder import (
     validate_acquisition_journal,
     validate_acquisition_journal_seal,
 )
-from causal4d.atomic_io import atomic_write_json
+from causal4d.artifact_io import load_strict_json_object, read_regular_file
+from causal4d.atomic_io import atomic_write_json, atomic_write_text
 from causal4d.real_protocol import validate_protocol
 
 
 def _json_object(path: Path, *, name: str) -> dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError(f"{name} must contain a JSON object")
-    return payload
+    snapshot = read_regular_file(path, name=name)
+    return load_strict_json_object(snapshot.payload, name=name)
 
 
 def _gib(value: str | float) -> int:
@@ -60,6 +64,38 @@ def _add_doctor(subparsers: Any) -> None:
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--allow-resume", action="store_true")
     parser.add_argument("--require-ready", action="store_true")
+
+
+def _add_campaign(subparsers: Any) -> None:
+    campaign = subparsers.add_parser(
+        "campaign",
+        help="summarize or render a hash-verified acquisition-doctor report",
+    )
+    operations = campaign.add_subparsers(dest="campaign_command", required=True)
+
+    status = operations.add_parser(
+        "status",
+        help="emit a compact machine-readable campaign status",
+    )
+    status.add_argument("doctor_report_json", type=Path)
+    status.add_argument("--output-json", type=Path)
+    status.add_argument("--overwrite", action="store_true")
+    status.add_argument("--require-ready", action="store_true")
+
+    next_execution = operations.add_parser(
+        "next",
+        help="show the next registered execution and whether recording may start",
+    )
+    next_execution.add_argument("doctor_report_json", type=Path)
+
+    report = operations.add_parser(
+        "report",
+        help="render a deterministic Markdown or HTML operator report",
+    )
+    report.add_argument("doctor_report_json", type=Path)
+    report.add_argument("output", type=Path)
+    report.add_argument("--format", choices=("markdown", "html"))
+    report.add_argument("--overwrite", action="store_true")
 
 
 def _add_journal(subparsers: Any) -> None:
@@ -108,6 +144,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
     _add_doctor(subparsers)
+    _add_campaign(subparsers)
     _add_journal(subparsers)
     _add_snapshot(subparsers)
     return parser
@@ -143,6 +180,75 @@ def _doctor(arguments: argparse.Namespace) -> int:
     if arguments.require_ready and not report["passed"]:
         return 3
     return 0
+
+
+def _campaign(arguments: argparse.Namespace) -> int:
+    report = _json_object(
+        arguments.doctor_report_json,
+        name="acquisition-doctor report",
+    )
+    summary = build_acquisition_campaign_summary(report)
+    if arguments.campaign_command == "status":
+        if arguments.output_json is not None:
+            atomic_write_json(
+                arguments.output_json,
+                summary,
+                overwrite=arguments.overwrite,
+            )
+        print(json.dumps(summary, indent=2, sort_keys=True))
+        if summary["state"] == "invalid":
+            return 2
+        if arguments.require_ready and summary["state"] not in {"ready", "complete"}:
+            return 3
+        return 0
+    if arguments.campaign_command == "next":
+        result = {
+            "protocol_id": summary["protocol_id"],
+            "state": summary["state"],
+            "next_execution": summary["next_execution"],
+            "blocking_checks": summary["blocking_checks"],
+            "source_doctor_report_sha256": summary[
+                "source_doctor_report_sha256"
+            ],
+            "target_outcomes_used": False,
+        }
+        print(json.dumps(result, indent=2, sort_keys=True))
+        if summary["state"] == "invalid":
+            return 2
+        if summary["state"] not in {"ready", "complete"}:
+            return 3
+        return 0
+    if arguments.campaign_command == "report":
+        selected_format = arguments.format
+        if selected_format is None:
+            selected_format = (
+                "html" if arguments.output.suffix.lower() == ".html" else "markdown"
+            )
+        text = (
+            render_acquisition_campaign_html(report)
+            if selected_format == "html"
+            else render_acquisition_campaign_markdown(report)
+        )
+        atomic_write_text(
+            arguments.output,
+            text,
+            overwrite=arguments.overwrite,
+        )
+        result = {
+            "protocol_id": summary["protocol_id"],
+            "state": summary["state"],
+            "format": selected_format,
+            "output": str(arguments.output.resolve()),
+            "source_doctor_report_sha256": summary[
+                "source_doctor_report_sha256"
+            ],
+            "target_outcomes_used": False,
+        }
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0
+    raise RuntimeError(
+        f"unsupported acquisition campaign command: {arguments.campaign_command}"
+    )
 
 
 def _journal(arguments: argparse.Namespace) -> int:
@@ -204,6 +310,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if arguments.command == "doctor":
             return _doctor(arguments)
+        if arguments.command == "campaign":
+            return _campaign(arguments)
         if arguments.command == "journal":
             return _journal(arguments)
         if arguments.command == "snapshot":
