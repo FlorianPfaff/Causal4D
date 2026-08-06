@@ -1,0 +1,61 @@
+name: PR 193 Actions probe
+
+on:
+  push:
+    branches: [ci/pr193-actions-probe-v1]
+    paths:
+      - ".github/workflows/pr193-actions-probe.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr193-actions-probe-v1
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out exact probe revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+          clean: true
+
+      - name: Publish probe result
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p scientific-results/pr193/actions-probe
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          value = {
+              "schema_version": 1,
+              "status": "passed",
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "workflow_run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "trigger_sha": os.environ["GITHUB_SHA"],
+              "runner_name": os.environ["RUNNER_NAME"],
+              "runner_os": os.environ["RUNNER_OS"],
+              "runner_arch": os.environ["RUNNER_ARCH"],
+              "completed_at_utc": datetime.now(timezone.utc).isoformat(),
+          }
+          Path("scientific-results/pr193/actions-probe/result.json").write_text(
+              json.dumps(value, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scientific-results/pr193/actions-probe/result.json
+          git commit -m "Record PR 193 Actions probe ${GITHUB_RUN_ID}"
+          git push origin HEAD:ci/pr193-actions-probe-v1
