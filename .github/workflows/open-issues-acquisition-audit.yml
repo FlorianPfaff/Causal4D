@@ -1,8 +1,9 @@
 name: Audit Causal4D open physical issues
 
 on:
-  push:
-    branches: [agent/open-issues-acquisition-audit-20260807]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
     paths:
       - ".github/workflows/open-issues-acquisition-audit.yml"
 
@@ -10,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: hybrid-reliability-derived-validation-v2
+  group: hybrid-reliability-derived-validation-v2-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 env:
@@ -27,13 +28,14 @@ env:
 jobs:
   validate:
     name: Exact-head hybrid reliability validation
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - name: Check out validation harness
+      - name: Check out exact validation harness
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: agent/open-issues-acquisition-audit-20260807
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: true
           clean: true
@@ -57,6 +59,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = \
+            "${{ github.event.pull_request.head.sha }}"
           venv="${RUNNER_TEMP}/hybrid-reliability-v2-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           python -m venv "${venv}"
           echo "VALIDATION_VENV=${venv}" >> "${GITHUB_ENV}"
@@ -170,8 +174,7 @@ jobs:
         env:
           VALIDATION_OUTCOME: ${{ steps.validate.outcome }}
         shell: bash
-        run: |
-          test "${VALIDATION_OUTCOME}" = "success"
+        run: test "${VALIDATION_OUTCOME}" = "success"
 
       - name: Remove isolated environment
         if: always()
