@@ -1,0 +1,480 @@
+name: Temporary PR 211 patch and exact-head validation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/temporary-pr211-patch-and-validate.yml
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: temporary-pr211-patch-and-validate
+  cancel-in-progress: false
+
+env:
+  START_SHA: b7f899ed616b4615d2a2805abbec73d8bf5de70b
+  BASE_SHA: 17e04a16b2a999ccd28b3196841f84951e0d48e2
+  PRODUCT_BRANCH: agent/preacquisition-next-action
+  ISSUE_NUMBER: "213"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONHASHSEED: "0"
+  PYTHONUNBUFFERED: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  patch:
+    name: Correct portable next-action identity
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    outputs:
+      head_sha: ${{ steps.push.outputs.head_sha }}
+    steps:
+      - name: Check out the exact product branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/Causal4D
+          ref: ${{ env.PRODUCT_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: true
+          clean: true
+
+      - name: Verify immutable starting point
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${START_SHA}"
+          git cat-file -e "${BASE_SHA}^{commit}"
+          test -z "$(git status --porcelain=v1)"
+
+      - name: Exclude host-local status hashes from the portable identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          source_path = Path("src/causal4d/preacquisition_next_action.py")
+          source = source_path.read_text(encoding="utf-8")
+          old_source = '''    payload.pop("evidence_sha256", None)
+              payload.pop("status_sha256", None)
+              return _digest(_portable(payload, repository, dataset))
+          '''
+          new_source = '''    payload.pop("readiness_status_sha256", None)
+              payload.pop("source_panel_status_sha256", None)
+              payload.pop("evidence_sha256", None)
+              payload.pop("status_sha256", None)
+              return _digest(_portable(payload, repository, dataset))
+          '''
+          if source.count(old_source) != 1:
+              raise SystemExit("portable-hash source replacement is not unique")
+          source_path.write_text(
+              source.replace(old_source, new_source),
+              encoding="utf-8",
+          )
+
+          test_path = Path("tests/test_preacquisition_next_action.py")
+          tests = test_path.read_text(encoding="utf-8")
+          old_test = '''    second["repository_root"] = "/different/repo"
+              second["dataset_root"] = "/different/data"
+              for field in ("command_argv", "completion_check_argv", "after_completion_argv"):
+          '''
+          new_test = '''    second["repository_root"] = "/different/repo"
+              second["dataset_root"] = "/different/data"
+              second["readiness_status_sha256"] = "1" * 64
+              second["source_panel_status_sha256"] = "2" * 64
+              for field in ("command_argv", "completion_check_argv", "after_completion_argv"):
+          '''
+          if tests.count(old_test) != 1:
+              raise SystemExit("portable-hash regression replacement is not unique")
+          test_path.write_text(
+              tests.replace(old_test, new_test),
+              encoding="utf-8",
+          )
+          PY
+          git diff --check
+          git diff -- \
+            src/causal4d/preacquisition_next_action.py \
+            tests/test_preacquisition_next_action.py
+
+      - name: Commit and publish the correction
+        id: push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/causal4d/preacquisition_next_action.py \
+            tests/test_preacquisition_next_action.py
+          git commit -m \
+            "Exclude host-local status hashes from portable next-action identity"
+          git push origin "HEAD:${PRODUCT_BRANCH}"
+          head_sha="$(git rev-parse HEAD)"
+          echo "head_sha=${head_sha}" >> "$GITHUB_OUTPUT"
+          echo "Validated product head will be ${head_sha}"
+
+  quality:
+    name: Scope, Ruff, formatting, typing, and focused tests
+    needs: patch
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Check out immutable patched head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/Causal4D
+          ref: ${{ needs.patch.outputs.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Verify immutable revision and intended seven-file scope
+        shell: bash
+        env:
+          TARGET_SHA: ${{ needs.patch.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          test -n "${TARGET_SHA}"
+          test "$(git rev-parse HEAD)" = "${TARGET_SHA}"
+          git cat-file -e "${BASE_SHA}^{commit}"
+          git diff --name-only "${BASE_SHA}" "${TARGET_SHA}" | sort > actual.txt
+          cat > expected.txt <<'EOF'
+          docs/causal4d_preacquisition_next_action.md
+          docs/causal4d_source_panel_staging_preflight.md
+          src/causal4d/cli/preacquisition_readiness.py
+          src/causal4d/preacquisition_next_action.py
+          src/causal4d/preacquisition_source_panel_staging.py
+          tests/test_preacquisition_next_action.py
+          tests/test_preacquisition_source_panel_staging.py
+          EOF
+          diff -u expected.txt actual.txt
+          test -z "$(git status --porcelain=v1 --untracked-files=no)"
+
+      - name: Install exact development environment
+        run: |
+          python -m pip install \
+            "pip==25.2" \
+            "setuptools==80.9.0" \
+            "wheel==0.45.1"
+          python -m pip install ".[dev]"
+          python -m pip check
+
+      - name: Run quality and focused contract gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            src/causal4d/cli/preacquisition_readiness.py
+            src/causal4d/preacquisition_next_action.py
+            src/causal4d/preacquisition_source_panel_staging.py
+            tests/test_preacquisition_next_action.py
+            tests/test_preacquisition_source_panel_staging.py
+          )
+          python -m ruff check .
+          python -m ruff format --check "${files[@]}"
+          python -m mypy \
+            src/causal4d/preacquisition_next_action.py \
+            src/causal4d/preacquisition_source_panel_staging.py
+          python -W error -m compileall -q src tests scripts
+          python -m pytest -q -p no:cacheprovider \
+            tests/test_preacquisition_next_action.py \
+            tests/test_preacquisition_source_panel_staging.py
+          python scripts/ci/check_acquisition_runbook_commands.py
+
+      - name: Record quality evidence
+        if: always()
+        shell: bash
+        env:
+          TARGET_SHA: ${{ needs.patch.outputs.head_sha }}
+        run: |
+          mkdir -p evidence
+          {
+            echo "target_sha=${TARGET_SHA}"
+            echo "base_sha=${BASE_SHA}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+            python --version
+            python -m pip freeze --all
+          } > evidence/environment.txt
+          cp actual.txt expected.txt evidence/ 2>/dev/null || true
+
+      - name: Upload quality evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pr211-quality-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+  full-tests:
+    name: Complete core suite / Python ${{ matrix.python-version }}
+    needs: patch
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12", "3.14"]
+    steps:
+      - name: Check out immutable patched head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/Causal4D
+          ref: ${{ needs.patch.outputs.head_sha }}
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install core and development dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Assert optional runtimes remain absent
+        run: |
+          python - <<'PY'
+          import importlib.util
+
+          forbidden = ("bayesian_phystwin", "cv2", "torch", "warp")
+          present = [name for name in forbidden if importlib.util.find_spec(name)]
+          if present:
+              raise SystemExit(f"optional dependencies leaked into core job: {present}")
+          PY
+
+      - name: Run complete default suite
+        run: |
+          python -m pytest -q -p no:cacheprovider \
+            --junitxml="pytest-${{ matrix.python-version }}.xml"
+
+      - name: Upload pytest report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pr211-pytest-${{ matrix.python-version }}-${{ github.run_id }}
+          path: pytest-${{ matrix.python-version }}.xml
+          if-no-files-found: error
+          retention-days: 30
+
+  distribution:
+    name: Build, install, and exercise CLI artifacts
+    needs: patch
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Check out immutable patched head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/Causal4D
+          ref: ${{ needs.patch.outputs.head_sha }}
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Build and check distributions
+        run: |
+          python -m pip install \
+            "build==1.3.0" \
+            "twine==6.2.0"
+          python -m build
+          python -m twine check dist/*
+          sha256sum dist/* > distribution-sha256.txt
+
+      - name: Install wheel in a clean environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv artifact-venv
+          artifact-venv/bin/python -m pip install --upgrade pip
+          wheel_path="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
+          test -n "${wheel_path}"
+          artifact-venv/bin/python -m pip install "${wheel_path}"
+          artifact-venv/bin/python -m pip check
+          (
+            cd "${RUNNER_TEMP}"
+            unset PYTHONPATH
+            "${GITHUB_WORKSPACE}/artifact-venv/bin/causal4d" --help
+            "${GITHUB_WORKSPACE}/artifact-venv/bin/causal4d" \
+              protocol readiness next-action --help
+            "${GITHUB_WORKSPACE}/artifact-venv/bin/causal4d" \
+              protocol readiness source-panel-verify-staged --help
+            "${GITHUB_WORKSPACE}/artifact-venv/bin/causal4d" \
+              commands validate --require-installed
+            "${GITHUB_WORKSPACE}/artifact-venv/bin/python" - <<PY
+          import pathlib
+          import causal4d
+
+          package = pathlib.Path(causal4d.__file__).resolve()
+          checkout = pathlib.Path("${GITHUB_WORKSPACE}").resolve()
+          assert checkout not in package.parents, package
+          print(package)
+          PY
+          )
+
+      - name: Upload distributions
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pr211-distributions-${{ github.run_id }}
+          path: |
+            dist/
+            distribution-sha256.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  pinned-bpt:
+    name: Pinned BayesianPhysTwin installed-wheel integration
+    needs: patch
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Check out immutable patched head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/Causal4D
+          ref: ${{ needs.patch.outputs.head_sha }}
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Read exact provider pin
+        id: pin
+        run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out pinned BayesianPhysTwin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/BayesianPhysTwin
+          ref: ${{ steps.pin.outputs.sha }}
+          path: _bpt
+          persist-credentials: false
+
+      - name: Build and install isolated wheels
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade build pip
+          wheelhouse="$RUNNER_TEMP/pr211-bpt-wheelhouse"
+          mkdir -p "$wheelhouse"
+          python -m build --wheel --outdir "$wheelhouse" .
+          python -m build --wheel --outdir "$wheelhouse" ./_bpt
+          test "$(find "$wheelhouse" -maxdepth 1 -name '*.whl' | wc -l)" -eq 2
+          python -m venv artifact-venv
+          artifact-venv/bin/python -m pip install --upgrade pip
+          artifact-venv/bin/python -m pip install "$wheelhouse"/*.whl pytest
+          artifact-venv/bin/python -m pip check
+
+      - name: Run pinned-provider integration tests
+        env:
+          CAUSAL4D_REQUIRE_BPT_PROVIDER: "1"
+        run: artifact-venv/bin/python scripts/ci/run_bpt_integration_tests.py
+
+  report-and-cleanup:
+    name: Report result and remove temporary workflows
+    needs: [patch, quality, full-tests, distribution, pinned-bpt]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - name: Publish exact-head validation result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ needs.patch.outputs.head_sha }}
+          PATCH_RESULT: ${{ needs.patch.result }}
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          FULL_TESTS_RESULT: ${{ needs.full-tests.result }}
+          DISTRIBUTION_RESULT: ${{ needs.distribution.result }}
+          PINNED_BPT_RESULT: ${{ needs.pinned-bpt.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/result.md <<EOF
+          ## Portable-identity correction and exact-head validation
+
+          - Starting SHA: \`${START_SHA}\`
+          - Patched target SHA: \`${TARGET_SHA:-unavailable}\`
+          - Workflow run: \`${GITHUB_RUN_ID}\` attempt \`${GITHUB_RUN_ATTEMPT}\`
+          - Portable-identity correction: **${PATCH_RESULT}**
+          - Scope, Ruff, format, MyPy, focused tests: **${QUALITY_RESULT}**
+          - Complete Python 3.10/3.12/3.14 suites: **${FULL_TESTS_RESULT}**
+          - Distribution and installed CLI: **${DISTRIBUTION_RESULT}**
+          - Pinned BayesianPhysTwin integration: **${PINNED_BPT_RESULT}**
+
+          Artifacts are retained for 30 days. This validation accessed no physical
+          data or target outcomes and did not change the registered estimator.
+          EOF
+          gh issue comment "${ISSUE_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --body-file /tmp/result.md
+
+      - name: Remove all temporary PR 211 workflows
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch main \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            cleanup
+          git -C cleanup config user.name "github-actions[bot]"
+          git -C cleanup config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C cleanup rm --ignore-unmatch \
+            .github/workflows/temporary-pr211-final-validation.yml \
+            .github/workflows/temporary-pr211-patch-and-validate.yml
+          if ! git -C cleanup diff --cached --quiet; then
+            git -C cleanup commit -m \
+              "Remove temporary PR 211 validation workflows"
+            git -C cleanup push origin HEAD:main
+          fi
+
+      - name: Enforce all validation jobs succeeded
+        env:
+          PATCH_RESULT: ${{ needs.patch.result }}
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          FULL_TESTS_RESULT: ${{ needs.full-tests.result }}
+          DISTRIBUTION_RESULT: ${{ needs.distribution.result }}
+          PINNED_BPT_RESULT: ${{ needs.pinned-bpt.result }}
+        shell: bash
+        run: |
+          test "${PATCH_RESULT}" = "success"
+          test "${QUALITY_RESULT}" = "success"
+          test "${FULL_TESTS_RESULT}" = "success"
+          test "${DISTRIBUTION_RESULT}" = "success"
+          test "${PINNED_BPT_RESULT}" = "success"
