@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: temporary-preacquisition-readiness-audit-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
@@ -19,6 +19,7 @@ env:
   FROZEN_CHECKOUT: /opt/causal4d-frozen
   DATASET_ROOT: /data/causal4d-sloth-multi-action-v1
   AUDIT_OUTPUT: outputs/preacquisition-audit
+  EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
 
 jobs:
   audit:
@@ -34,6 +35,17 @@ jobs:
           persist-credentials: false
           clean: true
 
+      - name: Verify checked-out revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_head_sha="$(git rev-parse HEAD)"
+          if [[ "${actual_head_sha}" != "${EXPECTED_HEAD_SHA}" ]]; then
+            echo "::error::Checked-out revision ${actual_head_sha} differs from PR head ${EXPECTED_HEAD_SHA}."
+            exit 1
+          fi
+          echo "CHECKED_OUT_SHA=${actual_head_sha}" >> "${GITHUB_ENV}"
+
       - name: Set up Python 3.12
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -47,23 +59,34 @@ jobs:
           python - <<'PY'
           import json
           import os
+          import subprocess
           from pathlib import Path
 
           def inspect_path(raw: str) -> dict[str, object]:
               path = Path(raw)
-              return {
+              result: dict[str, object] = {
                   "configured_path": raw,
                   "exists": path.exists(),
                   "is_directory": path.is_dir(),
                   "is_symlink": path.is_symlink(),
               }
+              if path.is_dir() and not path.is_symlink():
+                  completed = subprocess.run(
+                      ["git", "-C", str(path), "rev-parse", "HEAD"],
+                      check=False,
+                      capture_output=True,
+                      text=True,
+                  )
+                  if completed.returncode == 0:
+                      result["git_commit"] = completed.stdout.strip()
+              return result
 
           payload = {
               "schema_version": 1,
               "artifact_kind": "Causal4DPreacquisitionAuditEnvironmentV1",
               "repository": os.environ["GITHUB_REPOSITORY"],
-              "commit": os.environ["GITHUB_SHA"],
-              "pull_request_head": os.environ.get("GITHUB_HEAD_REF"),
+              "checked_out_commit": os.environ["CHECKED_OUT_SHA"],
+              "expected_pull_request_head": os.environ["EXPECTED_HEAD_SHA"],
               "workflow_run_id": os.environ["GITHUB_RUN_ID"],
               "runner_name": os.environ.get("RUNNER_NAME"),
               "runner_os": os.environ.get("RUNNER_OS"),
@@ -107,6 +130,20 @@ jobs:
             exit 0
           fi
 
+          frozen_protocol="${FROZEN_CHECKOUT}/configs/causal4d/sloth_multi_action_v1.json"
+          if [[ ! -f "${frozen_protocol}" || -L "${frozen_protocol}" ]]; then
+            cat > "${AUDIT_OUTPUT}/exit-codes.json" <<'JSON'
+          {
+            "source_panel_status": null,
+            "preacquisition_readiness": null,
+            "confirmatory_evidence_status": null,
+            "commands_executed": false,
+            "frozen_protocol_available": false
+          }
+          JSON
+            exit 0
+          fi
+
           set +e
           .preacquisition-audit-venv/bin/causal4d \
             protocol readiness source-panel-status \
@@ -130,7 +167,7 @@ jobs:
 
           .preacquisition-audit-venv/bin/causal4d \
             protocol real status \
-            configs/causal4d/sloth_multi_action_v1.json \
+            "${frozen_protocol}" \
             "${DATASET_ROOT}" \
             --verify-file-hashes \
             --require-complete \
@@ -152,6 +189,7 @@ jobs:
               "preacquisition_readiness": int(os.environ["READINESS_RC"]),
               "confirmatory_evidence_status": int(os.environ["EVIDENCE_RC"]),
               "commands_executed": True,
+              "frozen_protocol_available": True,
           }
           output = Path(os.environ["AUDIT_OUTPUT"]) / "exit-codes.json"
           output.write_text(
@@ -165,6 +203,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p "${AUDIT_OUTPUT}"
           python - <<'PY'
           import json
           import os
@@ -183,7 +222,10 @@ jobs:
                   return None
               return value if isinstance(value, dict) else None
 
-          def project(value: dict[str, Any] | None, keys: tuple[str, ...]) -> dict[str, Any] | None:
+          def project(
+              value: dict[str, Any] | None,
+              keys: tuple[str, ...],
+          ) -> dict[str, Any] | None:
               if value is None:
                   return None
               return {key: value[key] for key in keys if key in value}
@@ -203,7 +245,10 @@ jobs:
               "schema_version": 1,
               "artifact_kind": "Causal4DPreacquisitionReadinessAuditV1",
               "repository": os.environ["GITHUB_REPOSITORY"],
-              "commit": os.environ["GITHUB_SHA"],
+              "checked_out_commit": environment.get("checked_out_commit"),
+              "expected_pull_request_head": environment.get(
+                  "expected_pull_request_head"
+              ),
               "workflow_run_id": os.environ["GITHUB_RUN_ID"],
               "runner_name": os.environ.get("RUNNER_NAME"),
               "environment": {
@@ -216,22 +261,34 @@ jobs:
                   (
                       "valid",
                       "complete",
-                      "completed_execution_count",
-                      "registered_execution_count",
-                      "next_execution",
+                      "specified_executions",
+                      "manifest_executions",
+                      "validated_executions",
+                      "completed_execution_ids",
                       "missing_execution_ids",
                       "invalid_execution_ids",
+                      "invalid_template_ids",
+                      "missing_template_ids",
+                      "registered_prefix_valid",
+                      "next_execution",
                       "blockers",
+                      "evidence_sha256",
+                      "status_sha256",
                   ),
               ),
               "preacquisition_readiness": project(
                   readiness,
                   (
                       "valid",
-                      "complete",
                       "ready",
-                      "first_confirmatory_execution_allowed",
-                      "confirmatory_manifest_count",
+                      "passed",
+                      "collection_gate",
+                      "confirmatory_collection",
+                      "missing_prerequisites",
+                      "malformed_prerequisites",
+                      "missing_or_template_gates",
+                      "malformed_gates",
+                      "chronology_blockers",
                       "blockers",
                       "evidence_sha256",
                       "status_sha256",
@@ -240,12 +297,13 @@ jobs:
               "confirmatory_evidence": project(
                   evidence,
                   (
-                      "valid",
+                      "specified_executions",
+                      "manifest_executions",
+                      "acquired_executions",
+                      "validated_executions",
+                      "accounting_complete",
                       "complete",
                       "claim_ready",
-                      "acquired_execution_count",
-                      "validated_execution_count",
-                      "specified_execution_count",
                       "next_pending_execution",
                       "missing_execution_ids",
                       "incomplete_execution_ids",
@@ -289,6 +347,7 @@ jobs:
                   encoding="utf-8"
               )
           )
+          print(f"- checked-out commit: `{summary.get('checked_out_commit')}`")
           environment = summary["environment"]
           for name in ("frozen_checkout", "dataset_root"):
               value = environment.get(name) or {}
@@ -297,13 +356,28 @@ jobs:
                   f"directory=`{value.get('is_directory')}`, "
                   f"symlink=`{value.get('is_symlink')}`"
               )
-          print(f"- commands executed: `{summary['exit_codes'].get('commands_executed')}`")
+          print(
+              f"- commands executed: "
+              f"`{summary['exit_codes'].get('commands_executed')}`"
+          )
+          source_panel = summary.get("source_panel") or {}
           readiness = summary.get("preacquisition_readiness") or {}
+          collection_gate = readiness.get("collection_gate") or {}
           evidence = summary.get("confirmatory_evidence") or {}
+          print(
+              "- source panel validated: "
+              f"`{source_panel.get('validated_executions')}/"
+              f"{source_panel.get('specified_executions')}`"
+          )
           print(f"- ready: `{readiness.get('ready')}`")
           print(
               "- first confirmatory execution allowed: "
-              f"`{readiness.get('first_confirmatory_execution_allowed')}`"
+              f"`{collection_gate.get('first_confirmatory_execution_allowed')}`"
+          )
+          print(
+              "- confirmatory acquired/validated: "
+              f"`{evidence.get('acquired_executions')}/"
+              f"{evidence.get('validated_executions')}`"
           )
           print(f"- claim ready: `{evidence.get('claim_ready')}`")
           PY
@@ -338,16 +412,24 @@ jobs:
           )
           exit_codes = summary["exit_codes"]
           if not exit_codes.get("commands_executed"):
-              print("Acquisition paths are not provisioned on this runner; audit recorded the blocker.")
+              print(
+                  "Acquisition paths or the frozen protocol are not provisioned "
+                  "on this runner; the audit recorded the blocker."
+              )
               raise SystemExit(0)
           malformed = {
               name: code
               for name, code in exit_codes.items()
-              if name != "commands_executed" and code not in (0, 3)
+              if name
+              not in {"commands_executed", "frozen_protocol_available"}
+              and code not in (0, 3)
           }
           if malformed:
               raise SystemExit(f"Present acquisition evidence is invalid: {malformed}")
-          print("Present acquisition evidence is internally valid; incomplete status is allowed.")
+          print(
+              "Present acquisition evidence is internally valid; "
+              "incomplete status is allowed."
+          )
           PY
 
       - name: Remove isolated environment and unsanitized status files
