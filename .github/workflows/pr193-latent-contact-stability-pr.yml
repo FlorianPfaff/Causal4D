@@ -2,7 +2,7 @@ name: PR 193 latent-contact stability evidence
 
 on:
   pull_request:
-    branches: [agent/lock-real-analysis-reporting]
+    branches: [main]
     types: [opened, synchronize, reopened]
     paths:
       - ".github/workflows/pr193-latent-contact-stability-pr.yml"
@@ -22,6 +22,7 @@ env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
   PYTHONHASHSEED: "0"
   PYTHONUNBUFFERED: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
   OMP_NUM_THREADS: "1"
   OPENBLAS_NUM_THREADS: "1"
   MKL_NUM_THREADS: "1"
@@ -32,7 +33,7 @@ jobs:
     name: Frozen 500-seed latent-contact stability study
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, nvidia-smi]
-    timeout-minutes: 720
+    timeout-minutes: 360
     steps:
       - name: Check out exact execution revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -99,6 +100,8 @@ jobs:
           "${venv}/bin/python" -m pip check
           "${venv}/bin/python" -m pip freeze --all \
             > outputs/contact-posterior/pip-freeze.txt
+          "${venv}/bin/python" -m py_compile \
+            executor/scripts/ci/run_pr193_latent_contact_stability.py
           git -C target reset --hard "${TARGET_SHA}"
           git -C target clean -ffdx
           test "$(git -C target rev-parse HEAD)" = "${TARGET_SHA}"
