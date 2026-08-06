@@ -32,6 +32,7 @@ def test_merge_gate_validates_the_pull_request_merge_result() -> None:
 def test_merge_gate_covers_quality_tests_build_and_provider_integration() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
+    assert 'PYTHONPYCACHEPREFIX="$RUNNER_TEMP/python-syntax-cache"' in text
     assert (
         "python -W error::SyntaxWarning -m compileall -q -f src tests scripts"
         in text
