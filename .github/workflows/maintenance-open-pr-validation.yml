@@ -29,7 +29,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: IPS-Stuttgart/Causal4D
-          ref: 9ee1a1e5eb491685cac7f81f4a08e8a0570530cb
+          ref: 4d02092609329ad05e65ef40e02249101528340c
           path: _validation/pr186
           persist-credentials: false
           clean: true
@@ -73,7 +73,7 @@ jobs:
             src/causal4d/artifact_io.py \
             src/causal4d/discrepancy_belief.py
           "$venv/bin/python" -m pytest -q tests/test_release_workflow_policy.py
-          echo "PR186 9ee1a1e5eb491685cac7f81f4a08e8a0570530cb passed" >> "$RUNNER_TEMP/causal4d-open-pr-validation.txt"
+          echo "PR186 4d02092609329ad05e65ef40e02249101528340c passed" >> "$RUNNER_TEMP/causal4d-open-pr-validation.txt"
 
       - name: Validate PR 187 syntax-warning gate
         shell: bash
