@@ -1,0 +1,829 @@
+name: PR 193 registered scientific execution
+
+on:
+  push:
+    branches:
+      - ci/pr193-scientific-execution
+    paths:
+      - ".github/workflows/pr193-scientific-execution.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr193-registered-scientific-execution
+  cancel-in-progress: false
+
+env:
+  TARGET_SHA: fa6a64b2442474321e453e9e8fdccd591e0a282d
+  TARGET_BRANCH: agent/lock-real-analysis-reporting
+  EXECUTOR_BRANCH: ci/pr193-scientific-execution
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONHASHSEED: "0"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  scientific-execution:
+    name: Real-evidence gate and full controlled robustness study
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 720
+    steps:
+      - name: Check out execution branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.EXECUTOR_BRANCH }}
+          path: executor
+          fetch-depth: 0
+          persist-credentials: true
+          clean: true
+
+      - name: Check out exact PR head under evaluation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/Causal4D
+          ref: ${{ env.TARGET_SHA }}
+          path: target
+          fetch-depth: 0
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Verify immutable target and prepare outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git -C target rev-parse HEAD)"
+          test "${actual}" = "${TARGET_SHA}"
+          test -z "$(git -C target status --short)"
+          mkdir -p work
+          {
+            echo "runner_name=${RUNNER_NAME}"
+            echo "runner_os=${RUNNER_OS}"
+            echo "runner_arch=${RUNNER_ARCH}"
+            echo "target_branch=${TARGET_BRANCH}"
+            echo "target_sha=${TARGET_SHA}"
+            echo "workflow_run_id=${GITHUB_RUN_ID}"
+            echo "workflow_run_attempt=${GITHUB_RUN_ATTEMPT}"
+            uname -a
+            lscpu
+          } | tee work/runner-info.txt
+          nvidia-smi | tee work/nvidia-smi.txt
+
+      - name: Install exact Causal4D evaluation stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          venv="${RUNNER_TEMP}/causal4d-pr193-science-${GITHUB_RUN_ID}"
+          python -m venv "${venv}"
+          echo "VIRTUAL_ENV=${venv}" >> "${GITHUB_ENV}"
+          echo "${venv}/bin" >> "${GITHUB_PATH}"
+          "${venv}/bin/python" -m pip install --upgrade pip
+          "${venv}/bin/python" -m pip install -e "./target[dev,warp]"
+          "${venv}/bin/python" -m pip check
+          "${venv}/bin/python" -m pip freeze --all > work/pip-freeze.txt
+
+      - name: Discover any registered physical dataset on workstation2
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          output = Path("work")
+          explicit = [
+              Path("/data/causal4d-sloth-multi-action-v1"),
+              Path("/mnt/lexar4tb/datasets/causal4d-sloth-multi-action-v1"),
+              Path("/mnt/lexar4tb/datasets/Causal4D/causal4d-sloth-multi-action-v1"),
+              Path("/mnt/lexar4tb/datasets/Causal4D/sloth_multi_action_v1"),
+              Path("/mnt/lexar4tb/causal4d-sloth-multi-action-v1"),
+          ]
+          roots = [
+              Path("/data"),
+              Path("/mnt/lexar4tb/datasets"),
+              Path("/mnt/lexar4tb"),
+              Path("/srv"),
+              Path("/home/github-runner"),
+          ]
+          candidates: set[Path] = {path for path in explicit if path.is_dir()}
+          for root in roots:
+              if not root.is_dir():
+                  continue
+              try:
+                  for directory, child_names, file_names in os.walk(root):
+                      current = Path(directory)
+                      try:
+                          depth = len(current.relative_to(root).parts)
+                      except ValueError:
+                          depth = 99
+                      if depth >= 6:
+                          child_names[:] = []
+                      lowered = current.name.casefold()
+                      if (
+                          "causal4d" in lowered
+                          and "sloth" in lowered
+                          and ("action" in lowered or "multi" in lowered)
+                      ):
+                          candidates.add(current)
+                      if "method_freeze.json" in file_names:
+                          candidates.add(current)
+              except OSError:
+                  continue
+
+          records = []
+          for path in sorted(candidates):
+              try:
+                  execution_manifests = [
+                      item
+                      for item in path.glob("executions/*/manifest.json")
+                      if ".template." not in item.name
+                  ]
+                  session_manifests = list(path.glob("sessions/*/session.json"))
+                  json_count = sum(1 for _ in path.rglob("*.json"))
+                  record = {
+                      "path": str(path),
+                      "method_freeze_present": (path / "method_freeze.json").is_file(),
+                      "freeze_validation_present": (
+                          path / "method_freeze_validation.json"
+                      ).is_file(),
+                      "object_registration_present": (
+                          path / "object_registration.json"
+                      ).is_file(),
+                      "slip_pilot_present": (path / "slip_pilot.json").is_file(),
+                      "timebase_calibration_present": (
+                          path / "timebase_calibration.json"
+                      ).is_file(),
+                      "execution_manifest_count": len(execution_manifests),
+                      "session_manifest_count": len(session_manifests),
+                      "json_file_count": json_count,
+                  }
+                  record["selection_score"] = [
+                      int(record["method_freeze_present"]),
+                      min(record["execution_manifest_count"], 36),
+                      min(record["session_manifest_count"], 18),
+                      min(record["json_file_count"], 10_000),
+                  ]
+                  records.append(record)
+              except OSError as error:
+                  records.append({"path": str(path), "error": str(error)})
+
+          usable = [record for record in records if "selection_score" in record]
+          selected = (
+              max(usable, key=lambda record: tuple(record["selection_score"]))
+              if usable
+              else None
+          )
+          inventory = {
+              "schema_version": 1,
+              "artifact_kind": "Causal4DRunnerDatasetInventory",
+              "runner_name": os.environ.get("RUNNER_NAME"),
+              "candidate_count": len(records),
+              "selected_dataset": selected["path"] if selected else None,
+              "candidates": records,
+              "raw_target_data_uploaded": False,
+          }
+          (output / "dataset-inventory.json").write_text(
+              json.dumps(inventory, indent=2, sort_keys=True, allow_nan=False) + "\n",
+              encoding="utf-8",
+          )
+          (output / "selected-dataset.txt").write_text(
+              (selected["path"] if selected else "") + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(inventory, indent=2, sort_keys=True, allow_nan=False))
+          PY
+          {
+            echo "DATASET_ROOT<<CAUSAL4D_DATASET_EOF"
+            sed -n '1p' work/selected-dataset.txt
+            echo "CAUSAL4D_DATASET_EOF"
+          } >> "${GITHUB_ENV}"
+
+      - name: Materialize the exact frozen acquisition checkout when available
+        shell: bash
+        run: |
+          set -euo pipefail
+          frozen_root="${PWD}/target"
+          expected_commit=""
+          if [[ -n "${DATASET_ROOT}" && -f "${DATASET_ROOT}/method_freeze.json" ]]; then
+            expected_commit="$(python - "${DATASET_ROOT}/method_freeze.json" <<'PY'
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          try:
+              payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+              value = payload.get("causal4d", {}).get("commit_sha", "")
+              print(value if re.fullmatch(r"[0-9a-f]{40}", str(value)) else "")
+          except Exception:
+              print("")
+          PY
+          )"
+          fi
+          if [[ -n "${expected_commit}" ]]; then
+            if ! git -C target cat-file -e "${expected_commit}^{commit}" 2>/dev/null; then
+              git -C target fetch --no-tags origin "${expected_commit}"
+            fi
+            if git -C target cat-file -e "${expected_commit}^{commit}" 2>/dev/null; then
+              frozen_root="${RUNNER_TEMP}/causal4d-frozen-${GITHUB_RUN_ID}"
+              rm -rf "${frozen_root}"
+              git -C target worktree add --detach "${frozen_root}" "${expected_commit}"
+            fi
+          fi
+          actual_commit="$(git -C "${frozen_root}" rev-parse HEAD)"
+          dirty="$(git -C "${frozen_root}" status --porcelain --untracked-files=all)"
+          python - "${expected_commit}" "${actual_commit}" "${frozen_root}" "${dirty}" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          expected, actual, root, dirty = sys.argv[1:]
+          payload = {
+              "schema_version": 1,
+              "artifact_kind": "Causal4DFrozenCheckoutResolution",
+              "expected_commit": expected or None,
+              "actual_commit": actual,
+              "commit_matches": bool(expected) and expected == actual,
+              "clean_worktree": not bool(dirty),
+              "used_target_head_fallback": not bool(expected),
+              "repository_root": root,
+          }
+          Path("work/frozen-checkout.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          PY
+          {
+            echo "FROZEN_ROOT<<CAUSAL4D_FROZEN_EOF"
+            echo "${frozen_root}"
+            echo "CAUSAL4D_FROZEN_EOF"
+          } >> "${GITHUB_ENV}"
+
+      - name: Run observational and strict real-evidence gates
+        shell: bash
+        run: |
+          set -u
+          protocol="${PWD}/target/configs/causal4d/sloth_multi_action_v1.json"
+          if [[ -z "${DATASET_ROOT}" ]]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = {
+              "schema_version": 1,
+              "artifact_kind": "Causal4DRealEvidenceRunnerGate",
+              "dataset_found": False,
+              "claim_ready": False,
+              "analysis_ready": False,
+              "blockers": ["registered physical dataset not found on the self-hosted runner"],
+          }
+          Path("work/real-evidence-runner-gate.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+            exit 0
+          fi
+
+          set +e
+          causal4d protocol real status \
+            "${protocol}" "${DATASET_ROOT}" \
+            --output-json work/evidence-status-observational.json \
+            > work/evidence-status-observational.log 2>&1
+          echo "$?" > work/evidence-status-observational.rc
+
+          causal4d protocol real status \
+            "${protocol}" "${DATASET_ROOT}" \
+            --repository-root "${FROZEN_ROOT}" \
+            --verify-file-hashes \
+            --output-json work/evidence-status-strict.json \
+            > work/evidence-status-strict.log 2>&1
+          echo "$?" > work/evidence-status-strict.rc
+
+          causal4d protocol readiness status \
+            "${FROZEN_ROOT}" "${DATASET_ROOT}" \
+            --verify-file-hashes \
+            --output-json work/preacquisition-readiness.json \
+            > work/preacquisition-readiness.log 2>&1
+          echo "$?" > work/preacquisition-readiness.rc
+
+          causal4d protocol real validate-dataset \
+            "${protocol}" "${DATASET_ROOT}" \
+            > work/validate-dataset.log 2>&1
+          echo "$?" > work/validate-dataset.rc
+          set -e
+
+      - name: Execute registered session-clustered reports found in the sealed tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from collections import Counter
+          from pathlib import Path
+
+          from causal4d.real_analysis_reporting import (
+              build_real_analysis_effect_report,
+              write_real_analysis_effect_report,
+          )
+
+          dataset_text = os.environ.get("DATASET_ROOT", "").strip()
+          output = Path("work/registered-reports")
+          output.mkdir(parents=True, exist_ok=True)
+          index = {
+              "schema_version": 1,
+              "artifact_kind": "Causal4DRegisteredArtifactIndex",
+              "dataset_found": bool(dataset_text),
+              "artifact_kind_counts": {},
+              "effect_tables": [],
+              "registered_analysis_manifests": [],
+              "report_attempts": [],
+          }
+          if not dataset_text:
+              Path("work/registered-artifact-index.json").write_text(
+                  json.dumps(index, indent=2, sort_keys=True) + "\n",
+                  encoding="utf-8",
+              )
+              raise SystemExit(0)
+
+          dataset = Path(dataset_text)
+          kinds = Counter()
+          effect_tables = []
+          analysis_by_sha = {}
+          method_freezes_by_sha = {}
+          json_files = []
+          try:
+              json_files = list(dataset.rglob("*.json"))
+          except OSError:
+              json_files = []
+          for path in json_files:
+              try:
+                  if path.is_symlink() or path.stat().st_size > 64 * 1024 * 1024:
+                      continue
+                  raw = path.read_bytes()
+                  payload = json.loads(raw.decode("utf-8"))
+                  if not isinstance(payload, dict):
+                      continue
+                  kind = payload.get("artifact_kind")
+                  if isinstance(kind, str):
+                      kinds[kind] += 1
+                  digest = hashlib.sha256(raw).hexdigest()
+                  if kind == "Causal4DRealAnalysisEffectTable":
+                      effect_tables.append(path)
+                  elif kind == "Causal4DRegisteredRealAnalysisManifest":
+                      analysis_by_sha[digest] = path
+                  elif (
+                      payload.get("milestone_id") == "causal4d-same-object-real-v1"
+                      and payload.get("status") == "sealed"
+                  ):
+                      method_freezes_by_sha[digest] = path
+              except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                  continue
+
+          index["artifact_kind_counts"] = dict(sorted(kinds.items()))
+          index["effect_tables"] = [str(path) for path in sorted(effect_tables)]
+          index["registered_analysis_manifests"] = [
+              str(path) for path in sorted(analysis_by_sha.values())
+          ]
+          for position, table_path in enumerate(sorted(effect_tables)):
+              attempt = {"effect_table": str(table_path), "success": False}
+              try:
+                  payload = json.loads(table_path.read_text(encoding="utf-8"))
+                  analysis_path = analysis_by_sha.get(payload["analysis_manifest_sha256"])
+                  freeze_path = method_freezes_by_sha.get(payload["method_freeze_sha256"])
+                  if analysis_path is None:
+                      raise ValueError("matching registered analysis manifest is absent")
+                  if freeze_path is None:
+                      raise ValueError("matching sealed method freeze is absent")
+                  report = build_real_analysis_effect_report(
+                      table_path,
+                      Path("target/configs/causal4d/sloth_multi_action_v1.json"),
+                      method_freeze_path=freeze_path,
+                      analysis_manifest_path=analysis_path,
+                  )
+                  report_path = output / (
+                      f"{position:02d}-{payload.get('endpoint', 'endpoint')}-"
+                      f"{payload.get('metric_id', 'metric')}.json"
+                  )
+                  write_real_analysis_effect_report(report_path, report)
+                  attempt.update(
+                      {
+                          "success": True,
+                          "report": str(report_path),
+                          "report_id": report["report_id"],
+                          "endpoint": payload.get("endpoint"),
+                          "metric_id": payload.get("metric_id"),
+                          "estimable": report["primary_session_clustered_effect"][
+                              "estimable"
+                          ],
+                      }
+                  )
+              except Exception as error:
+                  attempt["error"] = f"{type(error).__name__}: {error}"
+              index["report_attempts"].append(attempt)
+
+          Path("work/registered-artifact-index.json").write_text(
+              json.dumps(index, indent=2, sort_keys=True, allow_nan=False) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(index, indent=2, sort_keys=True, allow_nan=False))
+          PY
+
+      - name: Run preregistered-design power and finite-calibration fragility audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import math
+          from pathlib import Path
+
+          import numpy as np
+          from scipy.stats import nct, t
+
+          alpha = 0.05
+          effect_grid = [0.0, 0.2, 0.35, 0.5, 0.65, 0.8, 1.0]
+          correlations = [0.0, 0.25, 0.5, 0.75, 0.9]
+
+          def power(n: int, standardized_effect: float) -> float:
+              df = n - 1
+              critical = float(t.ppf(1.0 - alpha / 2.0, df))
+              noncentrality = standardized_effect * math.sqrt(n)
+              return float(
+                  nct.cdf(-critical, df, noncentrality)
+                  + 1.0
+                  - nct.cdf(critical, df, noncentrality)
+              )
+
+          def minimum_effect(n: int, target_power: float) -> float:
+              low, high = 0.0, 4.0
+              for _ in range(80):
+                  middle = (low + high) / 2.0
+                  if power(n, middle) >= target_power:
+                      high = middle
+                  else:
+                      low = middle
+              return high
+
+          endpoint_rows = []
+          for endpoint, sessions in (
+              ("factual_continuation", 18),
+              ("same_grasp_transfer", 18),
+              ("new_contact_transfer", 12),
+          ):
+              for effect in effect_grid:
+                  endpoint_rows.append(
+                      {
+                          "endpoint": endpoint,
+                          "independent_sessions": sessions,
+                          "standardized_session_effect": effect,
+                          "two_sided_alpha": alpha,
+                          "approximate_power": power(sessions, effect),
+                      }
+                  )
+
+          factual_execution_rows = []
+          for correlation in correlations:
+              averaging_sd = math.sqrt((1.0 + correlation) / 2.0)
+              for execution_effect in effect_grid:
+                  session_effect = (
+                      execution_effect / averaging_sd if averaging_sd > 0.0 else 0.0
+                  )
+                  factual_execution_rows.append(
+                      {
+                          "within_session_execution_correlation": correlation,
+                          "standardized_execution_effect": execution_effect,
+                          "induced_standardized_session_mean_effect": session_effect,
+                          "approximate_power": power(18, session_effect),
+                      }
+                  )
+
+          precision = []
+          for sessions in (12, 18):
+              df = sessions - 1
+              precision.append(
+                  {
+                      "independent_sessions": sessions,
+                      "expected_95_percent_half_width_in_session_sd_units": float(
+                          t.ppf(0.975, df) / math.sqrt(sessions)
+                      ),
+                      "minimum_standardized_effect_for_80_percent_power": minimum_effect(
+                          sessions, 0.80
+                      ),
+                      "minimum_standardized_effect_for_90_percent_power": minimum_effect(
+                          sessions, 0.90
+                      ),
+                  }
+              )
+
+          rng = np.random.default_rng(20_260_806)
+          draws = 200_000
+          calibration_rows = []
+          distributions = {
+              "half_normal": np.abs(rng.normal(size=(draws, 9))),
+              "lognormal_sigma_0.25": rng.lognormal(
+                  mean=0.0, sigma=0.25, size=(draws, 9)
+              ),
+              "lognormal_sigma_0.50": rng.lognormal(
+                  mean=0.0, sigma=0.50, size=(draws, 9)
+              ),
+              "lognormal_sigma_1.00": rng.lognormal(
+                  mean=0.0, sigma=1.00, size=(draws, 9)
+              ),
+              "absolute_t5": np.abs(rng.standard_t(df=5, size=(draws, 9))),
+          }
+          for name, values in distributions.items():
+              ordered = np.sort(values, axis=1)
+              maximum = ordered[:, -1]
+              second = ordered[:, -2]
+              median = np.median(values, axis=1)
+              population_median = float(np.median(values))
+              normalized_threshold = maximum / max(population_median, 1e-15)
+              max_to_sample_median = maximum / np.maximum(median, 1e-15)
+              second_to_max = second / np.maximum(maximum, 1e-15)
+              calibration_rows.append(
+                  {
+                      "score_distribution": name,
+                      "simulation_draws": draws,
+                      "calibration_units": 9,
+                      "registered_rank_one_based": 9,
+                      "threshold_is_sample_maximum": True,
+                      "normalized_threshold_quantiles": {
+                          key: float(value)
+                          for key, value in zip(
+                              ("q05", "q50", "q90", "q95", "q99"),
+                              np.quantile(
+                                  normalized_threshold,
+                                  [0.05, 0.50, 0.90, 0.95, 0.99],
+                              ),
+                          )
+                      },
+                      "max_to_sample_median_quantiles": {
+                          key: float(value)
+                          for key, value in zip(
+                              ("q50", "q90", "q95", "q99"),
+                              np.quantile(
+                                  max_to_sample_median,
+                                  [0.50, 0.90, 0.95, 0.99],
+                              ),
+                          )
+                      },
+                      "probability_max_exceeds_twice_sample_median": float(
+                          np.mean(max_to_sample_median > 2.0)
+                      ),
+                      "probability_max_exceeds_three_times_sample_median": float(
+                          np.mean(max_to_sample_median > 3.0)
+                      ),
+                      "second_largest_to_maximum_quantiles": {
+                          key: float(value)
+                          for key, value in zip(
+                              ("q05", "q50", "q95"),
+                              np.quantile(second_to_max, [0.05, 0.50, 0.95]),
+                          )
+                      },
+                      "leave_one_session_out_nominal_90_percent_threshold_finite": False,
+                      "fragility_may_select_or_change_threshold": False,
+                  }
+              )
+
+          payload = {
+              "schema_version": 1,
+              "artifact_kind": "Causal4DRegisteredDesignPowerAndFragilityAudit",
+              "protocol_id": "causal4d-sloth-multi-action-v1",
+              "protocol_design_sha256": (
+                  "6d61f2bea96af0ba04faaf3476990b58cd87e0a9c826420c254a012dec647968"
+              ),
+              "session_cluster_is_independent_unit": True,
+              "endpoint_power": endpoint_rows,
+              "factual_two_execution_session_sensitivity": factual_execution_rows,
+              "precision_and_minimum_detectable_effect": precision,
+              "execution_block_calibration_fragility": calibration_rows,
+              "interpretation": {
+                  "power_values_are_standardized_design_scenarios": True,
+                  "not_conditioned_on_target_outcomes": True,
+                  "does_not_change_registered_method_or_threshold": True,
+                  "does_not_substitute_for_the_36_execution_physical_result": True,
+              },
+          }
+          Path("work/registered-design-power-fragility.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n",
+              encoding="utf-8",
+          )
+
+          lines = [
+              "# Registered-design power and calibration-fragility audit",
+              "",
+              "This is a source-only design diagnostic. It does not change the frozen method, threshold, exclusions, or analysis.",
+              "",
+              "## Session-level precision",
+              "",
+              "| Sessions | 95% half-width (session SD) | d for 80% power | d for 90% power |",
+              "| ---: | ---: | ---: | ---: |",
+          ]
+          for row in precision:
+              lines.append(
+                  "| {independent_sessions} | {expected_95_percent_half_width_in_session_sd_units:.3f} | "
+                  "{minimum_standardized_effect_for_80_percent_power:.3f} | "
+                  "{minimum_standardized_effect_for_90_percent_power:.3f} |".format(**row)
+              )
+          lines.extend(
+              [
+                  "",
+                  "## Calibration boundary",
+                  "",
+                  "The registered 90% execution-block threshold with nine calibration sessions is rank 9 of 9, i.e. the sample maximum. Removing any one calibration session leaves only eight units, for which the formal 90% threshold is not finite without the registered infinite sentinel.",
+                  "",
+              ]
+          )
+          Path("work/registered-design-power-fragility.md").write_text(
+              "\n".join(lines), encoding="utf-8"
+          )
+          print(json.dumps(payload["precision_and_minimum_detectable_effect"], indent=2))
+          PY
+
+      - name: Qualify GPU and run the full controlled robustness suite
+        shell: bash
+        run: |
+          set -u
+          set +e
+          python target/scripts/ci/workstation2_gpu_qualification.py \
+            --output work/gpu-qualification.json \
+            > work/gpu-qualification.log 2>&1
+          echo "$?" > work/gpu-qualification.rc
+
+          python target/scripts/ci/run_self_hosted_evaluation.py \
+            --profile full \
+            --output-dir work/controlled-full \
+            > work/controlled-full-console.log 2>&1
+          echo "$?" > work/controlled-full.rc
+          set -e
+
+      - name: Build and publish compact scientific result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          work = Path("work")
+          destination = Path("executor/scientific-results/pr193/latest")
+          if destination.exists():
+              shutil.rmtree(destination)
+          destination.mkdir(parents=True, exist_ok=True)
+
+          def load_json(name):
+              path = work / name
+              if not path.is_file():
+                  return None
+              try:
+                  value = json.loads(path.read_text(encoding="utf-8"))
+                  return value if isinstance(value, dict) else None
+              except Exception:
+                  return None
+
+          inventory = load_json("dataset-inventory.json") or {}
+          strict = load_json("evidence-status-strict.json")
+          observational = load_json("evidence-status-observational.json")
+          readiness = load_json("preacquisition-readiness.json")
+          artifacts = load_json("registered-artifact-index.json") or {}
+          controlled = load_json("controlled-full/summary.json")
+          qualification = load_json("gpu-qualification.json")
+          power_audit = load_json("registered-design-power-fragility.json")
+
+          status = strict or observational or {}
+          dataset_found = bool(inventory.get("selected_dataset"))
+          claim_ready = bool(status.get("claim_ready", False))
+          analysis_ready = bool(status.get("analysis_ready", False))
+          successful_reports = [
+              item
+              for item in artifacts.get("report_attempts", [])
+              if isinstance(item, dict) and item.get("success") is True
+          ]
+          failed_reports = [
+              item
+              for item in artifacts.get("report_attempts", [])
+              if isinstance(item, dict) and item.get("success") is not True
+          ]
+          if claim_ready:
+              priority = "registered physical analysis executed or effect-table blocker recorded"
+          elif dataset_found:
+              priority = "finish the exact readiness and evidence blockers before confirmatory interpretation"
+          else:
+              priority = "registered physical dataset is not present on workstation2; acquisition remains the claim-changing milestone"
+
+          summary = {
+              "schema_version": 1,
+              "artifact_kind": "Causal4DPR193ScientificExecutionSummary",
+              "workflow_run_id": os.environ.get("GITHUB_RUN_ID"),
+              "workflow_run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+              "runner_name": os.environ.get("RUNNER_NAME"),
+              "target_branch": os.environ.get("TARGET_BRANCH"),
+              "target_sha": os.environ.get("TARGET_SHA"),
+              "dataset_found": dataset_found,
+              "selected_dataset": inventory.get("selected_dataset"),
+              "claim_ready": claim_ready,
+              "analysis_ready": analysis_ready,
+              "acquisition_complete": status.get("acquisition_complete"),
+              "evidence_complete": status.get("evidence_complete"),
+              "full_registered_power": status.get("full_registered_power"),
+              "registered_effect_table_count": len(artifacts.get("effect_tables", [])),
+              "successful_registered_report_count": len(successful_reports),
+              "failed_registered_report_count": len(failed_reports),
+              "registered_report_ids": [
+                  item.get("report_id") for item in successful_reports
+              ],
+              "gpu_qualification_passed": (
+                  qualification.get("passed") if qualification else None
+              ),
+              "controlled_full_integrity_passed": (
+                  controlled.get("integrity", {}).get("passed")
+                  if controlled
+                  else None
+              ),
+              "controlled_full_completed": controlled is not None,
+              "design_power_audit_completed": power_audit is not None,
+              "scientific_priority": priority,
+              "claim_boundary": (
+                  "Controlled and design diagnostics are not substitutes for the registered 18-session/36-execution physical result. Any positive physical report remains bounded to sloth_plush_instance_1 and the frozen action/contact/hardware configuration."
+              ),
+          }
+          (destination / "summary.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True, allow_nan=False) + "\n",
+              encoding="utf-8",
+          )
+
+          copy_candidates = [
+              "runner-info.txt",
+              "nvidia-smi.txt",
+              "dataset-inventory.json",
+              "frozen-checkout.json",
+              "real-evidence-runner-gate.json",
+              "evidence-status-observational.json",
+              "evidence-status-strict.json",
+              "preacquisition-readiness.json",
+              "registered-artifact-index.json",
+              "registered-design-power-fragility.json",
+              "registered-design-power-fragility.md",
+              "gpu-qualification.json",
+              "controlled-full/summary.json",
+              "controlled-full/summary.md",
+              "controlled-full/manifest.json",
+              "controlled-full/timings.csv",
+          ]
+          for relative in copy_candidates:
+              source = work / relative
+              if source.is_file() and source.stat().st_size <= 8 * 1024 * 1024:
+                  target = destination / relative
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copy2(source, target)
+          reports = work / "registered-reports"
+          if reports.is_dir():
+              shutil.copytree(reports, destination / "registered-reports")
+
+          Path("executor/scientific-results/pr193/LATEST_RUN.txt").write_text(
+              f"{os.environ.get('GITHUB_RUN_ID')}\n", encoding="utf-8"
+          )
+          print(json.dumps(summary, indent=2, sort_keys=True, allow_nan=False))
+          PY
+
+          git -C executor config user.name "github-actions[bot]"
+          git -C executor config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C executor add scientific-results/pr193
+          if git -C executor diff --cached --quiet; then
+            echo "No scientific result changes to publish."
+          else
+            git -C executor commit -m \
+              "Record PR 193 scientific execution ${GITHUB_RUN_ID}"
+            git -C executor push origin "HEAD:${EXECUTOR_BRANCH}"
+          fi
+
+      - name: Upload complete scientific execution bundle
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: causal4d-pr193-scientific-${{ github.run_id }}-${{ github.run_attempt }}
+          path: work/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove isolated environments and worktrees
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "${VIRTUAL_ENV:-}" || true
+          if [[ -n "${FROZEN_ROOT:-}" && "${FROZEN_ROOT:-}" != "${PWD}/target" ]]; then
+            git -C target worktree remove --force "${FROZEN_ROOT}" || true
+          fi
