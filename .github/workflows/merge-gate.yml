@@ -51,7 +51,8 @@ jobs:
 
       - name: Run repository quality checks
         run: |
-          python -W error::SyntaxWarning -m compileall -q -f src tests scripts
+          PYTHONPYCACHEPREFIX="$RUNNER_TEMP/python-syntax-cache" \
+            python -W error::SyntaxWarning -m compileall -q -f src tests scripts
           python -m ruff check .
           python -m mypy --python-version 3.12 \
             scripts/ci \
