@@ -8,19 +8,26 @@ import csv
 import hashlib
 import json
 import math
-from collections import defaultdict
-from collections.abc import Sequence
-from pathlib import Path
 import subprocess
 import sys
+from collections import defaultdict
+from collections.abc import Sequence
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from pathlib import Path
 from typing import Any, TextIO
 
 import numpy as np
+
+from causal4d.contact_posterior_source_integrity import (
+    verify_contact_posterior_source_bundle,
+)
 
 
 EXPECTED_OBJECTS = ("cloth", "rope", "soft_block")
 EXPECTED_SETTING = "online_adaptation"
 EXPECTED_WORLD = "shifted_contact"
+BLOCK_SIZE = 50
+MAX_PARALLEL_BLOCKS = 4
 BOOTSTRAP_RESAMPLES = 20_000
 BOOTSTRAP_SEED = 20260807
 
@@ -33,7 +40,13 @@ def _write_json(path: Path, value: Any) -> None:
     )
 
 
-def _run(command: Sequence[str], *, cwd: Path, log_path: Path) -> None:
+def _run(
+    command: Sequence[str],
+    *,
+    cwd: Path,
+    log_path: Path,
+    echo: bool,
+) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("w", encoding="utf-8") as log:
         process = subprocess.Popen(
@@ -45,7 +58,7 @@ def _run(command: Sequence[str], *, cwd: Path, log_path: Path) -> None:
             bufsize=1,
         )
         assert process.stdout is not None
-        _stream_output(process.stdout, log)
+        _stream_output(process.stdout, log, echo=echo)
         return_code = process.wait()
     if return_code != 0:
         raise RuntimeError(
@@ -53,9 +66,10 @@ def _run(command: Sequence[str], *, cwd: Path, log_path: Path) -> None:
         )
 
 
-def _stream_output(stream: TextIO, log: TextIO) -> None:
+def _stream_output(stream: TextIO, log: TextIO, *, echo: bool) -> None:
     for line in stream:
-        print(line, end="", flush=True)
+        if echo:
+            print(line, end="", flush=True)
         log.write(line)
         log.flush()
 
@@ -68,6 +82,25 @@ def _parse_seed_range(value: str) -> list[int]:
     if start < 0 or stop <= start:
         raise ValueError("seed range must be nonnegative and nonempty")
     return list(range(start, stop))
+
+
+def _seed_blocks(expected_seeds: list[int]) -> list[list[int]]:
+    if len(expected_seeds) % BLOCK_SIZE:
+        raise ValueError(f"seed count must be divisible by {BLOCK_SIZE}")
+    blocks = [
+        expected_seeds[offset : offset + BLOCK_SIZE]
+        for offset in range(0, len(expected_seeds), BLOCK_SIZE)
+    ]
+    for previous, current in zip(blocks, blocks[1:], strict=False):
+        if previous[-1] + 1 != current[0]:
+            raise ValueError("seed blocks must be contiguous")
+    return blocks
+
+
+def _block_seed_range(seeds: list[int]) -> str:
+    if not seeds or seeds != list(range(seeds[0], seeds[-1] + 1)):
+        raise ValueError("each seed block must be nonempty and contiguous")
+    return f"{seeds[0]}:{seeds[-1] + 1}"
 
 
 def _canonical_boolean(value: str, *, name: str) -> bool:
@@ -233,23 +266,151 @@ def _registered_gate(success_gates_path: Path, *, threshold: float) -> dict[str,
     return gate
 
 
-def _build_report(
+def _produce_block(
+    target_root: Path,
     output_root: Path,
+    *,
+    block_index: int,
+    seeds: list[int],
+) -> dict[str, Any]:
+    seed_range = _block_seed_range(seeds)
+    block_root = output_root / "blocks" / f"block-{block_index:02d}"
+    bundle_root = block_root / "independent-seeds"
+    print(f"starting block {block_index}: seeds {seed_range}", flush=True)
+    _run(
+        [
+            sys.executable,
+            "-m",
+            "causal4d.cli.latent_contact_benchmark",
+            "--output-dir",
+            str(bundle_root),
+            "--seeds",
+            seed_range,
+            "--frames",
+            "56",
+            "--training-repeats",
+            "2",
+            "--parameter-grid-count",
+            "5",
+            "--contact-parameter-particles",
+            "12",
+            "--observation-fraction",
+            "0.20",
+            "--observation-noise-mm",
+            "1.5",
+        ],
+        cwd=target_root,
+        log_path=block_root / "benchmark-console.log",
+        echo=False,
+    )
+    _run(
+        [
+            sys.executable,
+            str(target_root / "scripts" / "ci" / "verify_result_bundle.py"),
+            str(bundle_root / "manifest.json"),
+        ],
+        cwd=target_root,
+        log_path=block_root / "bundle-verification.log",
+        echo=False,
+    )
+    source_integrity = verify_contact_posterior_source_bundle(bundle_root)
+    _write_json(block_root / "source-integrity.json", source_integrity)
+    print(f"completed block {block_index}: seeds {seed_range}", flush=True)
+    return {
+        "block_index": block_index,
+        "seeds": seeds,
+        "seed_range": seed_range,
+        "block_root": block_root,
+        "bundle_root": bundle_root,
+        "source_integrity": source_integrity,
+    }
+
+
+def _run_blocks(
+    target_root: Path,
+    output_root: Path,
+    *,
+    blocks: list[list[int]],
+) -> list[dict[str, Any]]:
+    workers = min(MAX_PARALLEL_BLOCKS, len(blocks))
+    futures: dict[Future[dict[str, Any]], int] = {}
+    results: list[dict[str, Any]] = []
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        for index, seeds in enumerate(blocks):
+            future = executor.submit(
+                _produce_block,
+                target_root,
+                output_root,
+                block_index=index,
+                seeds=seeds,
+            )
+            futures[future] = index
+        for future in as_completed(futures):
+            index = futures[future]
+            try:
+                results.append(future.result())
+            except Exception as error:
+                raise RuntimeError(f"latent-contact block {index} failed") from error
+    return sorted(results, key=lambda item: int(item["block_index"]))
+
+
+def _build_report(
+    block_results: list[dict[str, Any]],
     *,
     target_sha: str,
     seed_range: str,
     expected_seeds: list[int],
     threshold: float,
 ) -> dict[str, Any]:
-    bundle_root = output_root / "independent-seeds"
-    diagnostic_path = (
-        output_root / "diagnostics" / "contact-posterior-diagnostics.json"
-    )
-    selected = _load_shifted_online_rows(
-        bundle_root / "contact_recovery.csv",
-        expected_seeds=expected_seeds,
-    )
-    gate = _registered_gate(bundle_root / "success_gates.json", threshold=threshold)
+    selected: list[dict[str, str]] = []
+    blocks: list[dict[str, object]] = []
+    gate_records: list[dict[str, Any]] = []
+    source_integrity_records: list[dict[str, Any]] = []
+    for result in block_results:
+        block_seeds = list(result["seeds"])
+        bundle_root = Path(result["bundle_root"])
+        block_rows = _load_shifted_online_rows(
+            bundle_root / "contact_recovery.csv",
+            expected_seeds=block_seeds,
+        )
+        gate = _registered_gate(
+            bundle_root / "success_gates.json",
+            threshold=threshold,
+        )
+        block = _summarize_cases(block_rows)
+        if not math.isclose(
+            float(block["accuracy"]),
+            float(gate["value"]),
+            rel_tol=0.0,
+            abs_tol=1e-15,
+        ):
+            raise ValueError("block accuracy differs from its frozen gate record")
+        block.update(
+            {
+                "block_index": int(result["block_index"]),
+                "seed_start_inclusive": block_seeds[0],
+                "seed_stop_exclusive": block_seeds[-1] + 1,
+                "passes_frozen_threshold": float(block["accuracy"]) >= threshold,
+                "source_manifest_sha256": result["source_integrity"][
+                    "manifest_sha256"
+                ],
+            }
+        )
+        blocks.append(block)
+        gate_records.append(gate)
+        source_integrity_records.append(dict(result["source_integrity"]))
+        selected.extend(block_rows)
+
+    identities = [(int(row["seed"]), row["object"]) for row in selected]
+    expected_identities = {
+        (seed, object_name)
+        for seed in expected_seeds
+        for object_name in EXPECTED_OBJECTS
+    }
+    if set(identities) != expected_identities or len(identities) != len(
+        expected_identities
+    ):
+        raise ValueError("combined block panel does not match the frozen seed panel")
 
     by_object: dict[str, list[dict[str, str]]] = defaultdict(list)
     by_seed: dict[int, list[dict[str, str]]] = defaultdict(list)
@@ -260,14 +421,6 @@ def _build_report(
         raise ValueError("each seed must contribute exactly one case per topology")
 
     overall = _summarize_cases(selected)
-    if not math.isclose(
-        float(overall["accuracy"]),
-        float(gate["value"]),
-        rel_tol=0.0,
-        abs_tol=1e-15,
-    ):
-        raise ValueError("reconstructed shifted-node accuracy differs from frozen gate")
-
     seed_accuracies = np.asarray(
         [
             np.mean(
@@ -291,35 +444,6 @@ def _build_report(
     )
     overall["seed_cluster_bootstrap_resamples"] = BOOTSTRAP_RESAMPLES
 
-    block_size = 50
-    if len(expected_seeds) % block_size:
-        raise ValueError("seed panel must be divisible into 50-seed blocks")
-    blocks: list[dict[str, object]] = []
-    for block_index, offset in enumerate(range(0, len(expected_seeds), block_size)):
-        block_seeds = expected_seeds[offset : offset + block_size]
-        block_rows = [row for seed in block_seeds for row in by_seed[seed]]
-        block = _summarize_cases(block_rows)
-        block.update(
-            {
-                "block_index": block_index,
-                "seed_start_inclusive": block_seeds[0],
-                "seed_stop_exclusive": block_seeds[-1] + 1,
-                "passes_frozen_threshold": float(block["accuracy"]) >= threshold,
-            }
-        )
-        blocks.append(block)
-
-    diagnostic = json.loads(diagnostic_path.read_text(encoding="utf-8"))
-    for name in ("overall", "admission_boundary", "recomputation_parity"):
-        if name not in diagnostic:
-            raise ValueError(f"topology diagnostic lacks {name}")
-    admission = diagnostic["admission_boundary"]
-    parity = diagnostic["recomputation_parity"]
-    if not isinstance(admission, dict) or admission.get("passed") is not True:
-        raise ValueError("contact-posterior source admission did not pass")
-    if not isinstance(parity, dict) or parity.get("passed") is not True:
-        raise ValueError("contact-posterior recomputation parity did not pass")
-
     seed_panel_sha256 = hashlib.sha256(
         json.dumps(expected_seeds, separators=(",", ":")).encode("ascii")
     ).hexdigest()
@@ -330,9 +454,11 @@ def _build_report(
         "seed_range": seed_range,
         "seed_count": len(expected_seeds),
         "seed_panel_sha256": seed_panel_sha256,
+        "block_size": BLOCK_SIZE,
+        "maximum_parallel_blocks": MAX_PARALLEL_BLOCKS,
         "frozen_node_accuracy_threshold": threshold,
         "method_or_threshold_changed": False,
-        "frozen_gate_record": gate,
+        "block_gate_records": gate_records,
         "overall_shifted_online": overall,
         "threshold_margin": float(overall["accuracy"]) - threshold,
         "passes_frozen_threshold_on_this_diagnostic_panel": (
@@ -346,9 +472,10 @@ def _build_report(
             bool(block["passes_frozen_threshold"]) for block in blocks
         ),
         "block_count": len(blocks),
-        "topology_diagnostic_overall": diagnostic["overall"],
-        "admission_boundary": admission,
-        "recomputation_parity": parity,
+        "source_integrity_blocks": source_integrity_records,
+        "all_source_integrity_passed": all(
+            record.get("passed") is True for record in source_integrity_records
+        ),
         "claim_boundary": (
             "Fresh-seed diagnostic only. It does not change or rescue the "
             "registered exact-node threshold, estimator, physical protocol, "
@@ -375,6 +502,8 @@ def _write_markdown(path: Path, report: dict[str, Any]) -> None:
         f"- Threshold margin: `{report['threshold_margin']:.4%}`",
         "- Consecutive 50-seed blocks passing threshold: "
         f"`{report['block_pass_count']}/{report['block_count']}`",
+        f"- All ten source bundles passed semantic integrity: "
+        f"`{str(report['all_source_integrity_passed']).lower()}`",
         "",
         "## Per topology",
         "",
@@ -414,62 +543,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     target_root = args.target_root.resolve()
     output_root = args.output_root.resolve()
     expected_seeds = _parse_seed_range(args.seeds)
+    blocks = _seed_blocks(expected_seeds)
     output_root.mkdir(parents=True, exist_ok=True)
 
-    bundle_root = output_root / "independent-seeds"
-    _run(
-        [
-            sys.executable,
-            "-m",
-            "causal4d.cli.latent_contact_benchmark",
-            "--output-dir",
-            str(bundle_root),
-            "--seeds",
-            args.seeds,
-            "--frames",
-            "56",
-            "--training-repeats",
-            "2",
-            "--parameter-grid-count",
-            "5",
-            "--contact-parameter-particles",
-            "12",
-            "--observation-fraction",
-            "0.20",
-            "--observation-noise-mm",
-            "1.5",
-        ],
-        cwd=target_root,
-        log_path=output_root / "benchmark-console.log",
-    )
-    _run(
-        [
-            sys.executable,
-            str(target_root / "scripts" / "ci" / "verify_result_bundle.py"),
-            str(bundle_root / "manifest.json"),
-        ],
-        cwd=target_root,
-        log_path=output_root / "bundle-verification.log",
-    )
-    diagnostic_root = output_root / "diagnostics"
-    _run(
-        [
-            sys.executable,
-            str(target_root / "scripts" / "ci" / "analyze_contact_posterior.py"),
-            str(bundle_root),
-            "--output-dir",
-            str(diagnostic_root),
-            "--diffusion-strength",
-            "1.0",
-            "--force-field-equivalence-threshold",
-            "0.90",
-        ],
-        cwd=target_root,
-        log_path=output_root / "diagnostic-console.log",
-    )
-
-    report = _build_report(
+    block_results = _run_blocks(
+        target_root,
         output_root,
+        blocks=blocks,
+    )
+    report = _build_report(
+        block_results,
         target_sha=args.target_sha,
         seed_range=args.seeds,
         expected_seeds=expected_seeds,
