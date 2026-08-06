@@ -179,11 +179,12 @@ jobs:
             "${venv}/bin/causal4d" protocol readiness next-action --help
             "${venv}/bin/causal4d" commands validate --require-installed
             "${venv}/bin/python" - <<'PY'
+          import os
           import pathlib
           import causal4d
 
           package = pathlib.Path(causal4d.__file__).resolve()
-          checkout = pathlib.Path("${GITHUB_WORKSPACE}/target").resolve()
+          checkout = pathlib.Path(os.environ["GITHUB_WORKSPACE"]).resolve() / "target"
           assert checkout not in package.parents, package
           print(package)
           PY
