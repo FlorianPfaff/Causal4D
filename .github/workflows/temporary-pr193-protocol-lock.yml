@@ -1,0 +1,315 @@
+name: Temporary PR 193 protocol lock
+
+on:
+  push:
+    branches: [ci/validate-pr-193]
+    paths: [.github/workflows/temporary-pr193-protocol-lock.yml]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-pr193-protocol-lock
+  cancel-in-progress: false
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUNBUFFERED: "1"
+  EXPECTED_HEAD_SHA: 96c6b420c0ac5f56f5819bcd77f336cef735d6e8
+
+jobs:
+  harden:
+    name: Bind reporting to validated protocol
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 60
+    steps:
+      - name: Check out exact target branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/lock-real-analysis-reporting
+          fetch-depth: 0
+          persist-credentials: true
+          clean: true
+
+      - name: Verify exact unmodified head
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "${actual}" = "${EXPECTED_HEAD_SHA}"
+          test -z "$(git status --short)"
+
+      - name: Apply reviewed protocol-binding patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          source_path = Path("src/causal4d/real_analysis_reporting.py")
+          source = source_path.read_text(encoding="utf-8")
+
+          def replace_once(old: str, new: str, *, name: str) -> None:
+              global source
+              if old not in source:
+                  if new in source:
+                      return
+                  raise SystemExit(f"missing source marker: {name}")
+              source = source.replace(old, new, 1)
+
+          replace_once(
+              "from causal4d.real_result_source_verification import "
+              "verify_real_result_sources\n",
+              "from causal4d.real_protocol import validate_protocol\n"
+              "from causal4d.real_result_source_verification import "
+              "verify_real_result_sources\n",
+              name="real protocol validator import",
+          )
+          replace_once(
+              "def _registered_units(\n"
+              "    protocol: Mapping[str, Any],\n"
+              "    endpoint: Endpoint,\n"
+              ") -> tuple[dict[str, Any], ...]:\n"
+              "    _require(protocol.get(\"protocol_id\") == "
+              "EXPECTED_PROTOCOL_ID, \"wrong protocol\")\n",
+              "def _registered_units(\n"
+              "    protocol: Mapping[str, Any],\n"
+              "    endpoint: Endpoint,\n"
+              ") -> tuple[dict[str, Any], ...]:\n"
+              "    validate_protocol(protocol)\n"
+              "    _require(protocol.get(\"protocol_id\") == "
+              "EXPECTED_PROTOCOL_ID, \"wrong protocol\")\n",
+              name="registered protocol validation",
+          )
+          replace_once(
+              "        \"fully_crossed\": all(\n"
+              "            count > 0\n"
+              "            for action_counts in counts.values()\n"
+              "            for count in action_counts.values()\n"
+              "        ),\n"
+              "        \"condition_acquisition_timing\": timing,\n",
+              "        \"fully_crossed\": all(\n"
+              "            count > 0\n"
+              "            for action_counts in counts.values()\n"
+              "            for count in action_counts.values()\n"
+              "        ),\n"
+              "        \"balanced_across_actions\": all(\n"
+              "            len(set(action_counts.values())) == 1\n"
+              "            for action_counts in counts.values()\n"
+              "        ),\n"
+              "        \"condition_acquisition_timing\": timing,\n",
+              name="condition balance diagnostic",
+          )
+          source_path.write_text(source, encoding="utf-8")
+
+          docs_path = Path("docs/causal4d_real_analysis_reporting.md")
+          docs = docs_path.read_text(encoding="utf-8")
+          old_docs = (
+              "The verifier reads, hashes, and parses the same exact bytes. "
+              "Duplicate JSON keys,\n"
+              "non-finite JSON values, symbolic links, and concurrent file "
+              "replacement cannot\n"
+              "silently separate the retained digest from the validated "
+              "payload.\n"
+          )
+          new_docs = old_docs + (
+              "The registered protocol is also passed through the repository's "
+              "complete\n"
+              "`validate_protocol` contract. Its design SHA-256 is recomputed "
+              "from the full\n"
+              "content, so a modified split, execution label, acquisition "
+              "order, or balance\n"
+              "cannot be admitted by retaining the old embedded digest.\n"
+          )
+          if old_docs in docs:
+              docs = docs.replace(old_docs, new_docs, 1)
+          elif new_docs not in docs:
+              raise SystemExit("missing protocol-verification documentation marker")
+          old_balance = (
+              "The acquisition-order diagnostic cannot select exclusions or "
+              "revise the primary\n"
+              "result. Realization-condition summaries are descriptive because "
+              "condition and\n"
+              "action are not fully crossed and conditions occupy different "
+              "acquisition-time\n"
+              "ranges.\n"
+          )
+          new_balance = (
+              "The acquisition-order diagnostic cannot select exclusions or "
+              "revise the primary\n"
+              "result. Realization-condition summaries are descriptive because "
+              "all condition/action\n"
+              "cells exist but are unequally replicated, and conditions occupy "
+              "different\n"
+              "acquisition-time ranges.\n"
+          )
+          if old_balance in docs:
+              docs = docs.replace(old_balance, new_balance, 1)
+          elif new_balance not in docs:
+              raise SystemExit("missing condition-balance documentation marker")
+          docs_path.write_text(docs, encoding="utf-8")
+
+          tests_path = Path("tests/test_real_analysis_reporting.py")
+          tests = tests_path.read_text(encoding="utf-8")
+          old_assertion = (
+              "    assert (\n"
+              "        report[\"design_diagnostics\"]"
+              "[\"condition_comparisons_are_descriptive_only\"]\n"
+              "        is True\n"
+              "    )\n"
+          )
+          new_assertion = old_assertion + (
+              "    assert report[\"design_diagnostics\"]"
+              "[\"fully_crossed\"] is True\n"
+              "    assert report[\"design_diagnostics\"]"
+              "[\"balanced_across_actions\"] is False\n"
+          )
+          if old_assertion in tests:
+              tests = tests.replace(old_assertion, new_assertion, 1)
+          elif new_assertion not in tests:
+              raise SystemExit("missing design-diagnostic test marker")
+
+          insertion_marker = (
+              "\ndef test_reporting_rejects_duplicate_keys_in_bound_analysis_source(\n"
+          )
+          addition = '''
++
++def test_reporting_recomputes_the_complete_protocol_digest(
++    tmp_path: Path,
++) -> None:
++    freeze, analysis, freeze_sha, analysis_sha = _source_pair(tmp_path)
++    payload = _factual_payload(
++        freeze_sha=freeze_sha,
++        analysis_sha=analysis_sha,
++    )
++    effect_table = tmp_path / "effects.json"
++    _write_json(effect_table, payload)
++    protocol = json.loads(PROTOCOL.read_text(encoding="utf-8"))
++    protocol["executions"][0]["command_profile_id"] = "tampered-action"
++    tampered_protocol = tmp_path / "tampered-protocol.json"
++    _write_json(tampered_protocol, protocol)
++
++    with pytest.raises(ValueError, match="design SHA-256 does not match"):
++        build_real_analysis_effect_report(
++            effect_table,
++            tampered_protocol,
++            method_freeze_path=freeze,
++            analysis_manifest_path=analysis,
++        )
++'''.replace("+", "", 1)
+          if "test_reporting_recomputes_the_complete_protocol_digest" not in tests:
+              if insertion_marker not in tests:
+                  raise SystemExit("missing protocol-tampering test insertion marker")
+              tests = tests.replace(insertion_marker, addition + insertion_marker, 1)
+          tests_path.write_text(tests, encoding="utf-8")
+          PY
+
+          mapfile -t changed < <(git diff --name-only)
+          expected=(
+            docs/causal4d_real_analysis_reporting.md
+            src/causal4d/real_analysis_reporting.py
+            tests/test_real_analysis_reporting.py
+          )
+          printf '%s\n' "${changed[@]}" | sort > "${RUNNER_TEMP}/changed.txt"
+          printf '%s\n' "${expected[@]}" | sort > "${RUNNER_TEMP}/expected.txt"
+          diff -u "${RUNNER_TEMP}/expected.txt" "${RUNNER_TEMP}/changed.txt"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Create isolated environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          venv="${RUNNER_TEMP}/causal4d-pr193-protocol-${GITHUB_RUN_ID}"
+          python -m venv "${venv}"
+          echo "VIRTUAL_ENV=${venv}" >> "${GITHUB_ENV}"
+          echo "${venv}/bin" >> "${GITHUB_PATH}"
+
+      - name: Install development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python -m pip check
+
+      - name: Format and validate exact patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ruff format \
+            src/causal4d/real_analysis_reporting.py \
+            tests/test_real_analysis_reporting.py
+          git diff --check
+          PYTHONPYCACHEPREFIX="${RUNNER_TEMP}/pr193-protocol-syntax" \
+            python -W error::SyntaxWarning -m compileall -q -f src tests scripts
+          python -m ruff check .
+          python -m ruff format --check \
+            src/causal4d/real_analysis_reporting.py \
+            src/causal4d/real_result_source_verification.py \
+            src/causal4d/cli/real_analysis_reporting.py \
+            tests/test_real_analysis_reporting.py
+          python -m mypy --python-version 3.12 \
+            src/causal4d/real_analysis_reporting.py \
+            src/causal4d/real_result_source_verification.py \
+            src/causal4d/cli/real_analysis_reporting.py
+          python -m pytest --junitxml=pytest-pr193-protocol.xml
+          rm -rf build dist
+          python -m build
+          python -m twine check dist/*
+
+      - name: Read exact BayesianPhysTwin pin
+        id: pin
+        run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out pinned BayesianPhysTwin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/BayesianPhysTwin
+          ref: ${{ steps.pin.outputs.sha }}
+          path: _bpt
+          persist-credentials: false
+          clean: true
+
+      - name: Validate installed-wheel provider integration
+        shell: bash
+        env:
+          CAUSAL4D_REQUIRE_BPT_PROVIDER: "1"
+        run: |
+          set -euo pipefail
+          wheelhouse="${RUNNER_TEMP}/pr193-protocol-wheelhouse-${GITHUB_RUN_ID}"
+          integration_venv="${RUNNER_TEMP}/pr193-protocol-integration-${GITHUB_RUN_ID}"
+          mkdir -p "${wheelhouse}"
+          python -m build --wheel --outdir "${wheelhouse}" .
+          python -m build --wheel --outdir "${wheelhouse}" ./_bpt
+          test "$(find "${wheelhouse}" -maxdepth 1 -name '*.whl' | wc -l)" -eq 2
+          python -m venv "${integration_venv}"
+          "${integration_venv}/bin/python" -m pip install --upgrade pip
+          "${integration_venv}/bin/python" -m pip install \
+            "${wheelhouse}"/*.whl pytest
+          "${integration_venv}/bin/python" -m pip check
+          "${integration_venv}/bin/python" -m causal4d.cli.real_analysis_reporting --help
+          "${integration_venv}/bin/python" scripts/ci/run_bpt_integration_tests.py
+
+      - name: Commit and push validated protocol binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            docs/causal4d_real_analysis_reporting.md \
+            src/causal4d/real_analysis_reporting.py \
+            tests/test_real_analysis_reporting.py
+          git commit -m "Bind real-analysis reporting to validated protocol"
+          git push origin HEAD:agent/lock-real-analysis-reporting
+
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: causal4d-pr193-protocol-${{ github.run_id }}
+          path: pytest-pr193-protocol.xml
+          if-no-files-found: warn
+          retention-days: 7
