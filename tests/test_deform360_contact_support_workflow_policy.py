@@ -26,35 +26,23 @@ def test_permanent_gpu_evidence_requires_explicit_dispatch() -> None:
     assert "target" not in text.lower().split("information boundary", maxsplit=1)[0]
 
 
-def test_temporary_evidence_is_pr_only_and_exact_head_bound() -> None:
-    text = TEMPORARY_WORKFLOW.read_text(encoding="utf-8")
-
-    assert "pull_request:" in text
-    assert "workflow_dispatch:" not in text
-    assert "push:" not in text
-    assert "PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}" in text
-    assert "ref: ${{ env.PR_HEAD_SHA }}" in text
-    assert "github.event.pull_request.head.repo.full_name == github.repository" in text
-    assert "needs: contract" in text
-    assert "permissions:\n  contents: read" in text
-    assert "contents: write" not in text
-    assert "persist-credentials: false" in text
-    assert "if: always()" in text
+def test_temporary_evidence_workflow_is_absent() -> None:
+    assert not TEMPORARY_WORKFLOW.exists(), (
+        "completed source diagnostics must not retain PR-triggered GPU workflows"
+    )
 
 
-def test_gpu_paths_reuse_the_locked_conditional_runtime() -> None:
-    permanent = WORKFLOW.read_text(encoding="utf-8")
-    temporary = TEMPORARY_WORKFLOW.read_text(encoding="utf-8")
+def test_gpu_path_reuses_the_locked_conditional_runtime() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
     shell = SHELL.read_text(encoding="utf-8")
 
-    for text in (permanent, temporary):
-        assert "select_deform360_prefix_kinematics_python.py" in text
-        assert "python-selection.json" in text
-        assert "CONTACT_SUPPORT_PYTHON=" in text
-        assert "BPT_READ_SSH_KEY" in text
-        assert "IPS-Stuttgart/BayesianPhysTwin" in text
-        assert "lhy0807/deform360" in text
-        assert "Jianghanxiao/PhysTwin" in text
+    assert "select_deform360_prefix_kinematics_python.py" in workflow
+    assert "python-selection.json" in workflow
+    assert "CONTACT_SUPPORT_PYTHON=" in workflow
+    assert "BPT_READ_SSH_KEY" in workflow
+    assert "IPS-Stuttgart/BayesianPhysTwin" in workflow
+    assert "lhy0807/deform360" in workflow
+    assert "Jianghanxiao/PhysTwin" in workflow
     assert 'python_bin="${CONTACT_SUPPORT_PYTHON:-python3}"' in shell
     assert "select_deform360_prefix_kinematics_python.py" in shell
     assert '"$python_bin" -m pytest' in shell
@@ -62,15 +50,13 @@ def test_gpu_paths_reuse_the_locked_conditional_runtime() -> None:
     assert LOCK.is_file()
 
 
-def test_workflows_run_the_locked_source_only_entrypoint() -> None:
-    permanent = WORKFLOW.read_text(encoding="utf-8")
-    temporary = TEMPORARY_WORKFLOW.read_text(encoding="utf-8")
+def test_workflow_runs_the_locked_source_only_entrypoint() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
     shell = SHELL.read_text(encoding="utf-8")
 
-    for text in (permanent, temporary):
-        assert "run_deform360_contact_support_workflow.sh" in text
-        assert "deform360-contact-support" in text
-        assert "Upload" in text
+    assert "run_deform360_contact_support_workflow.sh" in workflow
+    assert "deform360-contact-support" in workflow
+    assert "Upload" in workflow
     assert "run_deform360_contact_support.py" in shell
     assert "--runtime-selection" in shell
     assert "--device cuda:0" in shell
