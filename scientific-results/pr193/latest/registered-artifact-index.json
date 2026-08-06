@@ -1,0 +1,16 @@
+{
+  "artifact_kind": "Causal4DRegisteredArtifactIndex",
+  "artifact_kind_counts": {
+    "Causal4DOperatorIdentityRegistryTemplate": 1,
+    "MethodFreezeValidationAttestation": 1,
+    "PreacquisitionGateEvidence": 5,
+    "SameGraspSessionManifest": 18,
+    "SourcePanelExecutionManifest": 12,
+    "TimebaseCalibration": 1
+  },
+  "dataset_found": true,
+  "effect_tables": [],
+  "registered_analysis_manifests": [],
+  "report_attempts": [],
+  "schema_version": 1
+}

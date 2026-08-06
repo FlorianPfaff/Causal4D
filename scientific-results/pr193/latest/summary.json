@@ -1,0 +1,51 @@
+{
+  "acquisition_complete": false,
+  "analysis_ready": false,
+  "artifact_kind": "Causal4DPR193ScientificExecutionSummary",
+  "claim_boundary": "Controlled and design diagnostics are not substitutes for the registered 18-session/36-execution physical result. A positive physical report remains bounded to sloth_plush_instance_1 and the frozen action/contact/hardware configuration.",
+  "claim_ready": false,
+  "controlled_full_completed": true,
+  "controlled_full_integrity": null,
+  "controlled_full_returncode": 0,
+  "dataset_found": true,
+  "design_power_audit_completed": true,
+  "evidence_complete": false,
+  "failed_registered_report_count": 0,
+  "frozen_checkout": {
+    "actual_commit": "fa6a64b2442474321e453e9e8fdccd591e0a282d",
+    "artifact_kind": "Causal4DFrozenCheckoutResolution",
+    "clean_worktree": true,
+    "commit_matches": false,
+    "expected_commit": null,
+    "resolution_error": null,
+    "schema_version": 1,
+    "used_target_head_fallback": true
+  },
+  "full_registered_power": false,
+  "gpu_qualification_passed": true,
+  "gpu_qualification_returncode": 0,
+  "precision_and_minimum_detectable_effect": [
+    {
+      "expected_95_percent_half_width_in_session_sd_units": 0.6353696873306397,
+      "independent_sessions": 12,
+      "minimum_standardized_effect_for_80_percent_power": 0.8886542652934868,
+      "minimum_standardized_effect_for_90_percent_power": 1.029471492376683
+    },
+    {
+      "expected_95_percent_half_width_in_session_sd_units": 0.4972883007129839,
+      "independent_sessions": 18,
+      "minimum_standardized_effect_for_80_percent_power": 0.700722500795467,
+      "minimum_standardized_effect_for_90_percent_power": 0.8111660962060084
+    }
+  ],
+  "registered_effect_table_count": 0,
+  "registered_report_ids": [],
+  "runner_name": "workstation2",
+  "schema_version": 1,
+  "scientific_priority": "complete the recorded readiness/evidence blockers before confirmatory interpretation",
+  "selected_dataset": "/mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1",
+  "successful_registered_report_count": 0,
+  "target_sha": "fa6a64b2442474321e453e9e8fdccd591e0a282d",
+  "workflow_run_attempt": "1",
+  "workflow_run_id": "31086790597"
+}

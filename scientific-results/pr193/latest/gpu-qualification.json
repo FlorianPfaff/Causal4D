@@ -1,0 +1,55 @@
+{
+  "artifact_kind": "Causal4DWorkstation2GpuQualification",
+  "claim_boundary": "Hardware and numerical-runtime qualification only; this is not an accuracy, calibration, physical-prediction, or intervention result.",
+  "configuration": {
+    "alpha": 1.25,
+    "elements": 4000000,
+    "iterations": 30,
+    "maximum_error": 2e-06,
+    "warmup_iterations": 3
+  },
+  "correctness": {
+    "first_output_sha256": "2a6a1fb0e8b3d55d84a668b65e11c96205ae4070784bdfd9f83a5b1d2e8cfb46",
+    "repeat_is_bit_identical": true,
+    "second_output_sha256": "2a6a1fb0e8b3d55d84a668b65e11c96205ae4070784bdfd9f83a5b1d2e8cfb46",
+    "torch_maximum_absolute_error": 0.0,
+    "warp_maximum_absolute_error": 0.0
+  },
+  "gpu": {
+    "compute_capability": [
+      8,
+      9
+    ],
+    "name": "NVIDIA RTX 6000 Ada Generation",
+    "torch_cuda_version": "13.0",
+    "torch_version": "2.13.0+cu130",
+    "total_memory_bytes": 50855870464,
+    "warp_cuda_devices": [
+      "cuda:0",
+      "cuda:1"
+    ],
+    "warp_version": "1.16.0"
+  },
+  "passed": true,
+  "performance": {
+    "torch_effective_gb_s": 3032.9369546821395,
+    "torch_peak_allocated_bytes": 134218240,
+    "torch_peak_reserved_bytes": 136314880,
+    "torch_seconds": 0.00047478731721639633,
+    "warp_effective_gb_s": 1773.6072414932275,
+    "warp_seconds": 0.0008119046688079834
+  },
+  "platform": {
+    "implementation": "CPython",
+    "machine": "x86_64",
+    "platform": "Linux-6.17.0-23-generic-x86_64-with-glibc2.39",
+    "python": "3.12.13"
+  },
+  "runner": {
+    "architecture": "X64",
+    "cuda_visible_devices": null,
+    "name": "workstation2",
+    "os": "Linux"
+  },
+  "schema_version": 1
+}

@@ -1,0 +1,29 @@
+{
+  "acquisition_complete": false,
+  "analysis_ready": false,
+  "artifact_kind": "Causal4DRealEvidenceRunnerGate",
+  "blockers": [
+    "prerequisite:object_registration",
+    "prerequisite:slip_pilot",
+    "prerequisite:timebase_calibration",
+    "prerequisite:contact_registration",
+    "prerequisite:method_freeze",
+    "prerequisite:method_freeze_validation",
+    "prerequisite:operator_registry",
+    "prerequisite:operator_identity_bindings",
+    "missing_execution_manifests:36",
+    "missing_session_manifests:18"
+  ],
+  "claim_ready": false,
+  "dataset": "/mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1",
+  "dataset_found": true,
+  "evidence_complete": false,
+  "full_registered_power": false,
+  "return_codes": {
+    "observational": 0,
+    "readiness": 0,
+    "strict": 0,
+    "validate_dataset": 2
+  },
+  "schema_version": 1
+}

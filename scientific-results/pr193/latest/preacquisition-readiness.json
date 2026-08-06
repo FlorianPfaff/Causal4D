@@ -1,0 +1,201 @@
+{
+  "artifact_kind": "PreacquisitionReadinessStatus",
+  "blockers": [
+    "prerequisite:object_registration",
+    "prerequisite:slip_pilot",
+    "prerequisite:timebase_calibration",
+    "prerequisite:contact_registration",
+    "prerequisite:operator_registry",
+    "prerequisite:operator_identity_bindings",
+    "prerequisite:method_freeze",
+    "prerequisite:method_freeze_validation",
+    "gate:signature_panel_complete",
+    "gate:actuator_sync_passed",
+    "gate:support_registration_passed",
+    "gate:end_to_end_dry_run_passed",
+    "gate:software_environment_locked"
+  ],
+  "chronology_blockers": [],
+  "collection_gate": {
+    "actuator_sync_passed": false,
+    "analysis_code_frozen": false,
+    "contact_registration_approved": false,
+    "end_to_end_dry_run_passed": false,
+    "first_confirmatory_execution_allowed": false,
+    "operator_approval_bindings_valid": false,
+    "operator_identities_registered": false,
+    "signature_panel_complete": false,
+    "slip_pilot_passed_or_versioned_out": false,
+    "software_environment_locked": false,
+    "support_registration_passed": false
+  },
+  "confirmatory_collection": {
+    "acquired_executions": 0,
+    "manifest_executions": 0,
+    "not_started": true,
+    "validated_executions": 0
+  },
+  "dataset_root": "/mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1",
+  "evidence_sha256": "15c9f5accee821ad3b07786fcc1bb8d02492d9cd546dbaf501f2f9cc7e36c445",
+  "malformed_gates": [],
+  "malformed_prerequisites": [],
+  "missing_or_template_gates": [
+    "signature_panel_complete",
+    "actuator_sync_passed",
+    "support_registration_passed",
+    "end_to_end_dry_run_passed",
+    "software_environment_locked"
+  ],
+  "missing_prerequisites": [
+    "object_registration",
+    "slip_pilot",
+    "timebase_calibration",
+    "contact_registration",
+    "operator_registry",
+    "operator_identity_bindings",
+    "method_freeze",
+    "method_freeze_validation"
+  ],
+  "operational_gates": {
+    "actuator_sync_passed": {
+      "approved_at_utc": null,
+      "error": "gate evidence is still a template",
+      "gate_id": "actuator_sync_passed",
+      "identity_pending": false,
+      "path": "/mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1/preacquisition/actuator_sync.json",
+      "present": true,
+      "template": true,
+      "valid": false
+    },
+    "end_to_end_dry_run_passed": {
+      "approved_at_utc": null,
+      "error": "gate evidence is still a template",
+      "gate_id": "end_to_end_dry_run_passed",
+      "identity_pending": false,
+      "path": "/mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1/preacquisition/end_to_end_dry_run.json",
+      "present": true,
+      "template": true,
+      "valid": false
+    },
+    "signature_panel_complete": {
+      "approved_at_utc": null,
+      "error": "gate evidence is still a template",
+      "gate_id": "signature_panel_complete",
+      "identity_pending": false,
+      "path": "/mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1/preacquisition/signature_panel.json",
+      "present": true,
+      "template": true,
+      "valid": false
+    },
+    "software_environment_locked": {
+      "approved_at_utc": null,
+      "error": "gate evidence is still a template",
+      "gate_id": "software_environment_locked",
+      "identity_pending": false,
+      "path": "/mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1/preacquisition/software_environment.json",
+      "present": true,
+      "template": true,
+      "valid": false
+    },
+    "support_registration_passed": {
+      "approved_at_utc": null,
+      "error": "gate evidence is still a template",
+      "gate_id": "support_registration_passed",
+      "identity_pending": false,
+      "path": "/mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1/preacquisition/support_registration.json",
+      "present": true,
+      "template": true,
+      "valid": false
+    }
+  },
+  "passed": false,
+  "preacquisition_amendment_sha256": "0e167538a7824e5ec053031d8359d4e9b4ff89ad61a85666400a86c2a88ac42f",
+  "preacquisition_plan_id": "causal4d-sloth-preacquisition-v4",
+  "prerequisites": {
+    "acquisition_schedule": {
+      "bytes": 3036,
+      "error": null,
+      "path": "/mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1/acquisition_schedule.csv",
+      "present": true,
+      "row_count": 36,
+      "sha256": "f806a65f07354b1df6dae3f087ece6aa4d2202ba21a99c8fdd95ad71fe6e4011",
+      "valid": true
+    },
+    "contact_registration": {
+      "error": "contact_registration.json is missing",
+      "file_hashes_verified": false,
+      "path": "/mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1/contact_registration.json",
+      "present": false,
+      "valid": false
+    },
+    "dataset_protocol": {
+      "bytes": 66055,
+      "error": null,
+      "path": "/mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1/protocol.json",
+      "present": true,
+      "sha256": "7865c97cb5053315b19e1f3958ce37cec76564d5a149656913f0b7731b3bbcd4",
+      "valid": true
+    },
+    "method_freeze": {
+      "error": "method_freeze.json is missing",
+      "file_hashes_verified": false,
+      "path": "/mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1/method_freeze.json",
+      "present": false,
+      "repository_checkout_verified": false,
+      "valid": false
+    },
+    "method_freeze_validation": {
+      "error": "method_freeze_validation.json is missing",
+      "path": "/mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1/method_freeze_validation.json",
+      "present": false,
+      "valid": false
+    },
+    "object_registration": {
+      "error": "object_registration.json is missing",
+      "file_hashes_verified": false,
+      "path": "/mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1/object_registration.json",
+      "present": false,
+      "valid": false
+    },
+    "operator_identity_bindings": {
+      "error": "operator identity bindings are incomplete: method_freeze, method_freeze_validation, timebase_calibration, contact_registration",
+      "missing_sources": [
+        "method_freeze",
+        "method_freeze_validation",
+        "timebase_calibration",
+        "contact_registration"
+      ],
+      "passed": false,
+      "path": "/mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1/preacquisition/operator_registry.json",
+      "present": false,
+      "template": true,
+      "valid": false
+    },
+    "operator_registry": {
+      "error": "operator_registry.json is missing",
+      "path": "/mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1/preacquisition/operator_registry.json",
+      "present": false,
+      "valid": false
+    },
+    "slip_pilot": {
+      "error": "slip_pilot.json is missing",
+      "path": "/mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1/slip_pilot.json",
+      "present": false,
+      "valid": false
+    },
+    "timebase_calibration": {
+      "error": "timebase_calibration.json is missing",
+      "file_hashes_verified": false,
+      "path": "/mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1/timebase_calibration.json",
+      "present": false,
+      "valid": false
+    }
+  },
+  "protocol_design_sha256": "6d61f2bea96af0ba04faaf3476990b58cd87e0a9c826420c254a012dec647968",
+  "protocol_id": "causal4d-sloth-multi-action-v1",
+  "ready": false,
+  "schema_version": 2,
+  "status_sha256": "22b4460a7487e0355bd040b06bf9b5529ea4232dc30b156a794063e2d3dcc030",
+  "valid": true,
+  "verify_file_hashes": true
+}

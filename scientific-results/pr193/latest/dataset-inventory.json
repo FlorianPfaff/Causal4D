@@ -1,0 +1,27 @@
+{
+  "artifact_kind": "Causal4DRunnerDatasetInventory",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "execution_manifest_count": 0,
+      "freeze_validation_present": false,
+      "json_file_count": 77,
+      "method_freeze_present": false,
+      "object_registration_present": false,
+      "path": "/mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1",
+      "selection_score": [
+        0,
+        0,
+        0,
+        77
+      ],
+      "session_manifest_count": 0,
+      "slip_pilot_present": false,
+      "timebase_calibration_present": false
+    }
+  ],
+  "raw_target_data_uploaded": false,
+  "runner_name": "workstation2",
+  "schema_version": 1,
+  "selected_dataset": "/mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1"
+}
