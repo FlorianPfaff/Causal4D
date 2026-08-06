@@ -18,13 +18,13 @@ concurrency:
 env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
   PYTHONUNBUFFERED: "1"
-  EXPECTED_HEAD_SHA: b1b12357ccec6e8991c66e6fcf4919d749490b8e
+  EXPECTED_HEAD_SHA: 1fd23811efab54d0b15461efe518d2fa9300856f
 
 jobs:
   validate:
     name: Validate exact PR 193 head
     runs-on: [self-hosted, Linux, X64, nvidia-smi]
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Check out exact PR head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -40,6 +40,7 @@ jobs:
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
           test "${actual}" = "${EXPECTED_HEAD_SHA}"
+          test -z "$(git status --short)"
           echo "Validated PR head: ${actual}"
 
       - name: Set up Python 3.12
@@ -47,7 +48,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Create isolated environment
+      - name: Create isolated development environment
         shell: bash
         run: |
           set -euo pipefail
@@ -62,7 +63,7 @@ jobs:
           python -m pip install -e ".[dev]"
           python -m pip check
 
-      - name: Validate syntax, lint, and formatting
+      - name: Validate syntax, lint, formatting, and types
         shell: bash
         run: |
           set -euo pipefail
@@ -74,14 +75,61 @@ jobs:
             src/causal4d/real_result_source_verification.py \
             src/causal4d/cli/real_analysis_reporting.py \
             tests/test_real_analysis_reporting.py
+          python -m mypy --python-version 3.12 \
+            src/causal4d/real_analysis_reporting.py \
+            src/causal4d/real_result_source_verification.py \
+            src/causal4d/cli/real_analysis_reporting.py
 
       - name: Run complete default test suite
         run: python -m pytest --junitxml=pytest-pr193.xml
 
       - name: Build and validate distributions
         run: |
+          rm -rf build dist
           python -m build
           python -m twine check dist/*
+
+      - name: Read exact BayesianPhysTwin pin
+        id: pin
+        run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out pinned BayesianPhysTwin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/BayesianPhysTwin
+          ref: ${{ steps.pin.outputs.sha }}
+          path: _bpt
+          persist-credentials: false
+          clean: true
+
+      - name: Build installed-wheel integration pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheelhouse="${RUNNER_TEMP}/pr193-wheelhouse-${GITHUB_RUN_ID}"
+          mkdir -p "${wheelhouse}"
+          python -m build --wheel --outdir "${wheelhouse}" .
+          python -m build --wheel --outdir "${wheelhouse}" ./_bpt
+          test "$(find "${wheelhouse}" -maxdepth 1 -name '*.whl' | wc -l)" -eq 2
+          echo "WHEELHOUSE=${wheelhouse}" >> "${GITHUB_ENV}"
+
+      - name: Install and validate isolated wheel pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          integration_venv="${RUNNER_TEMP}/pr193-integration-${GITHUB_RUN_ID}"
+          python -m venv "${integration_venv}"
+          "${integration_venv}/bin/python" -m pip install --upgrade pip
+          "${integration_venv}/bin/python" -m pip install "${WHEELHOUSE}"/*.whl pytest
+          "${integration_venv}/bin/python" -m pip check
+          "${integration_venv}/bin/python" -m causal4d.cli.real_analysis_reporting --help
+          echo "INTEGRATION_VENV=${integration_venv}" >> "${GITHUB_ENV}"
+
+      - name: Run pinned-provider integration tests
+        env:
+          CAUSAL4D_REQUIRE_BPT_PROVIDER: "1"
+        run: |
+          "${INTEGRATION_VENV}/bin/python" scripts/ci/run_bpt_integration_tests.py
 
       - name: Upload validation report
         if: always()
