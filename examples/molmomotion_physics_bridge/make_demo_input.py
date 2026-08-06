@@ -38,8 +38,8 @@ def build_demo_arrays(
 
     instruction = np.repeat(anchor[:, None, :], future_count, axis=1)
     instruction[:, :, 2] += 0.10 * time[None]
-    instruction[:, :, 2] += 0.008 * np.sin(phase)[:, None] * (
-        1.0 - np.exp(-4.0 * time[None])
+    instruction[:, :, 2] += (
+        0.008 * np.sin(phase)[:, None] * (1.0 - np.exp(-4.0 * time[None]))
     )
 
     paraphrase = instruction.copy()
@@ -83,9 +83,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(
         json.dumps(
             {
-                "forecast_shape_kpfc": list(
-                    arrays["future_positions_world_m"].shape
-                ),
+                "forecast_shape_kpfc": list(arrays["future_positions_world_m"].shape),
                 "forecast_ids": ["instruction", "paraphrase", "shuffled"],
                 "output": str(output.resolve()),
                 "point_count": int(len(arrays["node_indices"])),
