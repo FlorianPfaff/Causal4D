@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  TARGET_SHA: 315cde925e255538e4ca38dc393391ac26232300
+  TARGET_SHA: f5bb020afd59a3e335311b091be881c1f7f7ebbf
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
   PYTHONHASHSEED: "0"
   PYTHONUNBUFFERED: "1"
@@ -93,16 +93,21 @@ jobs:
           set -euo pipefail
           files=(
             src/causal4d/hybrid_reliability.py
+            src/causal4d/hybrid_reliability_admission.py
             tests/test_hybrid_reliability.py
+            tests/test_hybrid_reliability_admission.py
             tests/test_hybrid_reliability_integrity.py
             tests/test_hybrid_reliability_schema_v2.py
           )
           {
             python -m ruff check "${files[@]}"
             python -m ruff format --check "${files[@]}"
-            python -m mypy src/causal4d/hybrid_reliability.py
+            python -m mypy \
+              src/causal4d/hybrid_reliability.py \
+              src/causal4d/hybrid_reliability_admission.py
             python -m pytest -q -p no:cacheprovider \
               tests/test_hybrid_reliability.py \
+              tests/test_hybrid_reliability_admission.py \
               tests/test_hybrid_reliability_integrity.py \
               tests/test_hybrid_reliability_schema_v2.py
             python -m pytest -q -p no:cacheprovider
