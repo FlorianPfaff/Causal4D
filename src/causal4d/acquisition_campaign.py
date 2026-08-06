@@ -437,8 +437,7 @@ def render_acquisition_campaign_markdown(
     ]
     if summary["blocking_checks"]:
         lines.extend(
-            f"- {_markdown_code(check['check_id'])}: "
-            f"{_markdown_text(check['message'])}"
+            f"- {_markdown_code(check['check_id'])}: {_markdown_text(check['message'])}"
             for check in summary["blocking_checks"]
         )
     else:
@@ -446,8 +445,7 @@ def render_acquisition_campaign_markdown(
     lines.extend(["", "## Warnings", ""])
     if summary["warnings"]:
         lines.extend(
-            f"- {_markdown_code(check['check_id'])}: "
-            f"{_markdown_text(check['message'])}"
+            f"- {_markdown_code(check['check_id'])}: {_markdown_text(check['message'])}"
             for check in summary["warnings"]
         )
     else:

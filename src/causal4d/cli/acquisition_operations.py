@@ -38,9 +38,7 @@ def _require_distinct_campaign_output(source: Path, output: Path) -> None:
     except (FileNotFoundError, OSError):
         same_file = source.resolve() == output.resolve()
     if same_file:
-        raise ValueError(
-            "campaign output must differ from the source doctor report"
-        )
+        raise ValueError("campaign output must differ from the source doctor report")
 
 
 def _gib(value: str | float) -> int:
@@ -222,9 +220,7 @@ def _campaign(arguments: argparse.Namespace) -> int:
             "state": summary["state"],
             "next_execution": summary["next_execution"],
             "blocking_checks": summary["blocking_checks"],
-            "source_doctor_report_sha256": summary[
-                "source_doctor_report_sha256"
-            ],
+            "source_doctor_report_sha256": summary["source_doctor_report_sha256"],
             "target_outcomes_used": False,
         }
         print(json.dumps(result, indent=2, sort_keys=True))
@@ -258,9 +254,7 @@ def _campaign(arguments: argparse.Namespace) -> int:
             "state": summary["state"],
             "format": selected_format,
             "output": str(arguments.output.resolve()),
-            "source_doctor_report_sha256": summary[
-                "source_doctor_report_sha256"
-            ],
+            "source_doctor_report_sha256": summary["source_doctor_report_sha256"],
             "target_outcomes_used": False,
         }
         print(json.dumps(result, indent=2, sort_keys=True))
