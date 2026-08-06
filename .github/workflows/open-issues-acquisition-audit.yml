@@ -1,9 +1,9 @@
 name: Audit Causal4D open physical issues
 
 on:
-  push:
-    branches:
-      - agent/open-issues-acquisition-audit-20260807
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
     paths:
       - ".github/workflows/open-issues-acquisition-audit.yml"
       - "scripts/ci/run_open_issues_acquisition_audit.py"
@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: open-issues-acquisition-audit-20260807
+  group: open-issues-acquisition-audit-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 env:
@@ -26,6 +26,7 @@ env:
 jobs:
   audit:
     name: Read-only acquisition-state audit
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, nvidia-smi]
     timeout-minutes: 60
 
@@ -33,7 +34,7 @@ jobs:
       - name: Check out exact execution revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: true
           clean: true
@@ -43,6 +44,7 @@ jobs:
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse HEAD)"
+          test "${source_sha}" = "${{ github.event.pull_request.head.sha }}"
           test -z "$(git status --porcelain=v1)"
           echo "AUDIT_SOURCE_SHA=${source_sha}" >> "${GITHUB_ENV}"
           {
@@ -101,7 +103,7 @@ jobs:
             echo "No sanitized audit-result change to publish."
           else
             git commit -m "Record open-issue acquisition audit ${GITHUB_RUN_ID}"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
+            git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
           fi
 
       - name: Upload sanitized audit evidence
