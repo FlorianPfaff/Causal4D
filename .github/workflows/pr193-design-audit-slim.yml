@@ -1,0 +1,105 @@
+name: PR 193 registered-design audit
+
+on:
+  push:
+    branches:
+      - agent/lock-real-analysis-reporting
+    paths:
+      - "scientific-trigger/pr193-design-slim.txt"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr193-design-audit-slim
+  cancel-in-progress: false
+
+env:
+  TARGET_SHA: fa6a64b2442474321e453e9e8fdccd591e0a282d
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONHASHSEED: "0"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  design-audit:
+    name: Power, precision, and finite-calibration fragility
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - name: Check out trusted audit helper
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/lock-real-analysis-reporting
+          path: executor
+          fetch-depth: 0
+          persist-credentials: true
+          clean: true
+
+      - name: Check out immutable PR 193 target
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: IPS-Stuttgart/Causal4D
+          ref: ${{ env.TARGET_SHA }}
+          path: target
+          fetch-depth: 0
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install numerical dependencies and verify target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C target rev-parse HEAD)" = "${TARGET_SHA}"
+          test -z "$(git -C target status --short)"
+          python -m venv .pr193-design-venv
+          echo "VIRTUAL_ENV=${PWD}/.pr193-design-venv" >> "${GITHUB_ENV}"
+          echo "${PWD}/.pr193-design-venv/bin" >> "${GITHUB_PATH}"
+          .pr193-design-venv/bin/python -m pip install --upgrade pip
+          .pr193-design-venv/bin/python -m pip install numpy scipy
+          .pr193-design-venv/bin/python -m pip check
+
+      - name: Run registered-design audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python executor/scripts/ci/run_pr193_design_audit.py \
+            --output-dir work/pr193-design-audit \
+            | tee work/pr193-design-audit-console.log
+
+      - name: Publish compact audit result
+        shell: bash
+        run: |
+          set -euo pipefail
+          destination="executor/scientific-results/pr193-design-audit/latest"
+          rm -rf "${destination}"
+          mkdir -p "${destination}"
+          cp work/pr193-design-audit/summary.json "${destination}/"
+          cp work/pr193-design-audit/registered-design-power-fragility.json \
+            "${destination}/"
+          echo "${GITHUB_RUN_ID}" \
+            > executor/scientific-results/pr193-design-audit/LATEST_RUN.txt
+          git -C executor config user.name "github-actions[bot]"
+          git -C executor config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C executor add scientific-results/pr193-design-audit
+          git -C executor commit -m \
+            "Record PR 193 registered-design audit ${GITHUB_RUN_ID}"
+          git -C executor push origin HEAD:agent/lock-real-analysis-reporting
+
+      - name: Upload complete audit bundle
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: causal4d-pr193-design-audit-${{ github.run_id }}
+          path: work/pr193-design-audit/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove isolated environment
+        if: always()
+        run: rm -rf .pr193-design-venv
