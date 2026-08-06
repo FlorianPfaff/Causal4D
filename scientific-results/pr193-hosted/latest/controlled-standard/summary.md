@@ -1,8 +1,8 @@
 # Causal4D self-hosted evaluation
 
 - Profile: `standard`
-- Runner: `GitHub Actions 1000186506`
-- Commit: `a2024c6d49141fb6d521089f031a50dccac0251f`
+- Runner: `GitHub Actions 1000186757`
+- Commit: `ea7ff2dab5708019046b680e8a399f58fd7d9303`
 
 ## Controlled counterfactual benchmark
 

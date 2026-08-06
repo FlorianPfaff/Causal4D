@@ -188,7 +188,7 @@
           }
         ]
       },
-      "elapsed_seconds": 499.9975733950001,
+      "elapsed_seconds": 499.98700874199994,
       "scenario": "nominal",
       "seeds": [
         0,
@@ -430,7 +430,7 @@
           }
         ]
       },
-      "elapsed_seconds": 194.39032634199998,
+      "elapsed_seconds": 194.22105184399993,
       "scenario": "matched_world",
       "seeds": [
         100,
@@ -642,7 +642,7 @@
           }
         ]
       },
-      "elapsed_seconds": 199.63720513199996,
+      "elapsed_seconds": 199.78133047300003,
       "scenario": "strong_world_mismatch",
       "seeds": [
         100,
@@ -854,7 +854,7 @@
           }
         ]
       },
-      "elapsed_seconds": 199.51921069900004,
+      "elapsed_seconds": 199.42794837200006,
       "scenario": "high_inference_noise",
       "seeds": [
         100,
@@ -894,7 +894,7 @@
       "json": "work/pr193-hosted/controlled-standard/dynamic-contact/cases.json"
     },
     "case_count": 400,
-    "elapsed_seconds": 1.4911667169999419,
+    "elapsed_seconds": 1.4806559430001016,
     "gate_pass_fraction": 1.0,
     "maximum_contact_onset_absolute_error_frames": 0.04166666666666785,
     "mean_contact_onset_absolute_error_frames": 0.041666666666666415,
@@ -930,7 +930,7 @@
     "python": "3.12.13 (main, Jun 16 2026, 22:05:08) [GCC 13.3.0]",
     "python_executable": "/home/runner/work/Causal4D/Causal4D/.hosted-study-venv/bin/python",
     "runner_arch": "X64",
-    "runner_name": "GitHub Actions 1000186506",
+    "runner_name": "GitHub Actions 1000186757",
     "runner_os": "Linux",
     "torch_cuda": {
       "available": false,
@@ -1443,7 +1443,7 @@
       "success_gates": "work/pr193-hosted/controlled-standard/latent-contact/success_gates.json",
       "summary": "work/pr193-hosted/controlled-standard/latent-contact/summary.json"
     },
-    "elapsed_seconds": 400.2322306450001,
+    "elapsed_seconds": 399.151937695,
     "seeds": [
       200,
       201,
@@ -1571,32 +1571,32 @@
   "timings": [
     {
       "case_count": 900,
-      "elapsed_seconds": 499.9975733950001,
+      "elapsed_seconds": 499.98700874199994,
       "evaluation": "counterfactual/nominal"
     },
     {
       "case_count": 360,
-      "elapsed_seconds": 194.39032634199998,
+      "elapsed_seconds": 194.22105184399993,
       "evaluation": "counterfactual/matched_world"
     },
     {
       "case_count": 360,
-      "elapsed_seconds": 199.63720513199996,
+      "elapsed_seconds": 199.78133047300003,
       "evaluation": "counterfactual/strong_world_mismatch"
     },
     {
       "case_count": 360,
-      "elapsed_seconds": 199.51921069900004,
+      "elapsed_seconds": 199.42794837200006,
       "evaluation": "counterfactual/high_inference_noise"
     },
     {
       "case_count": 480,
-      "elapsed_seconds": 400.2322306450001,
+      "elapsed_seconds": 399.151937695,
       "evaluation": "latent-contact"
     },
     {
       "case_count": 400,
-      "elapsed_seconds": 1.4911667169999419,
+      "elapsed_seconds": 1.4806559430001016,
       "evaluation": "dynamic-contact"
     }
   ]
