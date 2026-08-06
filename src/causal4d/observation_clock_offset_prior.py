@@ -510,6 +510,10 @@ def _validated_calibration(
         grid[0] <= offset <= grid[-1],
         "best offset lies outside the declared grid",
     )
+    _require(
+        grid[0] < offset < grid[-1],
+        "best offset is censored by the search-grid boundary",
+    )
     return execution_id, artifact_id, offset, float(np.max(differences))
 
 
