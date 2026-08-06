@@ -10,7 +10,8 @@ This component is **not wired into the frozen controlled benchmark or the
 registered 36-execution physical estimator**. It cannot modify the current
 primary method, rescue a failed physical endpoint, or authorize target access.
 A claim-bearing deployment would require a separately locked source calibration
-and an explicit preacquisition amendment.
+and an explicit preacquisition amendment. The current surface is a Python API;
+there is deliberately no stable command-line route or default runtime wiring.
 
 ## Information boundary
 
