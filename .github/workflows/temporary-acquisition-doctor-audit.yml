@@ -1,0 +1,390 @@
+name: Temporary acquisition doctor audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/temporary-acquisition-doctor-audit.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: temporary-acquisition-doctor-audit-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUNBUFFERED: "1"
+  CANDIDATE_SHA: 0cac23a0a64cb48dd531a2e94b0c022eb394f033
+  FROZEN_CHECKOUT: /mnt/lexar4tb/causal4d-physical/causal4d-frozen
+  DATASET_ROOT: /mnt/lexar4tb/causal4d-physical/causal4d-sloth-multi-action-v1
+  AUDIT_OUTPUT: outputs/acquisition-doctor-audit
+
+jobs:
+  doctor:
+    name: Run bounded pre-session doctor without evidence mutation
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, nvidia-smi]
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact pull-request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          clean: true
+
+      - name: Verify audit revision and persistent candidate
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${EXPECTED_HEAD_SHA}"
+          test -d "${FROZEN_CHECKOUT}"
+          test ! -L "${FROZEN_CHECKOUT}"
+          test -d "${DATASET_ROOT}"
+          test ! -L "${DATASET_ROOT}"
+          test "$(git -C "${FROZEN_CHECKOUT}" rev-parse HEAD)" = "${CANDIDATE_SHA}"
+          test -z "$(git -C "${FROZEN_CHECKOUT}" status --porcelain)"
+          test -z "$(git -C "${FROZEN_CHECKOUT}" remote)"
+          test -f "${FROZEN_CHECKOUT}/configs/causal4d/sloth_multi_action_v1.json"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install the persistent candidate in an isolated environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          venv="${RUNNER_TEMP}/causal4d-acquisition-doctor-${GITHUB_RUN_ID}"
+          python -m venv --clear "${venv}"
+          "${venv}/bin/python" -m pip install "${FROZEN_CHECKOUT}"
+          "${venv}/bin/python" -m pip check
+          "${venv}/bin/causal4d" commands validate --require-installed
+          echo "DOCTOR_VENV=${venv}" >> "${GITHUB_ENV}"
+
+      - name: Snapshot persistent dataset before the bounded probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${AUDIT_OUTPUT}"
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["DATASET_ROOT"])
+          records: list[dict[str, object]] = []
+          for path in sorted(root.rglob("*")):
+              if path.is_symlink():
+                  raise SystemExit(f"dataset contains a symbolic link: {path}")
+              if not path.is_file():
+                  continue
+              payload = path.read_bytes()
+              records.append(
+                  {
+                      "relative_path": path.relative_to(root).as_posix(),
+                      "bytes": len(payload),
+                      "sha256": hashlib.sha256(payload).hexdigest(),
+                  }
+              )
+          canonical = json.dumps(
+              records,
+              ensure_ascii=True,
+              allow_nan=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          snapshot = {
+              "file_count": len(records),
+              "tree_sha256": hashlib.sha256(canonical).hexdigest(),
+          }
+          output = Path(os.environ["AUDIT_OUTPUT"]) / "dataset-before.json"
+          output.write_text(
+              json.dumps(snapshot, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(snapshot, indent=2, sort_keys=True))
+          PY
+
+      - name: Run acquisition doctor with capacity and write-rate checks
+        shell: bash
+        run: |
+          set -u
+          protocol="${FROZEN_CHECKOUT}/configs/causal4d/sloth_multi_action_v1.json"
+          set +e
+          "${DOCTOR_VENV}/bin/causal4d" protocol acquisition doctor \
+            "${protocol}" \
+            "${FROZEN_CHECKOUT}" \
+            "${DATASET_ROOT}" \
+            --minimum-free-gib 100 \
+            --write-probe-mib 64 \
+            --minimum-write-mib-s 100 \
+            --output-json "${AUDIT_OUTPUT}/doctor-report.json" \
+            > "${AUDIT_OUTPUT}/doctor-console.txt" 2>&1
+          doctor_rc=$?
+          set -e
+          printf '%s\n' "${doctor_rc}" > "${AUDIT_OUTPUT}/doctor-exit-code.txt"
+          if [[ "${doctor_rc}" -ne 0 && "${doctor_rc}" -ne 2 ]]; then
+            cat "${AUDIT_OUTPUT}/doctor-console.txt"
+            echo "::error::Unexpected acquisition-doctor exit code ${doctor_rc}."
+            exit 1
+          fi
+
+      - name: Verify persistent dataset is byte-identical after the probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["DATASET_ROOT"])
+          records: list[dict[str, object]] = []
+          for path in sorted(root.rglob("*")):
+              if path.is_symlink():
+                  raise SystemExit(f"dataset contains a symbolic link: {path}")
+              if not path.is_file():
+                  continue
+              payload = path.read_bytes()
+              records.append(
+                  {
+                      "relative_path": path.relative_to(root).as_posix(),
+                      "bytes": len(payload),
+                      "sha256": hashlib.sha256(payload).hexdigest(),
+                  }
+              )
+          canonical = json.dumps(
+              records,
+              ensure_ascii=True,
+              allow_nan=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          after = {
+              "file_count": len(records),
+              "tree_sha256": hashlib.sha256(canonical).hexdigest(),
+          }
+          output_root = Path(os.environ["AUDIT_OUTPUT"])
+          before = json.loads(
+              (output_root / "dataset-before.json").read_text(encoding="utf-8")
+          )
+          if after != before:
+              raise SystemExit(
+                  "persistent dataset changed during the acquisition-doctor audit: "
+                  f"before={before}, after={after}"
+              )
+          (output_root / "dataset-after.json").write_text(
+              json.dumps(after, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(after, indent=2, sort_keys=True))
+          PY
+
+      - name: Validate and sanitize the doctor report
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          from typing import Any
+
+          root = Path(os.environ["AUDIT_OUTPUT"])
+          report_value = json.loads(
+              (root / "doctor-report.json").read_text(encoding="utf-8")
+          )
+          if not isinstance(report_value, dict):
+              raise TypeError("doctor report must be a JSON object")
+          report: dict[str, Any] = report_value
+          exit_code = int(
+              (root / "doctor-exit-code.txt").read_text(encoding="utf-8").strip()
+          )
+          checks = report.get("checks")
+          if not isinstance(checks, list):
+              raise TypeError("doctor checks must be a list")
+          check_by_id: dict[str, dict[str, Any]] = {}
+          for raw in checks:
+              if not isinstance(raw, dict):
+                  raise TypeError("doctor check must be an object")
+              check_id = raw.get("check_id")
+              status = raw.get("status")
+              if not isinstance(check_id, str) or not check_id:
+                  raise ValueError("doctor check lacks check_id")
+              if check_id in check_by_id:
+                  raise ValueError(f"duplicate doctor check: {check_id}")
+              if status not in {"pass", "warn", "fail", "skipped"}:
+                  raise ValueError(f"invalid doctor check status: {status}")
+              check_by_id[check_id] = raw
+
+          expected_ids = {
+              "protocol_schedule",
+              "frozen_checkout",
+              "sealed_readiness",
+              "storage_capacity",
+              "storage_write_probe",
+              "real_evidence_status",
+              "execution_manifests",
+              "next_execution",
+              "session_journal",
+          }
+          if set(check_by_id) != expected_ids:
+              raise ValueError(
+                  "doctor check inventory differs from the registered schema: "
+                  f"{sorted(check_by_id)}"
+              )
+          if report.get("target_outcomes_used") is not False:
+              raise ValueError("doctor report crossed the target-outcome boundary")
+          if report.get("completed_executions") != 0:
+              raise ValueError("doctor report claims completed confirmatory executions")
+          if report.get("total_executions") != 36:
+              raise ValueError("doctor report has the wrong confirmatory execution count")
+          valid = report.get("valid")
+          if type(valid) is not bool:
+              raise TypeError("doctor valid flag must be Boolean")
+          expected_exit = 0 if valid else 2
+          if exit_code != expected_exit:
+              raise ValueError(
+                  f"doctor exit code {exit_code} contradicts valid={valid}"
+              )
+
+          before = json.loads(
+              (root / "dataset-before.json").read_text(encoding="utf-8")
+          )
+          after = json.loads(
+              (root / "dataset-after.json").read_text(encoding="utf-8")
+          )
+          write_probe = check_by_id["storage_write_probe"]
+          capacity = check_by_id["storage_capacity"]
+          summary = {
+              "schema_version": 1,
+              "artifact_kind": "Causal4DAcquisitionDoctorAuditV1",
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "runner_name": os.environ.get("RUNNER_NAME"),
+              "candidate_commit": os.environ["CANDIDATE_SHA"],
+              "frozen_checkout": os.environ["FROZEN_CHECKOUT"],
+              "dataset_root": os.environ["DATASET_ROOT"],
+              "doctor_exit_code": exit_code,
+              "doctor_report_sha256": report.get("report_sha256"),
+              "valid": valid,
+              "ready_to_record": report.get("ready_to_record"),
+              "collection_complete": report.get("collection_complete"),
+              "passed": report.get("passed"),
+              "completed_executions": report.get("completed_executions"),
+              "total_executions": report.get("total_executions"),
+              "next_execution": report.get("next_execution"),
+              "failure_count": report.get("failure_count"),
+              "warning_count": report.get("warning_count"),
+              "storage_capacity": capacity,
+              "storage_write_probe": write_probe,
+              "checks": [
+                  {
+                      "check_id": check_id,
+                      "status": check_by_id[check_id].get("status"),
+                      "message": check_by_id[check_id].get("message"),
+                  }
+                  for check_id in sorted(check_by_id)
+              ],
+              "dataset_snapshot": before,
+              "dataset_unchanged": before == after,
+              "target_outcomes_used": False,
+              "claim_boundary": (
+                  "The doctor used a temporary write probe that was removed and "
+                  "verified the persistent dataset byte-identically before and "
+                  "after. It did not create, publish, seal, approve, attest, or "
+                  "count a source-panel or confirmatory execution."
+              ),
+          }
+          summary_bytes = (
+              json.dumps(
+                  summary,
+                  ensure_ascii=True,
+                  allow_nan=False,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+              + "\n"
+          ).encode("utf-8")
+          summary["summary_sha256"] = hashlib.sha256(summary_bytes).hexdigest()
+          (root / "doctor-audit-summary.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True, allow_nan=False) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, indent=2, sort_keys=True, allow_nan=False))
+          PY
+
+      - name: Publish doctor job summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### Causal4D acquisition doctor"
+            echo
+            echo "The bounded write probe was removed; the dataset remained byte-identical."
+            echo
+            python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          value = json.loads(
+              (Path(os.environ["AUDIT_OUTPUT"]) / "doctor-audit-summary.json")
+              .read_text(encoding="utf-8")
+          )
+          print(f"- valid: `{value['valid']}`")
+          print(f"- ready to record: `{value['ready_to_record']}`")
+          print(
+              "- confirmatory completed: "
+              f"`{value['completed_executions']}/{value['total_executions']}`"
+          )
+          capacity = value["storage_capacity"]
+          probe = value["storage_write_probe"]
+          print(f"- storage capacity: `{capacity.get('status')}`")
+          print(
+              "- storage write probe: "
+              f"`{probe.get('status')}` at "
+              f"`{probe.get('write_mib_s')}` MiB/s"
+          )
+          print(f"- dataset unchanged: `{value['dataset_unchanged']}`")
+          print("- blocking checks:")
+          for check in value["checks"]:
+              if check["status"] == "fail":
+                  print(f"  - `{check['check_id']}`: {check['message']}")
+          PY
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload sanitized doctor artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: causal4d-acquisition-doctor-audit
+          path: |
+            outputs/acquisition-doctor-audit/doctor-report.json
+            outputs/acquisition-doctor-audit/doctor-audit-summary.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove isolated environment and unsanitized transient files
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "${DOCTOR_VENV:-${RUNNER_TEMP}/causal4d-acquisition-doctor-${GITHUB_RUN_ID}}"
+          find "${AUDIT_OUTPUT}" -type f \
+            ! -name doctor-report.json \
+            ! -name doctor-audit-summary.json -delete
