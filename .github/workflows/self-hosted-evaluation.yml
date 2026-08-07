@@ -94,10 +94,10 @@ jobs:
 
           import causal4d
 
-          checkout = Path.cwd().resolve()
+          source_root = (Path.cwd() / "src").resolve()
           origin = Path(causal4d.__file__).resolve()
           print("Causal4D import", origin)
-          if origin.is_relative_to(checkout):
+          if origin.is_relative_to(source_root):
               raise SystemExit("Causal4D resolved from the checkout instead of the wheel")
           PY
 
