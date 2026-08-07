@@ -52,7 +52,11 @@ For each target case the gate records:
 ## Source calibration
 
 A calibration requires at least two uniquely identified source cases with one
-common prefix length. By default, the hybrid family is enabled only when:
+common prefix length. Source cases are sorted by canonical `case_id` before any
+aligned diagnostic vector or content identity is constructed. Reversing the
+input sequence therefore produces byte-identical calibration records.
+
+By default, the hybrid family is enabled only when:
 
 ```text
 mean source-future relative RMSE improvement >= 0.5%
@@ -63,6 +67,27 @@ The source panel also fixes the admitted correction-scale and descriptor-
 leverage envelopes. The target must meet nonnegative prefix point-score and
 probabilistic-score gains and remain inside both source envelopes. All
 thresholds and complete source diagnostics are content-addressed.
+
+### Derived-field validation
+
+Calibration schema version 2 stores the two prefix-score margins and the support
+margin needed to reconstruct every operational boundary. Construction and
+loading independently recompute from the stored source diagnostic vectors:
+
+- minimum prefix RMSE relative improvement;
+- minimum prefix Gaussian log-score gain;
+- maximum correction-to-physics-standard-deviation ratio;
+- maximum descriptor leverage;
+- mean source-future relative improvement;
+- source-future win fraction; and
+- the resulting `hybrid_enabled` decision.
+
+A matching outer SHA-256 is not sufficient. An artifact whose derived value was
+changed and then re-addressed still fails closed because the value no longer
+matches its source diagnostics. Directly constructed or loaded records also
+reject fewer than two source cases and noncanonical source ordering. Version-1
+calibration files are intentionally rejected rather than silently upgraded,
+because they do not retain the margins required for independent reconstruction.
 
 These defaults are development semantics, not a new registered gate. A
 scientific experiment must freeze its source split, thresholds, support margin,
@@ -119,7 +144,8 @@ write_hybrid_reliability_decision("hybrid-reliability-decision.json", decision)
 ```
 
 The calibration writer is atomic and non-overwriting by default. Reloading uses
-an exact-byte, duplicate-key-rejecting JSON reader and verifies the content ID.
+an exact-byte, duplicate-key-rejecting JSON reader, reconstructs all derived
+values, and verifies the content ID.
 
 ## Rejection reasons
 
@@ -139,6 +165,7 @@ Multiple reasons are retained rather than collapsed into one label.
 
 This gate is a controlled-method development component. Unit tests establish
 prefix invariance, exact fallback, immutable inputs, source/target disjointness,
-artifact round trips, and fail-closed support checks. They do not establish that
-the gate improves real deformable-object prediction or calibrated uncertainty.
-That requires fresh source calibration and prospective held-out evidence.
+order-independent source calibration, independently reconstructed artifact
+fields, and fail-closed support checks. They do not establish that the gate
+improves real deformable-object prediction or calibrated uncertainty. That
+requires fresh source calibration and prospective held-out evidence.

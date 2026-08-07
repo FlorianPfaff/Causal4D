@@ -25,7 +25,7 @@ from causal4d.immutable_array import readonly_array
 from causal4d.immutable_json import plain_json, validated_json_mapping
 
 
-HYBRID_RELIABILITY_SCHEMA_VERSION = 1
+HYBRID_RELIABILITY_SCHEMA_VERSION = 2
 
 _CALIBRATION_VECTOR_FIELDS = (
     "source_case_ids",
@@ -51,6 +51,8 @@ _CALIBRATION_FIELDS = frozenset(
         "source_correction_standard_deviation_ratios",
         "source_descriptor_leverages",
         "source_future_relative_improvements",
+        "prefix_rmse_margin",
+        "prefix_log_score_margin",
         "minimum_prefix_rmse_relative_improvement",
         "minimum_prefix_log_score_gain",
         "maximum_correction_standard_deviation_ratio",
@@ -113,6 +115,18 @@ def _require_exact_fields(
         raise ValueError(f"{name} fields changed; missing={missing}, extra={extra}")
 
 
+def _require_derived_match(
+    actual: float,
+    expected: float,
+    *,
+    name: str,
+) -> float:
+    value = _finite_float(actual, name=name)
+    if not np.isclose(value, expected, rtol=1e-13, atol=1e-15):
+        raise ValueError(f"{name} does not match the stored source diagnostics")
+    return value
+
+
 def ridge_descriptor_leverage(
     model: RidgeTrajectoryModel,
     descriptor: np.ndarray,
@@ -152,9 +166,10 @@ class HybridReliabilityCase:
     def __post_init__(self) -> None:
         if type(self.case_id) is not str or not self.case_id:
             raise ValueError("hybrid reliability case_id must be nonempty")
-        if type(self.physics) is not PredictiveDistribution or type(
-            self.hybrid
-        ) is not PredictiveDistribution:
+        if (
+            type(self.physics) is not PredictiveDistribution
+            or type(self.hybrid) is not PredictiveDistribution
+        ):
             raise ValueError("physics and hybrid must be predictive distributions")
         if self.physics.method != "physics_only" or self.hybrid.method != "hybrid":
             raise ValueError(
@@ -288,9 +303,7 @@ def hybrid_reliability_diagnostics(
         "hybrid_prefix_gaussian_nll": hybrid_nll,
         "prefix_gaussian_log_score_gain": physics_nll - hybrid_nll,
         "full_query_correction_rms_m": correction_rms,
-        "physics_predictive_standard_deviation_rms_m": (
-            physics_standard_deviation_rms
-        ),
+        "physics_predictive_standard_deviation_rms_m": (physics_standard_deviation_rms),
         "correction_to_physics_standard_deviation_ratio": correction_rms
         / max(physics_standard_deviation_rms, 1e-12),
         "descriptor_leverage": case.descriptor_leverage,
@@ -326,6 +339,8 @@ class HybridReliabilityCalibration:
     source_correction_standard_deviation_ratios: tuple[float, ...]
     source_descriptor_leverages: tuple[float, ...]
     source_future_relative_improvements: tuple[float, ...]
+    prefix_rmse_margin: float
+    prefix_log_score_margin: float
     minimum_prefix_rmse_relative_improvement: float
     minimum_prefix_log_score_gain: float
     maximum_correction_standard_deviation_ratio: float
@@ -343,25 +358,27 @@ class HybridReliabilityCalibration:
         identifiers = tuple(self.source_case_ids)
         artifact_ids = tuple(self.source_case_artifact_ids)
         prefix_input_ids = tuple(self.source_prefix_input_ids)
-        if not identifiers or len(set(identifiers)) != len(identifiers):
-            raise ValueError("source_case_ids must be nonempty and unique")
+        if len(identifiers) < 2 or len(set(identifiers)) != len(identifiers):
+            raise ValueError("source_case_ids must contain at least two unique cases")
         if any(type(value) is not str or not value for value in identifiers):
             raise ValueError("source_case_ids must contain nonempty strings")
+        if identifiers != tuple(sorted(identifiers)):
+            raise ValueError("source_case_ids must use deterministic sorted order")
         if len(artifact_ids) != len(identifiers) or len(set(artifact_ids)) != len(
             artifact_ids
         ):
             raise ValueError("source case artifact IDs must be aligned and unique")
         for index, value in enumerate(artifact_ids):
             _require_sha256(value, name=f"source_case_artifact_ids[{index}]")
-        if (
-            len(prefix_input_ids) != len(identifiers)
-            or len(set(prefix_input_ids)) != len(prefix_input_ids)
-        ):
+        if len(prefix_input_ids) != len(identifiers) or len(
+            set(prefix_input_ids)
+        ) != len(prefix_input_ids):
             raise ValueError("source prefix input IDs must be aligned and unique")
         for index, value in enumerate(prefix_input_ids):
             _require_sha256(value, name=f"source_prefix_input_ids[{index}]")
         if type(self.prefix_frame_count) is not int or self.prefix_frame_count < 2:
             raise ValueError("prefix_frame_count must be an integer of at least two")
+
         normalized_vectors: dict[str, tuple[float, ...]] = {}
         for name in _CALIBRATION_VECTOR_FIELDS[3:]:
             values = tuple(getattr(self, name))
@@ -385,58 +402,148 @@ class HybridReliabilityCalibration:
                 for index, value in enumerate(values)
             )
 
-        finite_scalars = (
-            "minimum_prefix_rmse_relative_improvement",
-            "minimum_prefix_log_score_gain",
-            "minimum_mean_source_future_relative_improvement",
-            "mean_source_future_relative_improvement",
+        rmse_margin = _finite_float(
+            self.prefix_rmse_margin,
+            name="prefix_rmse_margin",
+            minimum=0.0,
         )
-        for name in finite_scalars:
-            _finite_float(getattr(self, name), name=name)
-        positive_support = (
-            "maximum_correction_standard_deviation_ratio",
-            "maximum_descriptor_leverage",
+        log_score_margin = _finite_float(
+            self.prefix_log_score_margin,
+            name="prefix_log_score_margin",
+            minimum=0.0,
         )
-        for name in positive_support:
-            value = _finite_float(getattr(self, name), name=name, minimum=0.0)
-            if value <= 0.0:
-                raise ValueError(f"{name} must be positive")
         support_margin = _finite_float(
             self.support_margin,
             name="support_margin",
             minimum=1.0,
         )
-        probabilities = (
-            self.minimum_source_future_win_fraction,
-            self.source_future_win_fraction,
+        minimum_mean = _finite_float(
+            self.minimum_mean_source_future_relative_improvement,
+            name="minimum_mean_source_future_relative_improvement",
         )
-        if any(
-            isinstance(value, bool)
-            or not isinstance(value, (int, float))
-            or not np.isfinite(float(value))
-            or not 0.0 <= float(value) <= 1.0
-            for value in probabilities
-        ):
-            raise ValueError("source future win fractions must lie in [0, 1]")
+        minimum_win_fraction = _finite_float(
+            self.minimum_source_future_win_fraction,
+            name="minimum_source_future_win_fraction",
+            minimum=0.0,
+        )
+        if minimum_win_fraction > 1.0:
+            raise ValueError("minimum_source_future_win_fraction must lie in [0, 1]")
+
+        rmse_values = normalized_vectors["source_prefix_rmse_relative_improvements"]
+        log_score_values = normalized_vectors["source_prefix_log_score_gains"]
+        correction_values = normalized_vectors[
+            "source_correction_standard_deviation_ratios"
+        ]
+        leverage_values = normalized_vectors["source_descriptor_leverages"]
+        future_values = normalized_vectors["source_future_relative_improvements"]
+        expected_minimum_rmse = max(0.0, min(rmse_values) - rmse_margin)
+        expected_minimum_log_score = max(
+            0.0,
+            min(log_score_values) - log_score_margin,
+        )
+        expected_maximum_correction = max(
+            max(correction_values) * support_margin,
+            1e-12,
+        )
+        expected_maximum_leverage = max(
+            max(leverage_values) * support_margin,
+            1e-12,
+        )
+        expected_mean_future = float(np.mean(future_values))
+        expected_win_fraction = float(
+            np.mean(np.asarray(future_values, dtype=float) > 0.0)
+        )
+
+        minimum_rmse = _require_derived_match(
+            self.minimum_prefix_rmse_relative_improvement,
+            expected_minimum_rmse,
+            name="minimum_prefix_rmse_relative_improvement",
+        )
+        minimum_log_score = _require_derived_match(
+            self.minimum_prefix_log_score_gain,
+            expected_minimum_log_score,
+            name="minimum_prefix_log_score_gain",
+        )
+        maximum_correction = _require_derived_match(
+            self.maximum_correction_standard_deviation_ratio,
+            expected_maximum_correction,
+            name="maximum_correction_standard_deviation_ratio",
+        )
+        maximum_leverage = _require_derived_match(
+            self.maximum_descriptor_leverage,
+            expected_maximum_leverage,
+            name="maximum_descriptor_leverage",
+        )
+        if maximum_correction <= 0.0 or maximum_leverage <= 0.0:
+            raise ValueError("source-support thresholds must be positive")
+        mean_future = _require_derived_match(
+            self.mean_source_future_relative_improvement,
+            expected_mean_future,
+            name="mean_source_future_relative_improvement",
+        )
+        win_fraction = _require_derived_match(
+            self.source_future_win_fraction,
+            expected_win_fraction,
+            name="source_future_win_fraction",
+        )
+        if not 0.0 <= win_fraction <= 1.0:
+            raise ValueError("source_future_win_fraction must lie in [0, 1]")
         if type(self.hybrid_enabled) is not bool:
             raise ValueError("hybrid_enabled must be Boolean")
         expected_enabled = (
-            self.mean_source_future_relative_improvement
-            >= self.minimum_mean_source_future_relative_improvement
-            and self.source_future_win_fraction
-            >= self.minimum_source_future_win_fraction
+            expected_mean_future >= minimum_mean
+            and expected_win_fraction >= minimum_win_fraction
         )
         if self.hybrid_enabled != expected_enabled:
-            raise ValueError("hybrid_enabled contradicts source future gates")
+            raise ValueError("hybrid_enabled contradicts recomputed source gates")
         if (
             self.source_futures_used is not True
             or self.target_futures_used is not False
         ):
             raise ValueError("calibration information-boundary flags are invalid")
+
         object.__setattr__(self, "source_case_ids", identifiers)
         object.__setattr__(self, "source_case_artifact_ids", artifact_ids)
         object.__setattr__(self, "source_prefix_input_ids", prefix_input_ids)
+        object.__setattr__(self, "prefix_rmse_margin", rmse_margin)
+        object.__setattr__(self, "prefix_log_score_margin", log_score_margin)
         object.__setattr__(self, "support_margin", support_margin)
+        object.__setattr__(
+            self,
+            "minimum_mean_source_future_relative_improvement",
+            minimum_mean,
+        )
+        object.__setattr__(
+            self,
+            "minimum_source_future_win_fraction",
+            minimum_win_fraction,
+        )
+        object.__setattr__(
+            self,
+            "minimum_prefix_rmse_relative_improvement",
+            minimum_rmse,
+        )
+        object.__setattr__(
+            self,
+            "minimum_prefix_log_score_gain",
+            minimum_log_score,
+        )
+        object.__setattr__(
+            self,
+            "maximum_correction_standard_deviation_ratio",
+            maximum_correction,
+        )
+        object.__setattr__(
+            self,
+            "maximum_descriptor_leverage",
+            maximum_leverage,
+        )
+        object.__setattr__(
+            self,
+            "mean_source_future_relative_improvement",
+            mean_future,
+        )
+        object.__setattr__(self, "source_future_win_fraction", win_fraction)
         for name, values in normalized_vectors.items():
             object.__setattr__(self, name, values)
 
@@ -469,7 +576,7 @@ def fit_hybrid_reliability_calibration(
 ) -> HybridReliabilityCalibration:
     """Fit a conservative gate from disjoint source cases and source futures."""
 
-    cases = tuple(source_cases)
+    cases = tuple(sorted(source_cases, key=lambda case: case.case_id))
     if len(cases) < 2:
         raise ValueError("hybrid reliability calibration requires two source cases")
     identifiers = tuple(case.case_id for case in cases)
@@ -523,8 +630,7 @@ def fit_hybrid_reliability_calibration(
     mean_future = float(np.mean(future_improvements))
     future_win_fraction = float(np.mean(np.asarray(future_improvements) > 0.0))
     enabled = (
-        mean_future >= minimum_mean
-        and future_win_fraction >= minimum_win_fraction
+        mean_future >= minimum_mean and future_win_fraction >= minimum_win_fraction
     )
     return HybridReliabilityCalibration(
         source_case_ids=identifiers,
@@ -536,6 +642,8 @@ def fit_hybrid_reliability_calibration(
         source_correction_standard_deviation_ratios=correction_ratios,
         source_descriptor_leverages=leverages,
         source_future_relative_improvements=future_improvements,
+        prefix_rmse_margin=rmse_margin,
+        prefix_log_score_margin=log_score_margin,
         minimum_prefix_rmse_relative_improvement=max(
             0.0,
             min(prefix_rmse_improvements) - rmse_margin,
