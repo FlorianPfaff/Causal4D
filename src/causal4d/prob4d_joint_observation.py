@@ -8,7 +8,7 @@ from typing import Any, Literal, Mapping, Sequence
 import numpy as np
 
 from causal4d.contracts import array_sha256
-from causal4d.immutable_json import plain_json
+from causal4d.immutable_json import plain_json, validated_json_mapping
 from causal4d.joint_observation import LinearJointObservationEvidence
 from causal4d.prob4d_observation_lineage import (
     validate_prob4d_causal_observation_metadata,
@@ -77,9 +77,7 @@ def _normalized_rollout_frames(values: Sequence[int]) -> tuple[int, ...]:
     return result
 
 
-def _normalized_entity_mapping(
-    values: Mapping[int, int],
-) -> dict[int, int]:
+def _normalized_entity_mapping(values: Mapping[int, int]) -> dict[int, int]:
     result: dict[int, int] = {}
     for raw_entity, raw_node in values.items():
         entity = _integer(raw_entity, name="entity_to_node key")
@@ -90,6 +88,15 @@ def _normalized_entity_mapping(
     if not result:
         raise ValueError("entity_to_node must be nonempty")
     return result
+
+
+def _hex_identifier(value: Any, *, name: str, length: int) -> str:
+    if type(value) is not str or len(value) != length:
+        raise ValueError(f"{name} must be a {length}-character hexadecimal string")
+    lowered = value.lower()
+    if any(character not in "0123456789abcdef" for character in lowered):
+        raise ValueError(f"{name} must be a {length}-character hexadecimal string")
+    return lowered
 
 
 @dataclass(frozen=True)
@@ -108,6 +115,30 @@ class Prob4DJointObservationDiagnostics:
     frame_mapping: tuple[tuple[int, int], ...]
     entity_mapping: tuple[tuple[int, int], ...]
     provider_validation: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        if self.row_count < 1 or self.observation_count != 3 * self.row_count:
+            raise ValueError("Prob4D diagnostic dimensions are inconsistent")
+        if self.factor_rank < 0 or self.factor_group_count != 1:
+            raise ValueError("Prob4D diagnostic factor dimensions are invalid")
+        if self.reliability_policy not in {"require_neutral", "record_only"}:
+            raise ValueError("unsupported Prob4D reliability policy")
+        for name in (
+            "nonneutral_association_count",
+            "nonneutral_prior_reliability_count",
+            "nonneutral_group_nominal_count",
+            "nonunit_group_composite_weight_count",
+        ):
+            value = getattr(self, name)
+            if value < 0:
+                raise ValueError(f"{name} must be nonnegative")
+        if not self.frame_mapping or not self.entity_mapping:
+            raise ValueError("Prob4D diagnostic mappings must be nonempty")
+        validation = validated_json_mapping(
+            self.provider_validation,
+            error_message="provider validation must contain finite JSON data",
+        )
+        object.__setattr__(self, "provider_validation", validation)
 
 
 def joint_observation_from_prob4d(
@@ -130,7 +161,10 @@ def joint_observation_from_prob4d(
 
     if reliability_policy not in {"require_neutral", "record_only"}:
         raise ValueError("unsupported Prob4D reliability policy")
-    validation = validate_prob4d_causal_observation_metadata(descriptor, arrays)
+    validation = validated_json_mapping(
+        validate_prob4d_causal_observation_metadata(descriptor, arrays),
+        error_message="provider validation must contain finite JSON data",
+    )
 
     means = np.asarray(_required_array(arrays, "mean_xyz_m"), dtype=float)
     if means.ndim != 2 or means.shape[1] != 3 or len(means) == 0:
@@ -225,14 +259,22 @@ def joint_observation_from_prob4d(
     shared_factor = None
     if factor_rank:
         shared_factor = low_rank.reshape(observation_count, factor_rank)
-    source_artifact_sha256 = str(descriptor.get("source_artifact_sha256", ""))
-    source_revision = str(descriptor.get("source_revision", ""))
-    case_id = str(descriptor.get("case_id", ""))
+    source_artifact_sha256 = _hex_identifier(
+        descriptor.get("source_artifact_sha256"),
+        name="source_artifact_sha256",
+        length=64,
+    )
+    source_revision = _hex_identifier(
+        descriptor.get("source_revision"),
+        name="source_revision",
+        length=40,
+    )
+    case_id = descriptor.get("case_id")
+    if type(case_id) is not str or not case_id:
+        raise ValueError("case_id must be a nonempty string")
     resolved_evidence_id = evidence_id
     if resolved_evidence_id is None:
-        resolved_evidence_id = (
-            f"prob4d-joint:{case_id}:{source_artifact_sha256[:16]}"
-        )
+        resolved_evidence_id = f"prob4d-joint:{case_id}:{source_artifact_sha256[:16]}"
     if type(resolved_evidence_id) is not str or not resolved_evidence_id:
         raise ValueError("evidence_id must be a nonempty string")
 
@@ -284,7 +326,7 @@ def joint_observation_from_prob4d(
         nonunit_group_composite_weight_count=nonunit_group_weight,
         frame_mapping=used_frame_mapping,
         entity_mapping=used_entity_mapping,
-        provider_validation=plain_json(validation),
+        provider_validation=validation,
     )
     return evidence, diagnostics
 
