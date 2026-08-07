@@ -1,4 +1,4 @@
-"""Scaffold, seal, and verify pre-acquisition readiness evidence."""
+"""Scaffold, capture, seal, and verify pre-acquisition readiness evidence."""
 
 from __future__ import annotations
 
@@ -35,6 +35,9 @@ from causal4d.preacquisition_source_panel_review_publication import (
 from causal4d.preacquisition_source_panel_staging import (
     verify_source_panel_manifest_staging,
     write_source_panel_staging_preflight,
+)
+from causal4d.software_environment_capture import (
+    capture_software_environment_template,
 )
 
 build_preacquisition_next_action = (
@@ -87,6 +90,44 @@ def build_parser() -> argparse.ArgumentParser:
     seal.add_argument("gate_id", choices=tuple(GATE_PATHS))
     seal.add_argument("--approved-by", required=True)
     seal.add_argument("--approved-at-utc")
+
+    environment = subparsers.add_parser(
+        "capture-software-environment",
+        help=(
+            "verify exact stack wheels and populate the unapproved software gate"
+        ),
+    )
+    environment.add_argument("repository_root")
+    environment.add_argument("dataset_root")
+    environment.add_argument("stack_lock")
+    environment.add_argument(
+        "--wheel",
+        action="append",
+        required=True,
+        metavar="PATH",
+        help="one exact wheel from the locked three-repository stack; repeat three times",
+    )
+    environment.add_argument(
+        "--execution-backend",
+        required=True,
+        choices=("numpy_cpu", "warp_cpu", "cuda"),
+    )
+    environment.add_argument("--observation-producer-name", required=True)
+    environment.add_argument("--observation-producer-version", required=True)
+    environment.add_argument("--observation-artifact-contract", required=True)
+    prob4d = environment.add_mutually_exclusive_group(required=True)
+    prob4d.add_argument(
+        "--prob4d-used",
+        action="store_true",
+        help="declare that the locked Prob4D wheel supplies claim-bearing observations",
+    )
+    prob4d.add_argument(
+        "--prob4d-unused-reason",
+        help="explicit reason the locked Prob4D package is not used by the estimator",
+    )
+    environment.add_argument("--prob4d-observation-contract-version")
+    environment.add_argument("--container-image-digest")
+    environment.add_argument("--completed-at-utc")
 
     source_status = subparsers.add_parser(
         "source-panel-status",
@@ -200,6 +241,24 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.gate_id,
                 approved_by=args.approved_by,
                 approved_at_utc=args.approved_at_utc,
+            )
+        elif args.command == "capture-software-environment":
+            result = capture_software_environment_template(
+                args.repository_root,
+                args.dataset_root,
+                args.stack_lock,
+                args.wheel,
+                execution_backend=args.execution_backend,
+                observation_producer_name=args.observation_producer_name,
+                observation_producer_version=args.observation_producer_version,
+                observation_artifact_contract=args.observation_artifact_contract,
+                prob4d_used=args.prob4d_used,
+                prob4d_unused_reason=args.prob4d_unused_reason,
+                prob4d_observation_contract_version=(
+                    args.prob4d_observation_contract_version
+                ),
+                container_image_digest=args.container_image_digest,
+                completed_at_utc=args.completed_at_utc,
             )
         elif args.command == "source-panel-status":
             result = build_source_panel_status(
