@@ -1,5 +1,6 @@
 name: Publish reviewed issue 233 repair
 
+# Trusted one-shot publisher; removed after the exact branch commit lands.
 on:
   push:
     branches: [main]
