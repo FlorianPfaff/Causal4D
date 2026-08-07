@@ -1,0 +1,163 @@
+name: Publish reviewed issue 233 repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-reviewed-issue233-repair.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-reviewed-issue233-repair
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate exact issue 233 repair without write access
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the exact reviewed branch head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 9ec6d3f1f5c49a15bd9c347178b4c11f4726b9a2
+          path: repair
+          persist-credentials: false
+
+      - name: Verify and apply the exact patch
+        working-directory: repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = \
+            "9ec6d3f1f5c49a15bd9c347178b4c11f4726b9a2"
+          base64 --decode .github/issue233-repair.patch.b64 \
+            > "$RUNNER_TEMP/issue233.patch"
+          printf '%s  %s\n' \
+            '6f7c8ea80b8eefedfa0649b0eb8d53de1df8056eb7a2631be038ef2a3b306c2e' \
+            "$RUNNER_TEMP/issue233.patch" \
+            | sha256sum --check --strict -
+          git apply --check "$RUNNER_TEMP/issue233.patch"
+          git apply "$RUNNER_TEMP/issue233.patch"
+          rm \
+            .github/issue233-repair.patch.b64 \
+            .github/workflows/apply-issue233-coordinate-invariance.yml
+          git diff --check
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: repair/pyproject.toml
+
+      - name: Install development dependencies
+        working-directory: repair
+        run: python -m pip install -e ".[dev]"
+
+      - name: Validate the contract repair
+        working-directory: repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ruff check \
+            src/causal4d/latent_contact_v2.py \
+            tests/test_linear_contact_observation_invariance.py
+          python -m ruff format --check \
+            src/causal4d/latent_contact_v2.py \
+            tests/test_linear_contact_observation_invariance.py
+          python -W error::SyntaxWarning -m compileall -q -f \
+            src/causal4d/latent_contact_v2.py \
+            tests/test_linear_contact_observation_invariance.py
+          python -m pytest -q \
+            tests/test_linear_contact_observation_invariance.py \
+            tests/test_latent_contact_v2.py
+
+      - name: Package only the verified patch and manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/issue233-validated"
+          cp "$RUNNER_TEMP/issue233.patch" \
+            "$RUNNER_TEMP/issue233-validated/issue233.patch"
+          cat > "$RUNNER_TEMP/issue233-validated/manifest.txt" <<'EOF'
+          branch=fix/coordinatewise-frame-zero-invariance
+          head=9ec6d3f1f5c49a15bd9c347178b4c11f4726b9a2
+          patch_sha256=6f7c8ea80b8eefedfa0649b0eb8d53de1df8056eb7a2631be038ef2a3b306c2e
+          tests=17 passed
+          EOF
+          sha256sum "$RUNNER_TEMP/issue233-validated/issue233.patch"
+
+      - name: Upload validated repair
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: issue233-validated-repair
+          path: ${{ runner.temp }}/issue233-validated
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish exact validated repair without executing branch code
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the exact target branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/coordinatewise-frame-zero-invariance
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Require the unchanged reviewed branch head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = \
+            "9ec6d3f1f5c49a15bd9c347178b4c11f4726b9a2"
+
+      - name: Download validated repair
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: issue233-validated-repair
+          path: ${{ runner.temp }}/issue233-validated
+
+      - name: Reverify and publish only the reviewable files
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch="$RUNNER_TEMP/issue233-validated/issue233.patch"
+          manifest="$RUNNER_TEMP/issue233-validated/manifest.txt"
+          grep -Fx \
+            'head=9ec6d3f1f5c49a15bd9c347178b4c11f4726b9a2' \
+            "$manifest"
+          printf '%s  %s\n' \
+            '6f7c8ea80b8eefedfa0649b0eb8d53de1df8056eb7a2631be038ef2a3b306c2e' \
+            "$patch" \
+            | sha256sum --check --strict -
+          git apply --check "$patch"
+          git apply "$patch"
+          rm \
+            .github/issue233-repair.patch.b64 \
+            .github/workflows/apply-issue233-coordinate-invariance.yml
+          git add -A
+          git diff --cached --check
+          actual="$(git diff --cached --name-only | sort)"
+          expected="$(cat <<'EOF'
+          .github/issue233-repair.patch.b64
+          .github/workflows/apply-issue233-coordinate-invariance.yml
+          docs/latent_contact_v2.md
+          src/causal4d/latent_contact_v2.py
+          tests/test_linear_contact_observation_invariance.py
+          EOF
+          )"
+          test "$actual" = "$expected"
+          git config user.name github-actions[bot]
+          git config user.email \
+            41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m 'Reject mixed-coordinate endpoint cancellation'
+          git push origin HEAD:fix/coordinatewise-frame-zero-invariance
