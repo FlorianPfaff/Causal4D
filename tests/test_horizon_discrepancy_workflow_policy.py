@@ -4,6 +4,9 @@ from pathlib import Path
 
 
 WORKFLOW = Path(".github/workflows/horizon-discrepancy-integration.yml")
+REDUNDANT_SELF_HOSTED_WORKFLOW = Path(
+    ".github/workflows/horizon-discrepancy-self-hosted.yml"
+)
 BPT_HORIZON_PROVIDER_REVISION = "bfa844798f0ab3ddbc67a0744ae14a221324e504"
 CAUSAL4D_HEAD_REF = "${{ github.event.pull_request.head.sha || github.sha }}"
 
@@ -37,6 +40,19 @@ def test_horizon_workflow_exercises_installed_wheels() -> None:
     assert "test_belief_provider_v2_contract.py" in text
     assert "test_horizon_discrepancy.py" in text
     assert "test_belief_provider_contract.py" in text
+
+
+def test_horizon_pull_request_validation_is_hosted_read_only_and_unique() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "pull_request:" in text
+    assert "permissions:\n  contents: read\n" in text
+    assert "runs-on: ubuntu-latest" in text
+    assert "self-hosted" not in text
+    assert not REDUNDANT_SELF_HOSTED_WORKFLOW.exists(), (
+        "horizon provider contracts already run as installed wheels on the hosted "
+        "workflow; a second PR-head workflow must not allocate workstation2"
+    )
 
 
 def test_horizon_workflow_runs_contract_before_local_quality() -> None:
