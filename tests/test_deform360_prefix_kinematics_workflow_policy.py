@@ -42,8 +42,9 @@ def test_prefix_kinematics_gpu_evidence_requires_explicit_dispatch() -> None:
     assert "github.event_name == 'workflow_dispatch'" in text
     assert "inputs.run_source_diagnostic" in text
     assert "runs-on: [self-hosted, Linux, X64, nvidia-smi]" in text
-    assert "BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}" in text
-    assert "ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}" in text
+    assert "Check out pinned public BayesianPhysTwin" in text
+    assert "BPT_READ_SSH_KEY" not in text
+    assert "ssh-key:" not in text
     assert text.count("Set up Python 3.12") == 1
     assert "continue-on-error: true" not in text
 
@@ -59,7 +60,10 @@ def test_permanent_gpu_job_uses_the_conditional_reproduction_runtime() -> None:
     assert "python-selection.json" in text
     assert "PREFIX_KINEMATICS_PYTHON=" in text
     assert text.index("Initialize source-evidence directory") < text.index(
-        "Require BayesianPhysTwin read access"
+        "Select the conditional reproduction runtime"
+    )
+    assert text.index("Read locked repository pins") < text.index(
+        "Check out pinned public BayesianPhysTwin"
     )
     assert "if: always()" in text
     assert 'python_bin="${PREFIX_KINEMATICS_PYTHON:-python3}"' in shell

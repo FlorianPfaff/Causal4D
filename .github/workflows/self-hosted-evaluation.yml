@@ -13,7 +13,7 @@ on:
           - standard
           - full
       run_bpt:
-        description: Run the pinned Bayesian-PhysTwin provider checks
+        description: Run the pinned BayesianPhysTwin provider checks
         required: true
         default: true
         type: boolean
@@ -34,13 +34,24 @@ env:
 jobs:
   evaluate:
     name: Higher-powered controlled and GPU diagnostics
+    if: github.ref == 'refs/heads/main'
     runs-on: [self-hosted, Linux, X64, nvidia-smi]
     timeout-minutes: 480
     steps:
-      - name: Check out Causal4D
+      - name: Check out exact reviewed Causal4D revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
           persist-credentials: false
+          clean: true
+
+      - name: Verify reviewed main revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test -z "$(git status --porcelain=v1)"
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -57,7 +68,7 @@ jobs:
       - name: Record runner and GPU identity
         shell: bash
         run: |
-          mkdir -p self-hosted-evaluation
+          mkdir -p self-hosted-evaluation/wheels
           {
             echo "runner_name=${RUNNER_NAME}"
             echo "runner_os=${RUNNER_OS}"
@@ -70,11 +81,36 @@ jobs:
           } | tee self-hosted-evaluation/runner-info.txt
           nvidia-smi | tee self-hosted-evaluation/nvidia-smi.txt
 
-      - name: Install Causal4D evaluation stack
+      - name: Build and install exact Causal4D wheel
+        shell: bash
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[dev,warp]"
+          set -euo pipefail
+          python -m pip install --upgrade pip "build>=1.2"
+          python -m build --wheel --outdir self-hosted-evaluation/wheels .
+          causal4d_wheel="$(
+            find self-hosted-evaluation/wheels -maxdepth 1 \
+              -name 'causal4d-*.whl' -print -quit
+          )"
+          test -n "${causal4d_wheel}"
+          sha256sum "${causal4d_wheel}" \
+            | tee self-hosted-evaluation/wheel-sha256.txt
+          python -m pip install \
+            "${causal4d_wheel}" \
+            "pytest>=8" \
+            "torch>=2.0" \
+            "warp-lang>=1.0"
           python -m pip check
+          python - <<'PY'
+          from pathlib import Path
+
+          import causal4d
+
+          source_root = (Path.cwd() / "src").resolve()
+          origin = Path(causal4d.__file__).resolve()
+          print("Causal4D import", origin)
+          if origin.is_relative_to(source_root):
+              raise SystemExit("Causal4D resolved from the checkout instead of the wheel")
+          PY
 
       - name: Verify CUDA and run a Warp parity probe
         shell: bash
@@ -175,38 +211,57 @@ jobs:
             --output-dir self-hosted-evaluation/results \
             | tee self-hosted-evaluation/evaluation.log
 
-      - name: Require private BayesianPhysTwin credential
-        if: ${{ inputs.run_bpt }}
-        shell: bash
-        env:
-          BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}
-        run: |
-          if [[ -z "${BPT_READ_SSH_KEY}" ]]; then
-            echo "::error::BPT_READ_SSH_KEY is absent; provider checks were requested and cannot run."
-            exit 1
-          fi
-          echo "BayesianPhysTwin read credential is configured."
-
-      - name: Read exact Bayesian-PhysTwin provider pin
+      - name: Read exact BayesianPhysTwin provider pin
         if: ${{ inputs.run_bpt }}
         id: pin
         run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "${GITHUB_OUTPUT}"
 
-      - name: Check out pinned Bayesian-PhysTwin
+      - name: Check out pinned public BayesianPhysTwin
         if: ${{ inputs.run_bpt }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: IPS-Stuttgart/BayesianPhysTwin
           ref: ${{ steps.pin.outputs.sha }}
-          ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}
           path: _bpt
           persist-credentials: false
 
-      - name: Install pinned Bayesian-PhysTwin
+      - name: Build and install exact BayesianPhysTwin wheel
         if: ${{ inputs.run_bpt }}
+        shell: bash
         run: |
-          python -m pip install -e ./_bpt
+          set -euo pipefail
+          test "$(git -C _bpt rev-parse HEAD)" = "${{ steps.pin.outputs.sha }}"
+          test -z "$(git -C _bpt status --porcelain=v1)"
+          python -m build --wheel \
+            --outdir self-hosted-evaluation/wheels \
+            ./_bpt
+          bpt_wheel="$(
+            find self-hosted-evaluation/wheels -maxdepth 1 \
+              -name 'bayesian_phystwin-*.whl' -print -quit
+          )"
+          test -n "${bpt_wheel}"
+          sha256sum "${bpt_wheel}" \
+            | tee -a self-hosted-evaluation/wheel-sha256.txt
+          python -m pip install "${bpt_wheel}"
           python -m pip check
+          {
+            echo "repository=IPS-Stuttgart/BayesianPhysTwin"
+            echo "sha=$(git -C _bpt rev-parse HEAD)"
+            echo "wheel=${bpt_wheel}"
+          } | tee self-hosted-evaluation/bpt-provider-info.txt
+          python - <<'PY'
+          from pathlib import Path
+
+          import bayesian_phystwin
+
+          checkout = (Path.cwd() / "_bpt").resolve()
+          origin = Path(bayesian_phystwin.__file__).resolve()
+          print("BayesianPhysTwin import", origin)
+          if origin.is_relative_to(checkout):
+              raise SystemExit(
+                  "BayesianPhysTwin resolved from the checkout instead of the wheel"
+              )
+          PY
 
       - name: Run pinned provider integration tests
         if: ${{ inputs.run_bpt }}
@@ -220,7 +275,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          python -m pip freeze \
+          python -m pip freeze --all \
             | tee self-hosted-evaluation/pip-freeze.txt
           git status --short \
             | tee self-hosted-evaluation/git-status.txt
