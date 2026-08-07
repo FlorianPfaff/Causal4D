@@ -24,8 +24,13 @@ from causal4d.preacquisition_readiness import (
 )
 from causal4d.preacquisition_source_panel_control import (
     build_source_panel_status,
-    publish_source_panel_manifest,
     write_source_panel_status,
+)
+from causal4d.preacquisition_source_panel_review import (
+    review_source_panel_manifest_staging,
+)
+from causal4d.preacquisition_source_panel_review_publication import (
+    publish_reviewed_source_panel_manifest,
 )
 from causal4d.preacquisition_source_panel_staging import (
     verify_source_panel_manifest_staging,
@@ -108,13 +113,25 @@ def build_parser() -> argparse.ArgumentParser:
     source_verify.add_argument("source_json")
     source_verify.add_argument("--output-json")
 
+    source_review = subparsers.add_parser(
+        "source-panel-review-staged",
+        help="publish a registered human review receipt for the current preflight",
+    )
+    source_review.add_argument("repository_root")
+    source_review.add_argument("dataset_root")
+    source_review.add_argument("source_json")
+    source_review.add_argument("--reviewed-by", required=True)
+    source_review.add_argument("--reviewed-at-utc")
+
     source_publish = subparsers.add_parser(
         "source-panel-publish",
-        help="hash-verify and publish exactly the next source execution manifest",
+        help="publish the reviewed next source execution manifest exactly once",
     )
     source_publish.add_argument("repository_root")
     source_publish.add_argument("dataset_root")
     source_publish.add_argument("source_json")
+    source_publish.add_argument("--review-receipt", required=True)
+    source_publish.add_argument("--published-by", required=True)
 
     status = subparsers.add_parser(
         "status",
@@ -200,11 +217,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             if args.output_json:
                 write_source_panel_staging_preflight(args.output_json, result)
-        elif args.command == "source-panel-publish":
-            result = publish_source_panel_manifest(
+        elif args.command == "source-panel-review-staged":
+            result = review_source_panel_manifest_staging(
                 args.repository_root,
                 args.dataset_root,
                 args.source_json,
+                reviewed_by=args.reviewed_by,
+                reviewed_at_utc=args.reviewed_at_utc,
+            )
+        elif args.command == "source-panel-publish":
+            result = publish_reviewed_source_panel_manifest(
+                args.repository_root,
+                args.dataset_root,
+                args.source_json,
+                review_receipt_json=args.review_receipt,
+                published_by=args.published_by,
             )
         elif args.command == "next-action":
             result = build_preacquisition_next_action(

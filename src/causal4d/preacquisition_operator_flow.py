@@ -43,7 +43,7 @@ def _expected_publication_command(
 def enrich_preacquisition_next_action(
     decision: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Insert the staged preflight before claim-bearing source publication."""
+    """Insert staged verification and two-person review before publication."""
 
     result = deepcopy(dict(decision))
     action_value = result.get("action")
@@ -70,6 +70,7 @@ def enrich_preacquisition_next_action(
         root = Path(dataset)
         staging = str(root / "staging" / f"{execution_id}.json")
         preflight = str(root / "operator" / f"{execution_id}-preflight.json")
+        receipt = str(root / "staging" / "reviews" / f"{execution_id}.json")
         expected_publication = _expected_publication_command(
             repository,
             dataset,
@@ -94,12 +95,39 @@ def enrich_preacquisition_next_action(
                 preflight,
             ]
         )
-        publication_argv, publication_text = _command_pair(expected_publication)
+        review_argv, review_text = _command_pair(
+            [
+                "causal4d",
+                "protocol",
+                "readiness",
+                "source-panel-review-staged",
+                repository,
+                dataset,
+                staging,
+                "--reviewed-by",
+                "<registered-reviewer-id>",
+            ]
+        )
+        publication_argv, publication_text = _command_pair(
+            [
+                *expected_publication,
+                "--review-receipt",
+                receipt,
+                "--published-by",
+                "<registered-publisher-id>",
+            ]
+        )
         action["after_completion_argv"] = None
         action["after_completion_text"] = None
         action["post_acquisition_verification_argv"] = verification_argv
         action["post_acquisition_verification_text"] = verification_text
         action["preflight_report_path"] = preflight
+        action["staged_review_argv"] = review_argv
+        action["staged_review_text"] = review_text
+        action["review_receipt_path"] = receipt
+        action["two_person_publication_required"] = True
+        action["reviewer_identity_placeholder"] = "<registered-reviewer-id>"
+        action["publisher_identity_placeholder"] = "<registered-publisher-id>"
         action["independent_review_required_before_publication"] = True
         action["claim_bearing_publication_argv"] = publication_argv
         action["claim_bearing_publication_text"] = publication_text
@@ -111,13 +139,20 @@ def enrich_preacquisition_next_action(
             "recompute_next_action",
         ]
         outputs = list(action.get("output_paths", []))
-        if preflight not in outputs:
-            outputs.insert(1 if outputs else 0, preflight)
+        for index, path in enumerate((preflight, receipt), start=1):
+            if path not in outputs:
+                outputs.insert(min(index, len(outputs)), path)
         action["output_paths"] = outputs
     else:
         action.setdefault("post_acquisition_verification_argv", None)
         action.setdefault("post_acquisition_verification_text", None)
         action.setdefault("preflight_report_path", None)
+        action.setdefault("staged_review_argv", None)
+        action.setdefault("staged_review_text", None)
+        action.setdefault("review_receipt_path", None)
+        action.setdefault("two_person_publication_required", False)
+        action.setdefault("reviewer_identity_placeholder", None)
+        action.setdefault("publisher_identity_placeholder", None)
         action.setdefault("independent_review_required_before_publication", False)
         action.setdefault("claim_bearing_publication_argv", None)
         action.setdefault("claim_bearing_publication_text", None)
@@ -193,6 +228,7 @@ def render_preacquisition_operator_next_action_markdown(
     sections = (
         ("Command", "command_text"),
         ("Verify staged evidence", "post_acquisition_verification_text"),
+        ("Review and seal receipt", "staged_review_text"),
         (
             "Publish after independent review",
             "claim_bearing_publication_text",
@@ -206,8 +242,8 @@ def render_preacquisition_operator_next_action_markdown(
     if action.get("independent_review_required_before_publication") is True:
         lines += [
             "",
-            "Publication is claim-bearing and requires independent review of the ",
-            "content-addressed preflight report before the publication command is run.",
+            "Publication is claim-bearing and requires independent review by a ",
+            "registered reviewer plus publication by a distinct registered person.",
         ]
     blockers = action.get("blocking_items")
     if isinstance(blockers, list) and blockers:
