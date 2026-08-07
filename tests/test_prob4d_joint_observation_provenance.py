@@ -5,6 +5,7 @@ from types import MappingProxyType
 import numpy as np
 import pytest
 
+from causal4d.contracts import array_sha256
 from causal4d.prob4d_joint_observation import joint_observation_from_prob4d
 
 
@@ -54,6 +55,35 @@ def test_provider_validation_is_recursively_immutable(monkeypatch) -> None:
     source_validation["nested"]["count"] = 99
     assert diagnostics.provider_validation["nested"]["count"] == 1
     assert evidence.metadata["provider_validation"]["nested"]["count"] == 1
+
+
+def test_adapter_binds_exact_source_array_bytes_and_full_digest(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "causal4d.prob4d_joint_observation.validate_prob4d_causal_observation_metadata",
+        lambda descriptor, arrays: {"validated": True},
+    )
+    descriptor = _descriptor()
+    arrays = _arrays()
+    arrays["association_probability"] = np.ones(1, dtype=np.float32)
+    arrays["prior_reliability"] = np.ones(1, dtype=np.float32)
+
+    evidence, _ = joint_observation_from_prob4d(
+        descriptor,
+        arrays,
+        rollout_frame_ids=(1, 2),
+        entity_to_node={4: 0},
+    )
+
+    assert evidence.evidence_id.endswith(str(descriptor["source_artifact_sha256"]))
+    assert evidence.metadata["association_probability_sha256"] == array_sha256(
+        arrays["association_probability"]
+    )
+    assert evidence.metadata["prior_reliability_sha256"] == array_sha256(
+        arrays["prior_reliability"]
+    )
+    assert evidence.metadata["association_probability_sha256"] != array_sha256(
+        arrays["association_probability"].astype(float)
+    )
 
 
 def test_adapter_rechecks_source_identifiers_after_validator(monkeypatch) -> None:
