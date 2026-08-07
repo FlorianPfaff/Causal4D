@@ -14,9 +14,10 @@ from collections import defaultdict
 from collections.abc import Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, TextIO, cast
 
 import numpy as np
+from numpy.typing import NDArray
 
 from causal4d.contact_posterior_source_integrity import (
     verify_contact_posterior_source_bundle,
@@ -58,7 +59,7 @@ def _run(
             bufsize=1,
         )
         assert process.stdout is not None
-        _stream_output(process.stdout, log, echo=echo)
+        _stream_output(cast(TextIO, process.stdout), log, echo=echo)
         return_code = process.wait()
     if return_code != 0:
         raise RuntimeError(
@@ -121,8 +122,7 @@ def _wilson_interval(successes: int, count: int) -> list[float]:
     radius = (
         z
         * math.sqrt(
-            proportion * (1.0 - proportion) / count
-            + z * z / (4.0 * count * count)
+            proportion * (1.0 - proportion) / count + z * z / (4.0 * count * count)
         )
         / denominator
     )
@@ -130,7 +130,7 @@ def _wilson_interval(successes: int, count: int) -> list[float]:
 
 
 def _bootstrap_mean_interval(
-    values: np.ndarray,
+    values: NDArray[np.float64],
     *,
     resamples: int,
     seed: int,
@@ -141,28 +141,28 @@ def _bootstrap_mean_interval(
         )
     rng = np.random.default_rng(seed)
     remaining = resamples
-    means: list[np.ndarray] = []
+    means: list[NDArray[np.float64]] = []
     while remaining:
         chunk = min(1_000, remaining)
         indices = rng.integers(0, values.size, size=(chunk, values.size))
-        means.append(np.mean(values[indices], axis=1))
+        means.append(np.asarray(np.mean(values[indices], axis=1), dtype=np.float64))
         remaining -= chunk
-    bootstrap = np.concatenate(means)
-    interval = np.quantile(bootstrap, [0.025, 0.975])
+    bootstrap: NDArray[np.float64] = np.concatenate(means)
+    interval: NDArray[np.float64] = np.asarray(
+        np.quantile(bootstrap, [0.025, 0.975]),
+        dtype=np.float64,
+    )
     return [float(interval[0]), float(interval[1])]
 
 
-def _summarize_cases(group: list[dict[str, str]]) -> dict[str, object]:
+def _summarize_cases(group: list[dict[str, str]]) -> dict[str, Any]:
     if not group:
         raise ValueError("cannot summarize an empty case group")
-    correct = np.asarray(
-        [
-            _canonical_boolean(row["node_correct"], name="node_correct")
-            for row in group
-        ],
+    correct: NDArray[np.float64] = np.asarray(
+        [_canonical_boolean(row["node_correct"], name="node_correct") for row in group],
         dtype=np.float64,
     )
-    covered = np.asarray(
+    covered: NDArray[np.float64] = np.asarray(
         [
             _canonical_boolean(
                 row["node_credible_covered"],
@@ -172,15 +172,15 @@ def _summarize_cases(group: list[dict[str, str]]) -> dict[str, object]:
         ],
         dtype=np.float64,
     )
-    confidence = np.asarray(
+    confidence: NDArray[np.float64] = np.asarray(
         [float(row["node_confidence"]) for row in group],
         dtype=np.float64,
     )
-    truth_probability = np.asarray(
+    truth_probability: NDArray[np.float64] = np.asarray(
         [float(row["node_truth_probability"]) for row in group],
         dtype=np.float64,
     )
-    brier = np.asarray(
+    brier: NDArray[np.float64] = np.asarray(
         [float(row["node_brier"]) for row in group],
         dtype=np.float64,
     )
@@ -261,7 +261,14 @@ def _registered_gate(success_gates_path: Path, *, threshold: float) -> dict[str,
     gate = dict(matches[0])
     if gate.get("comparison") != ">=":
         raise ValueError("shifted-node gate comparison changed")
-    if not math.isclose(float(gate.get("threshold")), threshold, abs_tol=0.0):
+    threshold_value = gate.get("threshold")
+    if (
+        not isinstance(threshold_value, (int, float))
+        or isinstance(threshold_value, bool)
+        or not math.isfinite(float(threshold_value))
+    ):
+        raise ValueError("shifted-node gate threshold is invalid")
+    if not math.isclose(float(threshold_value), threshold, abs_tol=0.0):
         raise ValueError("shifted-node gate threshold changed")
     return gate
 
@@ -363,7 +370,7 @@ def _build_report(
     threshold: float,
 ) -> dict[str, Any]:
     selected: list[dict[str, str]] = []
-    blocks: list[dict[str, object]] = []
+    blocks: list[dict[str, Any]] = []
     gate_records: list[dict[str, Any]] = []
     source_integrity_records: list[dict[str, Any]] = []
     for result in block_results:
@@ -391,9 +398,7 @@ def _build_report(
                 "seed_start_inclusive": block_seeds[0],
                 "seed_stop_exclusive": block_seeds[-1] + 1,
                 "passes_frozen_threshold": float(block["accuracy"]) >= threshold,
-                "source_manifest_sha256": result["source_integrity"][
-                    "manifest_sha256"
-                ],
+                "source_manifest_sha256": result["source_integrity"]["manifest_sha256"],
             }
         )
         blocks.append(block)
@@ -421,7 +426,7 @@ def _build_report(
         raise ValueError("each seed must contribute exactly one case per topology")
 
     overall = _summarize_cases(selected)
-    seed_accuracies = np.asarray(
+    seed_accuracies: NDArray[np.float64] = np.asarray(
         [
             np.mean(
                 [
@@ -434,9 +439,7 @@ def _build_report(
         dtype=np.float64,
     )
     overall["independent_seed_count"] = len(expected_seeds)
-    overall["seed_cluster_standard_deviation"] = float(
-        np.std(seed_accuracies, ddof=1)
-    )
+    overall["seed_cluster_standard_deviation"] = float(np.std(seed_accuracies, ddof=1))
     overall["seed_cluster_bootstrap_95_interval"] = _bootstrap_mean_interval(
         seed_accuracies,
         resamples=BOOTSTRAP_RESAMPLES,
