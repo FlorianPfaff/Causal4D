@@ -13,6 +13,10 @@ from causal4d.cli import root
 from causal4d.cli.stack import main as stack_main
 
 
+ROOT = Path(__file__).resolve().parents[1]
+WORKFLOW = (
+    ROOT / ".github" / "workflows" / "bayesian-phystwin-provider-compatibility.yml"
+)
 REVISIONS = {
     "prob4d": "1" * 40,
     "bayesian-phystwin": "2" * 40,
@@ -183,3 +187,24 @@ def test_root_routes_stack_operations_lazily(monkeypatch, capsys) -> None:
     result = root.main(["stack", "verify", "--lock", "lock.json", "--lock-only"])
     assert result == 9
     assert received == ["verify", "--lock", "lock.json", "--lock-only"]
+
+
+def test_three_repository_workflow_publishes_locked_wheels() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    for path in (
+        "docs/stack_lock.md",
+        "src/causal4d/cli/root.py",
+        "src/causal4d/cli/stack.py",
+        "src/causal4d/stack_lock.py",
+        "tests/test_stack_lock.py",
+    ):
+        assert text.count(f'"{path}"') == 2
+    assert "Create and verify content-addressed stack lock" in text
+    assert '"$venv/bin/causal4d" stack create' in text
+    assert '"$venv/bin/causal4d" stack verify' in text
+    assert 'cmp "$lock" "$create_output"' in text
+    assert "three-repository-stack-lock.json" in text
+    assert "three-repository-stack-lock-verification.json" in text
+    assert "${{ runner.temp }}/three-repository-wheelhouse/*.whl" in text
+    assert "Upload golden-path diagnostics and locked wheels" in text
