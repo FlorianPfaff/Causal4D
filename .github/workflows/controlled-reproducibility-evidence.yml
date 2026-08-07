@@ -2,10 +2,11 @@ name: Controlled reproducibility evidence
 
 on:
   push:
-    branches:
-      - "evidence/controlled-reproducibility-20260807"
-    paths:
-      - ".github/workflows/controlled-reproducibility-evidence.yml"
+    branches: ["evidence/controlled-reproducibility-20260807"]
+    paths: [".github/workflows/controlled-reproducibility-evidence.yml"]
+  pull_request:
+    branches: [main]
+    paths: [".github/workflows/controlled-reproducibility-evidence.yml"]
   workflow_dispatch:
 
 permissions:
@@ -58,48 +59,31 @@ jobs:
             --output-dir evidence/latent-contact/canonical \
             | tee evidence/logs/latent-contact-canonical.json
 
-      - name: Build evidence report and validate identities
-        shell: bash
+      - name: Build content-addressed evidence report
         run: |
           python - <<'PY'
-          from __future__ import annotations
-
           import hashlib
           import json
           import os
           import platform
-          import subprocess
           from pathlib import Path
 
           root = Path("evidence")
-          counterfactual = json.loads(
-              (root / "counterfactual/canonical/summary.json").read_text(
-                  encoding="utf-8"
-              )
-          )
-          latent = json.loads(
-              (root / "latent-contact/canonical/summary.json").read_text(
-                  encoding="utf-8"
-              )
-          )
+          cf = json.loads((root / "counterfactual/canonical/summary.json").read_text())
+          lc = json.loads((root / "latent-contact/canonical/summary.json").read_text())
           gates = json.loads(
-              (root / "latent-contact/canonical/success_gates.json").read_text(
-                  encoding="utf-8"
-              )
+              (root / "latent-contact/canonical/success_gates.json").read_text()
           )
-          if counterfactual["seeds"] != list(range(64)):
+          if cf["seeds"] != list(range(64)):
               raise SystemExit("counterfactual seed inventory mismatch")
-          if latent["seeds"] != list(range(10)):
+          if lc["seeds"] != list(range(10)):
               raise SystemExit("latent-contact seed inventory mismatch")
           if gates.get("overall_passed") is not True:
               raise SystemExit("registered latent-contact gates did not pass")
 
-          def sha256(path: Path) -> str:
-              digest = hashlib.sha256()
-              with path.open("rb") as handle:
-                  for block in iter(lambda: handle.read(1024 * 1024), b""):
-                      digest.update(block)
-              return digest.hexdigest()
+          def bind(path):
+              data = path.read_bytes()
+              return {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
 
           tracked = [
               root / "counterfactual/canonical/summary.json",
@@ -112,38 +96,27 @@ jobs:
               "schema_version": 1,
               "artifact_kind": "Causal4DControlledReproducibilityEvidence",
               "source_revision": os.environ["GITHUB_SHA"],
-              "workflow": os.environ["GITHUB_WORKFLOW"],
-              "run_id": os.environ["GITHUB_RUN_ID"],
-              "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
-              "runner_os": os.environ["RUNNER_OS"],
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "workflow_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
               "python": platform.python_version(),
-              "platform": platform.platform(),
-              "git_status_porcelain": subprocess.check_output(
-                  ["git", "status", "--porcelain"], text=True
-              ).splitlines(),
               "counterfactual": {
-                  "seed_count": len(counterfactual["seeds"]),
-                  "aggregate": counterfactual["aggregate"],
+                  "seed_count": 64,
+                  "aggregate": cf["aggregate"],
               },
               "latent_contact": {
-                  "seed_count": len(latent["seeds"]),
-                  "aggregate": latent["aggregate"],
+                  "seed_count": 10,
+                  "aggregate": lc["aggregate"],
                   "success_gates": gates,
               },
               "bound_files": {
-                  path.relative_to(root).as_posix(): {
-                      "sha256": sha256(path),
-                      "bytes": path.stat().st_size,
-                  }
-                  for path in tracked
+                  path.relative_to(root).as_posix(): bind(path) for path in tracked
               },
               "physical_evidence_increment": 0,
               "target_outcomes_used": False,
               "passed": True,
           }
           (root / "report.json").write_text(
-              json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n",
-              encoding="utf-8",
+              json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n"
           )
           PY
           python -VV > evidence/python-version.txt
@@ -215,25 +188,23 @@ jobs:
             --world-nonlinearity "${{ matrix.nonlinearity }}" \
             --output-dir "evidence/${{ matrix.case }}"
 
-      - name: Bind stress-case metadata and checksums
+      - name: Bind stress evidence
         run: |
           CASE_NAME="${{ matrix.case }}" python - <<'PY'
-          from __future__ import annotations
-
           import json
           import os
           from pathlib import Path
 
           case = os.environ["CASE_NAME"]
-          path = Path("evidence") / case / "summary.json"
-          summary = json.loads(path.read_text(encoding="utf-8"))
+          directory = Path("evidence") / case
+          summary = json.loads((directory / "summary.json").read_text())
           if summary["seeds"] != list(range(20)):
-              raise SystemExit("stress-case seed inventory mismatch")
-          metadata = {
+              raise SystemExit("stress seed inventory mismatch")
+          report = {
               "schema_version": 1,
               "artifact_kind": "Causal4DCounterfactualStressEvidence",
-              "case": case,
               "source_revision": os.environ["GITHUB_SHA"],
+              "case": case,
               "seed_count": 20,
               "config": summary["config"],
               "aggregate": summary["aggregate"],
@@ -241,9 +212,8 @@ jobs:
               "target_outcomes_used": False,
               "passed": True,
           }
-          (Path("evidence") / case / "evidence.json").write_text(
-              json.dumps(metadata, indent=2, sort_keys=True, allow_nan=False) + "\n",
-              encoding="utf-8",
+          (directory / "evidence.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n"
           )
           PY
           find evidence -type f ! -name SHA256SUMS -print0 \
@@ -288,11 +258,9 @@ jobs:
             --seeds 0:10 \
             --output-dir "evidence/python-${{ matrix.python-version }}"
 
-      - name: Bind portability metadata and checksums
+      - name: Bind portability evidence
         run: |
           PYTHON_TARGET="${{ matrix.python-version }}" python - <<'PY'
-          from __future__ import annotations
-
           import json
           import os
           import platform
@@ -300,10 +268,10 @@ jobs:
 
           target = os.environ["PYTHON_TARGET"]
           directory = Path("evidence") / f"python-{target}"
-          summary = json.loads((directory / "summary.json").read_text(encoding="utf-8"))
+          summary = json.loads((directory / "summary.json").read_text())
           if summary["seeds"] != list(range(10)):
               raise SystemExit("portability seed inventory mismatch")
-          metadata = {
+          report = {
               "schema_version": 1,
               "artifact_kind": "Causal4DNumericalPortabilityEvidence",
               "source_revision": os.environ["GITHUB_SHA"],
@@ -316,8 +284,7 @@ jobs:
               "passed": True,
           }
           (directory / "evidence.json").write_text(
-              json.dumps(metadata, indent=2, sort_keys=True, allow_nan=False) + "\n",
-              encoding="utf-8",
+              json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n"
           )
           PY
           find evidence -type f ! -name SHA256SUMS -print0 \
@@ -331,3 +298,5 @@ jobs:
           path: evidence
           if-no-files-found: error
           retention-days: 90
+
+# Second indexed push intentionally triggers this workflow on its evidence branch.
