@@ -12,6 +12,18 @@ BPT_PIN = ROOT / "requirements" / "ci" / "bayesian-phystwin-three-repository.sha
 PROB4D_PIN = ROOT / "requirements" / "ci" / "prob4d-three-repository.sha"
 
 
+DECISION_TRACE_TRIGGER_PATHS = (
+    "docs/decision_trace.md",
+    "src/causal4d/__init__.py",
+    "src/causal4d/artifact_io.py",
+    "src/causal4d/atomic_io.py",
+    "src/causal4d/decision_trace.py",
+    "src/causal4d/immutable_json.py",
+    "src/causal4d/stack_lock.py",
+    "tests/test_decision_trace.py",
+)
+
+
 def test_public_provider_workflow_is_mandatory_and_secret_free() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
@@ -102,3 +114,25 @@ def test_rollout_bank_contract_changes_trigger_installed_wheel_path() -> None:
         "tests/test_rollout_bank_io.py",
     ):
         assert text.count(f'"{path}"') == 2
+
+
+def test_decision_trace_changes_trigger_installed_wheel_path() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    for path in DECISION_TRACE_TRIGGER_PATHS:
+        assert text.count(f'"{path}"') == 2
+
+
+def test_decision_trace_runs_against_the_installed_stack() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "Verify imports originate only from installed wheels" in text
+    assert "from causal4d import decision_trace" in text
+    assert "source-tree import detected" in text
+    assert 'env -u PYTHONPATH \\' in text
+    assert "--import-mode=importlib" in text
+    assert "causal4d/tests/test_decision_trace.py" in text
+    assert '--junitxml="$RUNNER_TEMP/three-repository-contract-tests.xml"' in text
+    assert "three-repository-contract-tests.xml" in text.split(
+        "- name: Upload golden-path diagnostics and locked wheels", maxsplit=1
+    )[1]
