@@ -11,6 +11,22 @@ from causal4d.action_conditioned_discrepancy import (
     build_action_conditioned_features,
     forecast_action_conditioned_persistence,
 )
+from causal4d.action_support import (
+    ACTION_SUPPORT_SCHEMA_VERSION,
+    ActionSupportCalibration,
+    ActionSupportDecision,
+    ActionSupportSelection,
+    ActionSupportSourceCase,
+    evaluate_action_support,
+    fit_action_support_calibration,
+    load_action_support_calibration,
+    load_claim_bearing_action_support_calibration,
+    select_action_supported_candidate,
+    write_action_support_calibration,
+)
+from causal4d.action_support_counterfactual import (
+    apply_guarded_action_conditioned_counterfactual_operator,
+)
 from causal4d.benchmark import CounterfactualBenchmarkConfig, build_protocol
 from causal4d.causal_sufficiency import (
     CausalSufficiencyResult,
@@ -128,10 +144,15 @@ from causal4d.stable_discrepancy_dynamics import (
 )
 
 __all__ = [
+    "ACTION_SUPPORT_SCHEMA_VERSION",
     "ActionConditionedDiscrepancyFeatures",
     "ActionConditionedDiscrepancyForecast",
     "ActionConditionedDiscrepancyModel",
     "ActionConditionedPhysicalPosterior",
+    "ActionSupportCalibration",
+    "ActionSupportDecision",
+    "ActionSupportSelection",
+    "ActionSupportSourceCase",
     "ActuatorEvidence",
     "BASE_CAUSAL4D_PROVIDER_CAPABILITIES",
     "BAYESIAN_PHYSTWIN_ARTIFACT_SCHEMA_VERSIONS",
@@ -177,6 +198,7 @@ __all__ = [
     "abduct_hierarchical_interventions",
     "apply_action_conditioned_counterfactual_operator",
     "apply_counterfactual_operator",
+    "apply_guarded_action_conditioned_counterfactual_operator",
     "apply_semantic_freshness_gate",
     "assess_command_residual_sufficiency",
     "assess_finite_query_ambiguity",
@@ -184,7 +206,9 @@ __all__ = [
     "bind_twin_belief_observation_factor_lineage",
     "build_action_conditioned_features",
     "build_protocol",
+    "evaluate_action_support",
     "finite_response_sensitivity",
+    "fit_action_support_calibration",
     "forecast_action_conditioned_dynamics",
     "forecast_action_conditioned_persistence",
     "graph_discrepancy_group_covariances",
@@ -192,7 +216,9 @@ __all__ = [
     "graph_traction_field",
     "grouped_component_log_likelihoods",
     "integrate_contact_wrench",
+    "load_action_support_calibration",
     "load_bayesian_phystwin_provider_manifest",
+    "load_claim_bearing_action_support_calibration",
     "load_claim_bearing_prob4d_observation_lineage",
     "load_graph_discrepancy_belief",
     "load_independent_sensor_evidence",
@@ -208,12 +234,14 @@ __all__ = [
     "run_counterfactual_benchmark",
     "run_latent_contact_benchmark",
     "save_independent_sensor_evidence",
+    "select_action_supported_candidate",
     "update_joint_weights_from_prefix",
     "validate_bayesian_phystwin_provider",
     "validate_claim_bearing_prob4d_observation_metadata",
     "validate_prob4d_causal_observation_metadata",
     "validate_provider_compatibility",
     "validate_twin_belief_observation_factor_lineage",
+    "write_action_support_calibration",
     "write_graph_discrepancy_belief",
 ]
 
