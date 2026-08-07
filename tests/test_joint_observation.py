@@ -66,7 +66,7 @@ def test_dense_and_low_rank_joint_covariance_are_equivalent() -> None:
     structured = _evidence(factor=factor)
     dense = replace(
         structured,
-        base_covariance_m2=structured.base_covariance_m2 + factor @ factor.T,
+        base_covariance_m2=(structured.base_covariance_m2 + factor @ factor.T),
         shared_covariance_factor_m=None,
     )
     components = _components()
@@ -82,12 +82,7 @@ def test_dense_and_low_rank_joint_covariance_are_equivalent() -> None:
         prefix_frame_count=3,
     )
 
-    np.testing.assert_allclose(
-        structured_score,
-        dense_score,
-        rtol=1e-12,
-        atol=1e-12,
-    )
+    np.testing.assert_allclose(structured_score, dense_score, rtol=1e-12, atol=1e-12)
     assert structured_diagnostics.used_low_rank_path is True
     assert dense_diagnostics.used_low_rank_path is False
 
@@ -119,15 +114,10 @@ def test_score_matches_direct_full_covariance_calculation() -> None:
             + combined_factor @ combined_factor.T
         )
         expected.append(_direct_score(residual[index], covariance))
-    np.testing.assert_allclose(
-        score,
-        np.asarray(expected),
-        rtol=1e-12,
-        atol=1e-12,
-    )
+    np.testing.assert_allclose(score, np.asarray(expected), rtol=1e-12, atol=1e-12)
     assert diagnostics.evidence_shared_rank == 1
     assert diagnostics.component_shared_rank == 1
-    assert diagnostics.used_component_dense_covariance is True
+    assert diagnostics.used_component_covariance is True
 
 
 def test_row_permutation_preserves_scores_and_posterior() -> None:
@@ -146,9 +136,7 @@ def test_row_permutation_preserves_scores_and_posterior() -> None:
         node_indices=evidence.node_indices,
         coordinate_indices=evidence.coordinate_indices,
         coefficients=evidence.coefficients,
-        base_covariance_m2=evidence.base_covariance_m2[
-            np.ix_(permutation, permutation)
-        ],
+        base_covariance_m2=evidence.base_covariance_m2[np.ix_(permutation, permutation)],
         shared_covariance_factor_m=factor[permutation],
         source_id=evidence.source_id,
         metadata=evidence.metadata,
@@ -177,12 +165,7 @@ def test_row_permutation_preserves_scores_and_posterior() -> None:
         prefix_frame_count=3,
     )
 
-    np.testing.assert_allclose(
-        score,
-        permuted_score,
-        rtol=1e-12,
-        atol=1e-12,
-    )
+    np.testing.assert_allclose(score, permuted_score, rtol=1e-12, atol=1e-12)
     np.testing.assert_allclose(
         posterior,
         permuted_posterior,
@@ -296,6 +279,79 @@ def test_low_rank_path_does_not_use_dense_slogdet(monkeypatch) -> None:
     )
     assert np.all(np.isfinite(score))
     assert diagnostics.used_low_rank_path is True
+
+
+def test_block_diagonal_base_matches_materialized_dense_covariance() -> None:
+    dense = _evidence(factor=np.array([[0.05], [0.02], [-0.01]]))
+    blocks = np.stack(
+        (
+            dense.base_covariance_m2[:1, :1],
+            dense.base_covariance_m2[1:2, 1:2],
+            dense.base_covariance_m2[2:3, 2:3],
+        )
+    )
+    block_evidence = replace(dense, base_covariance_m2=blocks)
+    materialized = replace(
+        dense,
+        base_covariance_m2=np.diag(np.diag(dense.base_covariance_m2)),
+    )
+
+    block_score, block_diagnostics = joint_component_log_likelihoods(
+        _components(),
+        block_evidence,
+        prefix_frame_count=3,
+    )
+    dense_score, _ = joint_component_log_likelihoods(
+        _components(),
+        materialized,
+        prefix_frame_count=3,
+    )
+
+    np.testing.assert_allclose(block_score, dense_score, rtol=1e-12, atol=1e-12)
+    assert block_diagnostics.base_covariance_representation == "block_diagonal"
+    assert block_diagnostics.base_block_count == 3
+    assert block_diagnostics.base_block_size == 1
+
+
+def test_block_base_propagates_independent_component_variance() -> None:
+    dense = _evidence(factor=None)
+    blocks = np.stack(
+        (
+            dense.base_covariance_m2[:1, :1],
+            dense.base_covariance_m2[1:2, 1:2],
+            dense.base_covariance_m2[2:3, 2:3],
+        )
+    )
+    evidence = replace(dense, base_covariance_m2=blocks)
+    variance = np.zeros_like(_components())
+    variance[:, 1, 0, 0] = np.array([0.01, 0.02, 0.03, 0.04])
+
+    score, diagnostics = joint_component_log_likelihoods(
+        _components(),
+        evidence,
+        prefix_frame_count=3,
+        component_independent_variance_m2=variance,
+    )
+
+    assert np.all(np.isfinite(score))
+    assert diagnostics.used_component_independent_covariance is True
+
+
+def test_block_base_rejects_cross_block_selector_reuse() -> None:
+    evidence = LinearJointObservationEvidence(
+        evidence_id="cross-block-reuse",
+        values_m=np.zeros(2),
+        row_indices=np.array([0, 1]),
+        frame_indices=np.array([1, 1]),
+        node_indices=np.array([0, 0]),
+        coordinate_indices=np.array([0, 0]),
+        coefficients=np.ones(2),
+        base_covariance_m2=np.ones((2, 1, 1)),
+    )
+    variance = np.ones((2, 2, 1))
+
+    with pytest.raises(ValueError, match="off-block covariance"):
+        evidence.apply_independent_covariance_blocks(variance)
 
 
 def test_contracts_fail_closed() -> None:
