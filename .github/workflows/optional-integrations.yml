@@ -142,7 +142,10 @@ jobs:
 
   gpu:
     name: CUDA / Warp self-hosted smoke
-    if: github.event_name == 'workflow_dispatch' && inputs.run_gpu
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      inputs.run_gpu
     runs-on: [self-hosted, Linux, X64, nvidia-smi]
     steps:
       - name: Check out Causal4D
