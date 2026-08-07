@@ -14,6 +14,9 @@ def test_reset_mechanics_workflow_is_read_only_and_source_scoped() -> None:
     assert "github.event.pull_request.head.repo.full_name == github.repository" in text
     assert "workflow_dispatch:" in text
     assert "run_source_diagnostic:" in text
+    assert "Check out pinned public BayesianPhysTwin" in text
+    assert "BPT_READ_SSH_KEY" not in text
+    assert "ssh-key:" not in text
     assert "target" not in text.lower()
 
 
