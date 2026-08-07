@@ -1,5 +1,6 @@
 name: Apply reviewed issue 233 repair
 
+# Branch-local one-shot transport; removed before review.
 on:
   push:
     branches: [fix/coordinatewise-frame-zero-invariance]
