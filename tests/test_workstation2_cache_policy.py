@@ -13,6 +13,7 @@ def test_workstation2_uses_isolated_grouped_reproduction_path() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
     assert "runs-on: [self-hosted, Linux, X64, nvidia-smi]" in text
+    assert "github.ref == 'refs/heads/main'" in text
     assert "cache: pip" not in text
     assert ".workstation2-venv/bin/causal4d benchmark latent-contact" in text
     assert "causal4d-latent-contact-benchmark" not in text
