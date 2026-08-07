@@ -5,6 +5,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "contact-posterior-concentration.yml"
+EXACT_REVISION = "${{ github.event.pull_request.head.sha || github.sha }}"
+
+
+def _evaluate_job(text: str) -> str:
+    return text.split("  evaluate:", maxsplit=1)[1]
 
 
 def test_concentration_workflow_is_read_only_and_runner_selectable() -> None:
@@ -23,6 +28,27 @@ def test_concentration_workflow_is_read_only_and_runner_selectable() -> None:
     assert "github.event.pull_request.head.repo.full_name == github.repository" in text
     assert "workflow_dispatch:" in text
     assert "  push:" not in text
+
+
+def test_concentration_self_hosted_dispatch_is_main_only() -> None:
+    job = _evaluate_job(WORKFLOW.read_text(encoding="utf-8"))
+
+    assert "github.event_name == 'workflow_dispatch'" in job
+    assert "inputs.runner != 'self-hosted'" in job
+    assert "github.ref == 'refs/heads/main'" in job
+    assert "github.event.pull_request.head.repo.full_name == github.repository" in job
+
+
+def test_concentration_checks_out_and_verifies_exact_revision() -> None:
+    job = _evaluate_job(WORKFLOW.read_text(encoding="utf-8"))
+
+    assert f"ref: {EXACT_REVISION}" in job
+    assert f"EXPECTED_SHA: {EXACT_REVISION}" in job
+    assert 'test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"' in job
+    checkout = job.index("- name: Check out exact Causal4D revision")
+    verify = job.index("- name: Verify exact clean revision")
+    install = job.index("- name: Install isolated diagnostic environment")
+    assert checkout < verify < install
 
 
 def test_concentration_workflow_caches_only_on_hosted_runners() -> None:
