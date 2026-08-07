@@ -31,4 +31,6 @@ def test_optional_integrations_do_not_use_editable_provider_installs() -> None:
     assert 'python -m pip install "./_bpt[dev]" opencv-python' in text
     assert 'python -m pip install ".[dev,warp]" ./_bpt' in text
     assert 'python -m pip install ".[dev,vision,warp]" ./_bpt' in text
-    assert "if: github.event_name == 'workflow_dispatch' && inputs.run_gpu" in text
+    assert "github.event_name == 'workflow_dispatch'" in text
+    assert "github.ref == 'refs/heads/main'" in text
+    assert "inputs.run_gpu" in text
