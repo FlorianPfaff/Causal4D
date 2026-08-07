@@ -11,6 +11,33 @@ Every operation is a typed, lazily imported grouped route. Root help, command
 inventory, migration lookup, and metadata validation do not import optional
 BayesianPhysTwin, Warp, vision, or GPU dependencies.
 
+## Focused discovery
+
+The default root help intentionally shows only `stable` routes. This gives new
+users the supported reproduction, evidence, calibration, and protocol surface
+without mixing it with diagnostics, prospective experiments, public-study
+utilities, or archived paths:
+
+```bash
+causal4d --help
+```
+
+The complete catalog remains available without importing command modules:
+
+```bash
+causal4d --help-all
+causal4d commands list
+causal4d commands list --lifecycle stable
+causal4d commands list --lifecycle diagnostic --lifecycle experimental
+causal4d commands list --claim-bearing --json
+```
+
+`--help-all` includes an explicit lifecycle label after every summary. Lifecycle
+filters are repeatable and combine as a union. `--claim-bearing` can be combined
+with lifecycle and removed-executable filters. An unfiltered
+`causal4d commands list --json` remains the complete machine-readable inventory,
+so the focused help view does not hide or delete any route.
+
 ## Stable workflows
 
 ```bash
@@ -74,6 +101,8 @@ surfaces; current releases do not recreate them.
 
 ## Contribution rule
 
-New command functionality must be added to the grouped registry. Adding another
-`[project.scripts]` entry is a packaging-policy violation. Installed wheel and
-source-distribution CI invokes `--help` for every registered grouped route.
+New command functionality must be added to the grouped registry and assigned a
+lifecycle. Adding another `[project.scripts]` entry is a packaging-policy
+violation. Installed wheel and source-distribution CI invokes `--help` for every
+registered grouped route, including commands that the focused root help does not
+show by default.
