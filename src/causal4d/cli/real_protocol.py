@@ -22,6 +22,10 @@ from causal4d.real_protocol import (
     write_acquisition_schedule,
     write_protocol,
 )
+from causal4d.registered_real_analysis import (
+    seal_registered_real_analysis_manifest,
+    validate_registered_real_analysis_sources,
+)
 
 INCOMPLETE_EVIDENCE_EXIT_CODE = 3
 
@@ -52,6 +56,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     scaffold.add_argument("protocol_json")
     scaffold.add_argument("output_root")
+
+    analysis_seal = subparsers.add_parser(
+        "analysis-manifest-seal",
+        help="seal the content-addressed registered primary-analysis contract",
+    )
+    analysis_seal.add_argument("repository_root")
+    analysis_seal.add_argument("protocol_json")
+    analysis_seal.add_argument("method_freeze_json")
+    analysis_seal.add_argument("output_json")
+    analysis_seal.add_argument("--registered-by", required=True)
+    analysis_seal.add_argument("--registered-at-utc")
+
+    analysis_validate = subparsers.add_parser(
+        "analysis-manifest-validate",
+        help="reopen and validate the protocol, freeze, and analysis manifest",
+    )
+    analysis_validate.add_argument("repository_root")
+    analysis_validate.add_argument("protocol_json")
+    analysis_validate.add_argument("method_freeze_json")
+    analysis_validate.add_argument("analysis_manifest_json")
 
     status = subparsers.add_parser(
         "status",
@@ -122,6 +146,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                 **result,
                 **scaffold_real_evidence_v2_templates(protocol, args.output_root),
             }
+        elif args.command == "analysis-manifest-seal":
+            result = seal_registered_real_analysis_manifest(
+                args.repository_root,
+                args.protocol_json,
+                args.method_freeze_json,
+                args.output_json,
+                registered_by=args.registered_by,
+                registered_at_utc=args.registered_at_utc,
+            )
+        elif args.command == "analysis-manifest-validate":
+            result = validate_registered_real_analysis_sources(
+                args.repository_root,
+                args.protocol_json,
+                args.method_freeze_json,
+                args.analysis_manifest_json,
+            )
         elif args.command == "status":
             result = build_real_evidence_status(
                 load_protocol(args.protocol_json),

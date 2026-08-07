@@ -10,9 +10,13 @@ from typing import Any, Final, Protocol, cast
 
 from causal4d.artifact_io import load_strict_json_object, read_regular_file
 from causal4d.real_experiment_freeze import MILESTONE_ID, SCHEMA_VERSION
+from causal4d.registered_real_analysis import (
+    REGISTERED_ANALYSIS_ARTIFACT_KIND,
+    REGISTERED_ANALYSIS_SCHEMA_VERSION,
+    validate_registered_real_analysis_manifest,
+)
 
-REGISTERED_ANALYSIS_SCHEMA_VERSION: Final = 1
-REGISTERED_ANALYSIS_ARTIFACT_KIND: Final = "Causal4DRegisteredRealAnalysisManifest"
+LEGACY_REGISTERED_ANALYSIS_SCHEMA_VERSION: Final = 1
 SOURCE_VERIFICATION_SCHEMA_VERSION: Final = 1
 SOURCE_VERIFICATION_ARTIFACT_KIND: Final = "Causal4DRealResultSourceVerification"
 
@@ -134,14 +138,10 @@ def _validate_method_freeze(
     )
 
 
-def _validate_registered_analysis(
+def _validate_legacy_registered_analysis(
     payload: Mapping[str, Any],
     binding: RealResultSourceBinding,
 ) -> None:
-    _require(
-        payload.get("schema_version") == REGISTERED_ANALYSIS_SCHEMA_VERSION,
-        "registered analysis manifest uses an unsupported schema",
-    )
     _require(
         payload.get("artifact_kind") == REGISTERED_ANALYSIS_ARTIFACT_KIND,
         "unexpected registered analysis artifact kind",
@@ -176,6 +176,28 @@ def _validate_registered_analysis(
         payload.get("optional_branches_may_change_primary_analysis") is False,
         "registered analysis manifest permits optional-branch rescue",
     )
+
+
+def _validate_registered_analysis(
+    payload: Mapping[str, Any],
+    binding: RealResultSourceBinding,
+) -> None:
+    schema = payload.get("schema_version")
+    if schema == LEGACY_REGISTERED_ANALYSIS_SCHEMA_VERSION:
+        _validate_legacy_registered_analysis(payload, binding)
+        return
+    if schema == REGISTERED_ANALYSIS_SCHEMA_VERSION:
+        validate_registered_real_analysis_manifest(
+            payload,
+            expected_protocol_id=binding.protocol_id,
+            expected_protocol_design_sha256=binding.protocol_design_sha256,
+            expected_preacquisition_amendment_sha256=(
+                binding.preacquisition_amendment_sha256
+            ),
+            expected_method_freeze_sha256=binding.method_freeze_sha256,
+        )
+        return
+    raise ValueError("registered analysis manifest uses an unsupported schema")
 
 
 def verify_real_result_sources(
@@ -272,6 +294,7 @@ def validate_real_result_source_verification(
 
 
 __all__ = [
+    "LEGACY_REGISTERED_ANALYSIS_SCHEMA_VERSION",
     "REGISTERED_ANALYSIS_ARTIFACT_KIND",
     "REGISTERED_ANALYSIS_SCHEMA_VERSION",
     "RealResultSourceBinding",

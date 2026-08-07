@@ -32,6 +32,9 @@ from causal4d.preacquisition_readiness_contracts import (
     source_panel_execution_manifest_template,
 )
 from causal4d.real_evidence_contract_v2 import build_real_evidence_status
+from causal4d.registered_real_analysis_prerequisite import (
+    validate_registered_real_analysis_prerequisite,
+)
 
 
 def _publish_template(
@@ -149,6 +152,7 @@ def evaluate_preacquisition_readiness(
     real_status: Mapping[str, Any],
     *,
     verify_file_hashes: bool,
+    require_registered_analysis: bool = False,
 ) -> dict[str, Any]:
     """Derive all collection gates from validated artifacts and chronology."""
 
@@ -156,6 +160,14 @@ def evaluate_preacquisition_readiness(
     prerequisites = {
         str(name): dict(value) for name, value in real_status["prerequisites"].items()
     }
+    if require_registered_analysis:
+        prerequisites["registered_analysis"] = (
+            validate_registered_real_analysis_prerequisite(
+                protocol,
+                root,
+                prerequisites["method_freeze"],
+            )
+        )
     operator_registry_result, operator_registry = load_operator_registry_prerequisite(
         protocol, v4, root
     )
@@ -185,6 +197,8 @@ def evaluate_preacquisition_readiness(
         "method_freeze",
         "method_freeze_validation",
     )
+    if require_registered_analysis:
+        prerequisite_names = (*prerequisite_names, "registered_analysis")
     missing_prerequisites = [
         name
         for name in prerequisite_names
@@ -336,6 +350,10 @@ def evaluate_preacquisition_readiness(
             "valid"
         ],
     }
+    if require_registered_analysis:
+        flags["primary_analysis_registered"] = prerequisites["registered_analysis"].get(
+            "valid", False
+        )
     ready = not blockers and all(flags.values())
     flags["first_confirmatory_execution_allowed"] = ready
     valid = (
@@ -352,6 +370,7 @@ def evaluate_preacquisition_readiness(
         "preacquisition_amendment_sha256": v4["amendment_sha256"],
         "dataset_root": str(root.resolve()),
         "verify_file_hashes": verify_file_hashes,
+        "registered_analysis_required": require_registered_analysis,
         "prerequisites": {
             name: dict(prerequisites[name]) for name in prerequisite_names
         },
@@ -400,6 +419,7 @@ def build_preacquisition_readiness(
         dataset_root,
         real_status,
         verify_file_hashes=verify_file_hashes,
+        require_registered_analysis=True,
     )
 
 
