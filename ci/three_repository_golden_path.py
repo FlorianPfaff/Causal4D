@@ -38,8 +38,8 @@ def _require_runner_outside_checkouts(checkout_roots: tuple[Path, ...]) -> None:
 def _default_project_status() -> str:
     workspace = os.environ.get("GITHUB_WORKSPACE")
     if workspace:
-        return str(Path(workspace) / "causal4d" / "ci" / "project_status_v1.json")
-    return "ci/project_status_v1.json"
+        return str(Path(workspace) / "causal4d" / "ci" / "project_status_v2.json")
+    return "ci/project_status_v2.json"
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
