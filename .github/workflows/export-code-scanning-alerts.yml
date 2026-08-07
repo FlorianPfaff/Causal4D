@@ -14,10 +14,10 @@ concurrency:
 
 jobs:
   export:
-    name: Export open alerts
+    name: Export open alerts and repository snapshot
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Fetch and sanitize open CodeQL alerts
         shell: bash
@@ -93,11 +93,26 @@ jobs:
           print(f"OPEN_ALERT_COUNT={len(sanitized)}")
           PY
 
-      - name: Upload sanitized alert report
+      - name: Check out the pull-request merge revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          path: repository
+          persist-credentials: false
+
+      - name: Package repository snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -C repository -czf repository-snapshot.tar.gz .
+
+      - name: Upload temporary diagnostics
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: open-code-scanning-alerts-${{ github.sha }}
-          path: code-scanning-alerts.json
+          name: code-scanning-diagnostics-${{ github.sha }}
+          path: |
+            code-scanning-alerts.json
+            repository-snapshot.tar.gz
           if-no-files-found: error
           retention-days: 1
