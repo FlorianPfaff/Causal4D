@@ -11,11 +11,21 @@ import sys
 
 from causal4d.cli.command_registry import (
     CommandSpec,
+    Lifecycle,
     command_inventory,
     find_command,
     grouped_commands,
     historical_commands,
     validate_runtime_command_inventory,
+)
+
+
+LIFECYCLE_ORDER: tuple[Lifecycle, ...] = (
+    "stable",
+    "diagnostic",
+    "experimental",
+    "public-study",
+    "archive",
 )
 
 
@@ -26,10 +36,29 @@ def _version() -> str:
         return "unknown"
 
 
-def _root_help() -> str:
+def _grouped_help_lines(
+    commands: Sequence[CommandSpec],
+    *,
+    include_lifecycle: bool,
+) -> list[str]:
     groups: dict[str, list[CommandSpec]] = {}
-    for command in grouped_commands():
+    for command in commands:
         groups.setdefault(command.route[0], []).append(command)
+    lines: list[str] = []
+    for group, group_commands in groups.items():
+        lines.append(f"  {group}")
+        for command in group_commands:
+            suffix = " ".join(command.route[1:])
+            lifecycle = f" [{command.lifecycle}]" if include_lifecycle else ""
+            lines.append(f"    {suffix:<40} {command.summary}{lifecycle}")
+    return lines
+
+
+def _root_help(*, include_all: bool = False) -> str:
+    commands = grouped_commands()
+    if not include_all:
+        commands = tuple(command for command in commands if command.lifecycle == "stable")
+    route_heading = "all registered routes:" if include_all else "stable routes:"
     lines = [
         "usage: causal4d <group> <command> [arguments]",
         "       causal4d stack {create,verify} ...",
@@ -37,13 +66,19 @@ def _root_help() -> str:
         "",
         "Single executable for all Causal4D commands. Modules are imported lazily.",
         "",
-        "groups:",
+        route_heading,
+        *_grouped_help_lines(commands, include_lifecycle=include_all),
     ]
-    for group, commands in groups.items():
-        lines.append(f"  {group}")
-        for command in commands:
-            suffix = " ".join(command.route[1:])
-            lines.append(f"    {suffix:<40} {command.summary}")
+    if not include_all:
+        lines.extend(
+            (
+                "",
+                "Only stable routes are shown above.",
+                "Use 'causal4d --help-all' for diagnostic, experimental,",
+                "public-study, and archive routes, or filter the registry with",
+                "'causal4d commands list --lifecycle <lifecycle>'.",
+            )
+        )
     lines.extend(
         (
             "",
@@ -53,7 +88,8 @@ def _root_help() -> str:
             "  stack verify --lock PATH --lock-only [--json]",
             "",
             "introspection:",
-            "  commands list [--json] [--removed-only]",
+            "  commands list [--json] [--removed-only] [--claim-bearing]",
+            "                [--lifecycle LIFECYCLE]",
             "  commands describe <route-or-removed-executable> [--json]",
             "  commands migrate <removed-executable> [--json]",
             "  commands validate [--json] [--require-installed]",
@@ -94,8 +130,26 @@ def _commands_list(arguments: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="causal4d commands list")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--removed-only", action="store_true")
+    parser.add_argument(
+        "--lifecycle",
+        action="append",
+        choices=LIFECYCLE_ORDER,
+        help="Include only this lifecycle; repeat to select several.",
+    )
+    parser.add_argument(
+        "--claim-bearing",
+        action="store_true",
+        help="Include only routes that can publish claim-bearing evidence.",
+    )
     parsed = parser.parse_args(arguments)
     inventory = command_inventory(removed_only=parsed.removed_only)
+    if parsed.lifecycle:
+        allowed = frozenset(parsed.lifecycle)
+        inventory = tuple(
+            command for command in inventory if command.lifecycle in allowed
+        )
+    if parsed.claim_bearing:
+        inventory = tuple(command for command in inventory if command.claim_bearing)
     if parsed.json:
         print(json.dumps([command.as_dict() for command in inventory], indent=2))
     else:
@@ -105,7 +159,13 @@ def _commands_list(arguments: Sequence[str]) -> int:
                 if command.historical_name
                 else ""
             )
-            print(f"{command.route_name:<52} {command.lifecycle:<12}{historical}")
+            claim = "claim-bearing" if command.claim_bearing else ""
+            print(
+                f"{command.route_name:<52} "
+                f"{command.lifecycle:<12} "
+                f"{claim:<13} "
+                f"{command.summary}{historical}"
+            )
     return 0
 
 
@@ -201,7 +261,11 @@ def _commands(arguments: Sequence[str]) -> int:
     if not arguments or arguments[0] in {"-h", "--help"}:
         print(
             "usage: causal4d commands {list,describe,migrate,validate} ...\n\n"
-            "Inspect current routes and removed executable migrations."
+            "Inspect current routes and removed executable migrations.\n\n"
+            "List filters:\n"
+            "  --lifecycle {stable,diagnostic,experimental,public-study,archive}\n"
+            "  --claim-bearing\n"
+            "  --removed-only"
         )
         return 0
     operation, *remaining = arguments
@@ -252,6 +316,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     if not arguments or arguments[0] in {"-h", "--help"}:
         print(_root_help())
+        return 0
+    if arguments[0] == "--help-all":
+        print(_root_help(include_all=True))
         return 0
     if arguments[0] == "--version":
         print(_version())
