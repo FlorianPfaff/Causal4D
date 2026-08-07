@@ -1,7 +1,7 @@
 """Source-only rollout-space certification for finite-support reductions.
 
 Parameter-space moments are useful diagnostics but do not certify that a
-nonlinear simulator preserves the query distribution.  This additive module
+nonlinear simulator preserves the query distribution. This additive module
 compares full and reduced support directly on a frozen source-action library.
 It does not inspect target outcomes and it does not alter the registered
 estimator or the existing latent-contact-v2 support decision.
@@ -23,6 +23,7 @@ from causal4d.latent_contact_v2 import gaussian_mixture_quantiles
 
 
 FUNCTIONAL_SUPPORT_CERTIFICATE_SCHEMA_VERSION = 1
+_ENERGY_DISTANCE_BLOCK_SIZE = 256
 
 
 def _canonical_sha256(payload: Mapping[str, Any]) -> str:
@@ -437,11 +438,57 @@ def _mixture_mean_and_variance(
     return mean, variance
 
 
-def _rms_pairwise_distance(first: np.ndarray, second: np.ndarray) -> np.ndarray:
+def _weighted_rms_distance_expectation(
+    first: np.ndarray,
+    first_weights: np.ndarray,
+    second: np.ndarray,
+    second_weights: np.ndarray,
+) -> float:
+    """Return E[d(X, Y)] with bounded pairwise working memory."""
+
     first_flat = first.reshape(first.shape[0], -1)
     second_flat = second.reshape(second.shape[0], -1)
-    difference = first_flat[:, None, :] - second_flat[None, :, :]
-    return np.sqrt(np.mean(np.square(difference), axis=-1))
+    coordinate_count = first_flat.shape[1]
+    if coordinate_count < 1 or second_flat.shape[1] != coordinate_count:
+        raise ValueError("energy-distance supports must share a nonempty query")
+    total = 0.0
+    for first_start in range(0, len(first_flat), _ENERGY_DISTANCE_BLOCK_SIZE):
+        first_stop = min(
+            first_start + _ENERGY_DISTANCE_BLOCK_SIZE,
+            len(first_flat),
+        )
+        first_block = first_flat[first_start:first_stop]
+        first_block_weights = first_weights[first_start:first_stop]
+        first_squared_norm = np.einsum("id,id->i", first_block, first_block)
+        for second_start in range(0, len(second_flat), _ENERGY_DISTANCE_BLOCK_SIZE):
+            second_stop = min(
+                second_start + _ENERGY_DISTANCE_BLOCK_SIZE,
+                len(second_flat),
+            )
+            second_block = second_flat[second_start:second_stop]
+            second_block_weights = second_weights[second_start:second_stop]
+            second_squared_norm = np.einsum("jd,jd->j", second_block, second_block)
+            squared_distance = (
+                first_squared_norm[:, None]
+                + second_squared_norm[None, :]
+                - 2.0 * (first_block @ second_block.T)
+            )
+            if not np.all(np.isfinite(squared_distance)):
+                raise ValueError("energy-distance pairwise distances must be finite")
+            distance = np.sqrt(
+                np.maximum(squared_distance, 0.0) / coordinate_count
+            )
+            total += float(
+                np.einsum(
+                    "i,j,ij->",
+                    first_block_weights,
+                    second_block_weights,
+                    distance,
+                )
+            )
+    if not np.isfinite(total) or total < 0.0:
+        raise ValueError("weighted pairwise distance must be finite and nonnegative")
+    return total
 
 
 def _weighted_energy_distance_m(
@@ -450,21 +497,29 @@ def _weighted_energy_distance_m(
     reduced: np.ndarray,
     reduced_weights: np.ndarray,
 ) -> float:
-    cross = _rms_pairwise_distance(full, reduced)
-    full_pair = _rms_pairwise_distance(full, full)
-    reduced_pair = _rms_pairwise_distance(reduced, reduced)
     value = (
-        2.0 * float(np.einsum("i,j,ij->", full_weights, reduced_weights, cross))
-        - float(np.einsum("i,j,ij->", full_weights, full_weights, full_pair))
-        - float(
-            np.einsum(
-                "i,j,ij->",
-                reduced_weights,
-                reduced_weights,
-                reduced_pair,
-            )
+        2.0
+        * _weighted_rms_distance_expectation(
+            full,
+            full_weights,
+            reduced,
+            reduced_weights,
+        )
+        - _weighted_rms_distance_expectation(
+            full,
+            full_weights,
+            full,
+            full_weights,
+        )
+        - _weighted_rms_distance_expectation(
+            reduced,
+            reduced_weights,
+            reduced,
+            reduced_weights,
         )
     )
+    if not np.isfinite(value):
+        raise ValueError("energy distance must be finite")
     return max(value, 0.0)
 
 
