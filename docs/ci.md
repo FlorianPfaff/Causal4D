@@ -35,12 +35,13 @@ Ruff-formatted without forcing unrelated historical files into the same change.
 
 ## Public repository integration
 
-Prob4D, BayesianPhysTwin, and Causal4D are public repositories. Required
-provider checks therefore use ordinary read-only `actions/checkout` steps and do
-not depend on repository secrets or deploy keys. Forked pull requests exercise
-the same installed-wheel boundary as organization branches, and release tags
-remain blocked unless the pinned public-provider job passes. Optional hardware
-workflows retain their separately documented runtime requirements.
+Prob4D, BayesianPhysTwin, and Causal4D are public repositories. Required and
+optional provider checks therefore use ordinary read-only `actions/checkout`
+steps and do not depend on repository secrets or deploy keys. Forked pull
+requests exercise the same installed-wheel boundary as organization branches,
+and release tags remain blocked unless the pinned public-provider job passes.
+Hardware workflows retain only their platform, device, and dataset
+requirements; public provider source access is never a reason to skip a job.
 
 ## Three-repository installed-wheel golden path
 
@@ -145,12 +146,20 @@ expected rejection.
 core job:
 
 - hosted CPU vision/OpenCV tests run weekly;
-- BPT OpenCV collection and Warp CPU tests run separately when the private SSH
-  credential is configured;
+- BPT OpenCV collection and Warp CPU tests run weekly against the exact public
+  provider pin, without repository credentials;
 - the CUDA/Warp job is manual and targets a self-hosted runner carrying the
-  labels `self-hosted`, `linux`, `x64`, and `gpu`.
+  labels `self-hosted`, `Linux`, `X64`, and `nvidia-smi`.
 
-The manual GPU job additionally requires `BPT_READ_SSH_KEY`.
+The manual GPU job uses the same public immutable provider pin. It needs a
+working CUDA/Warp runtime, but no BayesianPhysTwin deploy key.
+
+`Self-hosted research evaluation` additionally builds Causal4D and, when
+requested, the pinned BayesianPhysTwin revision as wheels. It installs those
+wheel bytes into an isolated environment, rejects imports that resolve into a
+source checkout, and archives the wheel SHA-256 values, resolved dependency
+set, runner identity, and GPU identity with the evaluation bundle. Editable
+installs are intentionally excluded from this evidence path.
 
 ## Reproducing the wheel boundary locally
 
