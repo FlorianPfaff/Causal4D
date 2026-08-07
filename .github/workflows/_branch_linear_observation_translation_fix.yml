@@ -6,9 +6,16 @@ on:
     paths:
       - ".github/workflows/_branch_linear_observation_translation_fix.yml"
       - "scripts/ci/apply_linear_observation_translation_fix.py"
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/_branch_linear_observation_translation_fix.yml"
+      - "scripts/ci/apply_linear_observation_translation_fix.py"
 
 permissions:
   contents: write
+  pull-requests: read
 
 concurrency:
   group: branch-linear-observation-translation-fix
@@ -18,14 +25,20 @@ jobs:
   apply-and-validate:
     if: >-
       github.repository == 'IPS-Stuttgart/Causal4D' &&
-      github.ref == 'refs/heads/fix/linear-observation-translation-neutrality'
+      ((github.event_name == 'push' &&
+        github.ref == 'refs/heads/fix/linear-observation-translation-neutrality') ||
+       (github.event_name == 'pull_request' &&
+        github.event.pull_request.number == 234 &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.head.ref ==
+          'fix/linear-observation-translation-neutrality'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Check out exact branch revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: true
           clean: true
