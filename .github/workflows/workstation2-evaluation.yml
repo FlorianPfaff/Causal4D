@@ -45,8 +45,8 @@ jobs:
   evaluate:
     name: CUDA qualification and controlled replication
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main'
     runs-on: [self-hosted, Linux, X64, nvidia-smi]
     timeout-minutes: 180
     steps:
