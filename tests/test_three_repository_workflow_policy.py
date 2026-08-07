@@ -40,6 +40,7 @@ def test_provider_checkouts_use_non_configurable_public_main_refs() -> None:
 
     assert "workflow_dispatch:" in text
     assert text.count("ref: main") == 2
+    assert "ref: ${{" not in text
     assert "inputs.bpt_ref" not in text
     assert "inputs.prob4d_ref" not in text
     assert "Bayesian-PhysTwin revision to test" not in text
