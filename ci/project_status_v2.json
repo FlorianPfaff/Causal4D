@@ -1,0 +1,70 @@
+{
+  "claim_status": "controlled_passed_real_pending",
+  "empirical_status": {
+    "causal4d_confirmatory_physical": {
+      "acquired_executions": 0,
+      "claim_ready": false,
+      "evidence_status_sha256": null,
+      "specified_executions": 36,
+      "status": "pending",
+      "validated_executions": 0
+    },
+    "causal4d_controlled": {
+      "evidence_repository": "IPS-Stuttgart/Causal4D",
+      "evidence_revision": "3e63976e01f2ee0624606a85f814002d48a2ad59",
+      "milestone": "v0.3.0-causal4d-aip",
+      "registered_gate_count": 13,
+      "scope": "controlled_counterfactual",
+      "status": "passed"
+    },
+    "independent_execution_calibration": {
+      "evidence_sha256": null,
+      "status": "pending"
+    },
+    "prob4d_to_bayesian_phystwin": {
+      "confirmatory_physical_use": "not_admitted",
+      "controlled_synthetic": {
+        "bayesian_phystwin_execution_revision": "04cc243aea82bfec1b8a2481ef99b38b357e4123",
+        "evidence_repository": "IPS-Stuttgart/BayesianPhysTwin",
+        "evidence_revision": "db0f0119a3a4220f5489566829846681e844627d",
+        "prob4d_revision": "aa8ffc6541011d044561e09870569a14ab3f586f",
+        "protocol_sha256": "921da8a6f14f9430b3f4861d68326d904f61b922e3aedd2b35882ea97bc63111",
+        "report_id": "c592807d62e9f5121acf85747432574601264160de67b15e9a1c8e48a12cc040",
+        "status": "passed"
+      },
+      "fresh_real_provider": {
+        "evidence_sha256": null,
+        "status": "pending"
+      }
+    },
+    "semantic_reweighting": {
+      "status": "not_admitted"
+    }
+  },
+  "non_claims": [
+    "the registered same-object physical experiment remains at 0/36 acquired and 0/36 validated executions",
+    "independent-execution calibration is not yet established",
+    "the controlled synthetic Prob4D-to-Bayesian-PhysTwin result does not establish fresh held-out physical-prediction benefit",
+    "a fresh real Prob4D provider is not admitted into the confirmatory physical estimator without its source-calibrated gate",
+    "semantic reweighting is not admitted into the primary method"
+  ],
+  "packages": {
+    "bayesian-phystwin": {
+      "role": "uncertain_physical_twin",
+      "supported_versions": ">=0.4,<0.5"
+    },
+    "causal4d": {
+      "required_version": "0.5.0",
+      "role": "realized_intervention_abduction_and_prediction"
+    },
+    "prob4d": {
+      "role": "optional_probabilistic_observation_feeder",
+      "supported_versions": ">=0.3,<0.4"
+    }
+  },
+  "primary_next_milestone": "same_object_multi_action_real_protocol",
+  "schema_version": 2,
+  "snapshot_date": "2026-08-07",
+  "status_id": "causal4d-project-status-v2",
+  "supersedes_status_id": "causal4d-project-status-v1"
+}

@@ -19,18 +19,23 @@ _REQUIRED_PATHS = frozenset(
         "CONTRIBUTING.md",
         "SECURITY.md",
         "ci/project_status_v1.json",
+        "ci/project_status_v2.json",
+        "ci/render_project_status.py",
         "ci/three_repository_golden_path.py",
         "ci/three_repository_status.py",
         "configs/causal4d/sloth_multi_action_v1.json",
         "configs/causal4d/sloth_multi_action_v1_schedule.csv",
         "docs/causal4d_paper_scope.md",
         "docs/command_migration_0_5.md",
+        "docs/current_project_status.md",
+        "docs/project_status_contract.md",
         "milestones/v0.3.0-causal4d-aip/README.md",
         "runs/causal4d-real-undercoverage-v1/manifest.json",
         "scripts/release/capture_file_manifest.py",
         "scripts/release/verify_result_bundle.py",
         "tests/conftest.py",
         "tests/fixtures/prob4d_joint_observation_v1.json",
+        "tests/test_project_status_rendering.py",
     }
 )
 
