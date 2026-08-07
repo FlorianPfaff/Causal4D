@@ -1,0 +1,320 @@
+name: Controlled reproducibility evidence
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: controlled-reproducibility-evidence
+  cancel-in-progress: false
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  canonical:
+    name: Canonical controlled evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install controlled benchmark environment
+        run: python -m pip install -e ".[dev]"
+
+      - name: Verify machine-readable project status
+        run: python ci/render_project_status.py --check
+
+      - name: Run 64-seed controlled counterfactual benchmark
+        run: |
+          mkdir -p evidence/logs
+          causal4d benchmark counterfactual \
+            --seeds 0:64 \
+            --output-dir evidence/counterfactual/canonical \
+            | tee evidence/logs/counterfactual-canonical.json
+
+      - name: Run 10-seed held-out-topology latent-contact benchmark
+        run: |
+          causal4d benchmark latent-contact \
+            --seeds 0:10 \
+            --require-gates \
+            --output-dir evidence/latent-contact/canonical \
+            | tee evidence/logs/latent-contact-canonical.json
+
+      - name: Build content-addressed evidence report
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import platform
+          from pathlib import Path
+
+          root = Path("evidence")
+          counterfactual = json.loads(
+              (root / "counterfactual/canonical/summary.json").read_text()
+          )
+          latent = json.loads(
+              (root / "latent-contact/canonical/summary.json").read_text()
+          )
+          gates = json.loads(
+              (root / "latent-contact/canonical/success_gates.json").read_text()
+          )
+          if counterfactual["seeds"] != list(range(64)):
+              raise SystemExit("counterfactual seed inventory mismatch")
+          if latent["seeds"] != list(range(10)):
+              raise SystemExit("latent-contact seed inventory mismatch")
+          if gates.get("overall_passed") is not True:
+              raise SystemExit("registered latent-contact gates did not pass")
+
+          def bind(path):
+              data = path.read_bytes()
+              return {
+                  "sha256": hashlib.sha256(data).hexdigest(),
+                  "bytes": len(data),
+              }
+
+          tracked = [
+              root / "counterfactual/canonical/summary.json",
+              root / "counterfactual/canonical/manifest.json",
+              root / "latent-contact/canonical/summary.json",
+              root / "latent-contact/canonical/success_gates.json",
+              root / "latent-contact/canonical/manifest.json",
+          ]
+          report = {
+              "schema_version": 1,
+              "artifact_kind": "Causal4DControlledReproducibilityEvidence",
+              "source_revision": os.environ["GITHUB_SHA"],
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "workflow_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "python": platform.python_version(),
+              "counterfactual": {
+                  "seed_count": 64,
+                  "aggregate": counterfactual["aggregate"],
+              },
+              "latent_contact": {
+                  "seed_count": 10,
+                  "aggregate": latent["aggregate"],
+                  "success_gates": gates,
+              },
+              "bound_files": {
+                  path.relative_to(root).as_posix(): bind(path)
+                  for path in tracked
+              },
+              "physical_evidence_increment": 0,
+              "target_outcomes_used": False,
+              "passed": True,
+          }
+          (root / "report.json").write_text(
+              json.dumps(
+                  report,
+                  indent=2,
+                  sort_keys=True,
+                  allow_nan=False,
+              )
+              + "\n"
+          )
+          PY
+          python -VV > evidence/python-version.txt
+          python -m pip freeze --all > evidence/resolved-environment.txt
+          git rev-parse HEAD > evidence/source-revision.txt
+          find evidence -type f ! -name SHA256SUMS -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > evidence/SHA256SUMS
+
+      - name: Upload canonical evidence bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: causal4d-controlled-evidence-${{ github.sha }}
+          path: evidence
+          if-no-files-found: error
+          retention-days: 90
+
+  counterfactual-stress:
+    name: Counterfactual stress / ${{ matrix.case }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: observation-noise-3mm
+            observation_noise_mm: "3.0"
+            inference_noise_mm: "6.0"
+            rotation_deg: "8.0"
+            nonlinearity: "0.18"
+          - case: observation-noise-6mm
+            observation_noise_mm: "6.0"
+            inference_noise_mm: "6.0"
+            rotation_deg: "8.0"
+            nonlinearity: "0.18"
+          - case: rotation-15deg
+            observation_noise_mm: "1.5"
+            inference_noise_mm: "6.0"
+            rotation_deg: "15.0"
+            nonlinearity: "0.18"
+          - case: nonlinearity-0p30
+            observation_noise_mm: "1.5"
+            inference_noise_mm: "6.0"
+            rotation_deg: "8.0"
+            nonlinearity: "0.30"
+    steps:
+      - name: Check out exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install controlled benchmark environment
+        run: python -m pip install -e .
+
+      - name: Run 20-seed stress case
+        run: |
+          mkdir -p evidence
+          causal4d benchmark counterfactual \
+            --seeds 0:20 \
+            --observation-noise-mm "${{ matrix.observation_noise_mm }}" \
+            --inference-noise-mm "${{ matrix.inference_noise_mm }}" \
+            --world-control-rotation-deg "${{ matrix.rotation_deg }}" \
+            --world-nonlinearity "${{ matrix.nonlinearity }}" \
+            --output-dir "evidence/${{ matrix.case }}"
+
+      - name: Bind stress evidence
+        run: |
+          CASE_NAME="${{ matrix.case }}" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          case = os.environ["CASE_NAME"]
+          directory = Path("evidence") / case
+          summary = json.loads((directory / "summary.json").read_text())
+          if summary["seeds"] != list(range(20)):
+              raise SystemExit("stress seed inventory mismatch")
+          report = {
+              "schema_version": 1,
+              "artifact_kind": "Causal4DCounterfactualStressEvidence",
+              "source_revision": os.environ["GITHUB_SHA"],
+              "case": case,
+              "seed_count": 20,
+              "config": summary["config"],
+              "aggregate": summary["aggregate"],
+              "physical_evidence_increment": 0,
+              "target_outcomes_used": False,
+              "passed": True,
+          }
+          (directory / "evidence.json").write_text(
+              json.dumps(
+                  report,
+                  indent=2,
+                  sort_keys=True,
+                  allow_nan=False,
+              )
+              + "\n"
+          )
+          PY
+          find evidence -type f ! -name SHA256SUMS -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > evidence/SHA256SUMS
+
+      - name: Upload stress evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: causal4d-stress-${{ matrix.case }}-${{ github.sha }}
+          path: evidence
+          if-no-files-found: error
+          retention-days: 90
+
+  portability:
+    name: Numerical portability / Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.14"]
+    steps:
+      - name: Check out exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install controlled benchmark environment
+        run: python -m pip install -e .
+
+      - name: Run 10-seed portability replication
+        run: |
+          mkdir -p evidence
+          causal4d benchmark counterfactual \
+            --seeds 0:10 \
+            --output-dir "evidence/python-${{ matrix.python-version }}"
+
+      - name: Bind portability evidence
+        run: |
+          PYTHON_TARGET="${{ matrix.python-version }}" python - <<'PY'
+          import json
+          import os
+          import platform
+          from pathlib import Path
+
+          target = os.environ["PYTHON_TARGET"]
+          directory = Path("evidence") / f"python-{target}"
+          summary = json.loads((directory / "summary.json").read_text())
+          if summary["seeds"] != list(range(10)):
+              raise SystemExit("portability seed inventory mismatch")
+          report = {
+              "schema_version": 1,
+              "artifact_kind": "Causal4DNumericalPortabilityEvidence",
+              "source_revision": os.environ["GITHUB_SHA"],
+              "python_target": target,
+              "python_runtime": platform.python_version(),
+              "seed_count": 10,
+              "aggregate": summary["aggregate"],
+              "physical_evidence_increment": 0,
+              "target_outcomes_used": False,
+              "passed": True,
+          }
+          (directory / "evidence.json").write_text(
+              json.dumps(
+                  report,
+                  indent=2,
+                  sort_keys=True,
+                  allow_nan=False,
+              )
+              + "\n"
+          )
+          PY
+          find evidence -type f ! -name SHA256SUMS -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > evidence/SHA256SUMS
+
+      - name: Upload portability evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: causal4d-portability-py${{ matrix.python-version }}-${{ github.sha }}
+          path: evidence
+          if-no-files-found: error
+          retention-days: 90
