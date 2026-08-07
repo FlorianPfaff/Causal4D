@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import re
+from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,4 +53,21 @@ def test_main_only_guard_is_bound_to_each_job_condition() -> None:
         assert max(guard, runs_on) < steps, (
             f"{path}:{job_name} must place the main-ref guard in the job-level "
             "condition before steps are eligible to execute"
+        )
+
+
+def test_main_only_jobs_pin_and_verify_the_dispatch_sha() -> None:
+    for path, job_name in SELF_HOSTED_JOBS.items():
+        block = _job_block(path, job_name)
+        assert "ref: ${{ github.sha }}" in block, (
+            f"{path}:{job_name} must check out the exact reviewed dispatch SHA"
+        )
+        assert 'test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"' in block, (
+            f"{path}:{job_name} must verify the checked-out revision before use"
+        )
+        checkout = block.index("ref: ${{ github.sha }}")
+        verify = block.index('test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"')
+        steps = block.index("\n    steps:")
+        assert steps < checkout < verify, (
+            f"{path}:{job_name} must verify the exact checkout before later work"
         )
