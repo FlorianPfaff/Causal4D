@@ -68,6 +68,24 @@ from causal4d.latent_contact_v2 import (
     posterior_weights_from_contact_evidence_v2,
     select_contact_v2_candidate,
 )
+from causal4d.decision_trace import (
+    DECISION_TRACE_ENDPOINTS,
+    DECISION_TRACE_PIPELINE,
+    DECISION_TRACE_SCHEMA_NAME,
+    DECISION_TRACE_SCHEMA_VERSION,
+    DECISION_TRACE_STAGE_KINDS,
+    DecisionTraceArtifact,
+    DecisionTraceBuildResult,
+    DecisionTraceDecision,
+    DecisionTraceSelection,
+    DecisionTraceStage,
+    UnifiedDecisionTrace,
+    build_unified_decision_trace,
+    load_claim_bearing_decision_trace,
+    load_decision_trace,
+    require_decision_trace_stack_lock,
+    write_decision_trace,
+)
 from causal4d.benchmark import CounterfactualBenchmarkConfig, build_protocol
 from causal4d.causal_sufficiency import (
     CausalSufficiencyResult,
@@ -185,6 +203,22 @@ from causal4d.stable_discrepancy_dynamics import (
 )
 
 __all__ = [
+    "DECISION_TRACE_ENDPOINTS",
+    "DECISION_TRACE_PIPELINE",
+    "DECISION_TRACE_SCHEMA_NAME",
+    "DECISION_TRACE_SCHEMA_VERSION",
+    "DECISION_TRACE_STAGE_KINDS",
+    "DecisionTraceArtifact",
+    "DecisionTraceBuildResult",
+    "DecisionTraceDecision",
+    "DecisionTraceSelection",
+    "DecisionTraceStage",
+    "UnifiedDecisionTrace",
+    "build_unified_decision_trace",
+    "load_claim_bearing_decision_trace",
+    "load_decision_trace",
+    "require_decision_trace_stack_lock",
+    "write_decision_trace",
     "COUNTERFACTUAL_REGRET_ENDPOINTS",
     "COUNTERFACTUAL_REGRET_SCHEMA_VERSION",
     "CounterfactualRegretCertificate",
