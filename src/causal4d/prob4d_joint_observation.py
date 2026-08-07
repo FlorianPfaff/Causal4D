@@ -52,13 +52,13 @@ def _integer_vector(
     return result
 
 
-def _probability_vector(
-    arrays: Mapping[str, np.ndarray],
+def _probability_array(
+    source: np.ndarray,
     name: str,
     *,
     length: int | None = None,
 ) -> np.ndarray:
-    values = np.asarray(_required_array(arrays, name), dtype=float)
+    values = np.asarray(source, dtype=float)
     if values.ndim != 1 or (length is not None and values.shape != (length,)):
         expected = "a vector" if length is None else f"a vector of length {length}"
         raise ValueError(f"Prob4D {name} must be {expected}")
@@ -194,21 +194,32 @@ def joint_observation_from_prob4d(
     frame_ids = _integer_vector(arrays, "frame_ids", length=row_count)
     entity_ids = _integer_vector(arrays, "entity_ids", length=row_count)
     factor_groups = _integer_vector(arrays, "factor_group_ids", length=row_count)
-    association = _probability_vector(
-        arrays,
-        "association_probability",
-        length=row_count,
-    )
-    prior_reliability = _probability_vector(
-        arrays,
-        "prior_reliability",
-        length=row_count,
-    )
-    group_nominal = _probability_vector(
+
+    association_source = _required_array(arrays, "association_probability")
+    prior_reliability_source = _required_array(arrays, "prior_reliability")
+    group_nominal_source = _required_array(
         arrays,
         "group_prior_nominal_probability",
     )
-    group_weight = _probability_vector(arrays, "group_composite_weight")
+    group_weight_source = _required_array(arrays, "group_composite_weight")
+    association = _probability_array(
+        association_source,
+        "association_probability",
+        length=row_count,
+    )
+    prior_reliability = _probability_array(
+        prior_reliability_source,
+        "prior_reliability",
+        length=row_count,
+    )
+    group_nominal = _probability_array(
+        group_nominal_source,
+        "group_prior_nominal_probability",
+    )
+    group_weight = _probability_array(
+        group_weight_source,
+        "group_composite_weight",
+    )
     factor_group_count = len(np.unique(factor_groups))
     if factor_group_count != 1:
         raise ValueError(
@@ -274,7 +285,7 @@ def joint_observation_from_prob4d(
         raise ValueError("case_id must be a nonempty string")
     resolved_evidence_id = evidence_id
     if resolved_evidence_id is None:
-        resolved_evidence_id = f"prob4d-joint:{case_id}:{source_artifact_sha256[:16]}"
+        resolved_evidence_id = f"prob4d-joint:{case_id}:{source_artifact_sha256}"
     if type(resolved_evidence_id) is not str or not resolved_evidence_id:
         raise ValueError("evidence_id must be a nonempty string")
 
@@ -305,10 +316,12 @@ def joint_observation_from_prob4d(
             "source_revision": source_revision,
             "source_artifact_sha256": source_artifact_sha256,
             "reliability_policy": reliability_policy,
-            "association_probability_sha256": array_sha256(association),
-            "prior_reliability_sha256": array_sha256(prior_reliability),
-            "group_prior_nominal_probability_sha256": array_sha256(group_nominal),
-            "group_composite_weight_sha256": array_sha256(group_weight),
+            "association_probability_sha256": array_sha256(association_source),
+            "prior_reliability_sha256": array_sha256(prior_reliability_source),
+            "group_prior_nominal_probability_sha256": array_sha256(
+                group_nominal_source
+            ),
+            "group_composite_weight_sha256": array_sha256(group_weight_source),
             "frame_mapping": [list(item) for item in used_frame_mapping],
             "entity_mapping": [list(item) for item in used_entity_mapping],
             "provider_validation": plain_json(validation),
