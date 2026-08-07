@@ -82,6 +82,11 @@ For every source action, the certificate compares:
 - maximum marginal interval-endpoint error; and
 - weighted energy distance using trajectory RMS as the ground metric.
 
+The energy-distance expectation uses Gram-matrix blocks rather than allocating a
+`full_component × reduced_component × trajectory_dimension` difference tensor.
+This preserves the exact weighted metric while bounding pairwise working memory
+to fixed component blocks.
+
 All thresholds are mandatory constructor arguments and should be frozen from
 source-only data before target evaluation. The certificate fails if any source
 action fails any threshold and binds the policy, per-action metrics, input
