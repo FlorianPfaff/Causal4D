@@ -166,9 +166,10 @@ class HybridReliabilityCase:
     def __post_init__(self) -> None:
         if type(self.case_id) is not str or not self.case_id:
             raise ValueError("hybrid reliability case_id must be nonempty")
-        if type(self.physics) is not PredictiveDistribution or type(
-            self.hybrid
-        ) is not PredictiveDistribution:
+        if (
+            type(self.physics) is not PredictiveDistribution
+            or type(self.hybrid) is not PredictiveDistribution
+        ):
             raise ValueError("physics and hybrid must be predictive distributions")
         if self.physics.method != "physics_only" or self.hybrid.method != "hybrid":
             raise ValueError(
@@ -302,9 +303,7 @@ def hybrid_reliability_diagnostics(
         "hybrid_prefix_gaussian_nll": hybrid_nll,
         "prefix_gaussian_log_score_gain": physics_nll - hybrid_nll,
         "full_query_correction_rms_m": correction_rms,
-        "physics_predictive_standard_deviation_rms_m": (
-            physics_standard_deviation_rms
-        ),
+        "physics_predictive_standard_deviation_rms_m": (physics_standard_deviation_rms),
         "correction_to_physics_standard_deviation_ratio": correction_rms
         / max(physics_standard_deviation_rms, 1e-12),
         "descriptor_leverage": case.descriptor_leverage,
@@ -360,9 +359,7 @@ class HybridReliabilityCalibration:
         artifact_ids = tuple(self.source_case_artifact_ids)
         prefix_input_ids = tuple(self.source_prefix_input_ids)
         if len(identifiers) < 2 or len(set(identifiers)) != len(identifiers):
-            raise ValueError(
-                "source_case_ids must contain at least two unique cases"
-            )
+            raise ValueError("source_case_ids must contain at least two unique cases")
         if any(type(value) is not str or not value for value in identifiers):
             raise ValueError("source_case_ids must contain nonempty strings")
         if identifiers != tuple(sorted(identifiers)):
@@ -373,10 +370,9 @@ class HybridReliabilityCalibration:
             raise ValueError("source case artifact IDs must be aligned and unique")
         for index, value in enumerate(artifact_ids):
             _require_sha256(value, name=f"source_case_artifact_ids[{index}]")
-        if (
-            len(prefix_input_ids) != len(identifiers)
-            or len(set(prefix_input_ids)) != len(prefix_input_ids)
-        ):
+        if len(prefix_input_ids) != len(identifiers) or len(
+            set(prefix_input_ids)
+        ) != len(prefix_input_ids):
             raise ValueError("source prefix input IDs must be aligned and unique")
         for index, value in enumerate(prefix_input_ids):
             _require_sha256(value, name=f"source_prefix_input_ids[{index}]")
@@ -433,9 +429,7 @@ class HybridReliabilityCalibration:
         if minimum_win_fraction > 1.0:
             raise ValueError("minimum_source_future_win_fraction must lie in [0, 1]")
 
-        rmse_values = normalized_vectors[
-            "source_prefix_rmse_relative_improvements"
-        ]
+        rmse_values = normalized_vectors["source_prefix_rmse_relative_improvements"]
         log_score_values = normalized_vectors["source_prefix_log_score_gains"]
         correction_values = normalized_vectors[
             "source_correction_standard_deviation_ratios"
@@ -636,8 +630,7 @@ def fit_hybrid_reliability_calibration(
     mean_future = float(np.mean(future_improvements))
     future_win_fraction = float(np.mean(np.asarray(future_improvements) > 0.0))
     enabled = (
-        mean_future >= minimum_mean
-        and future_win_fraction >= minimum_win_fraction
+        mean_future >= minimum_mean and future_win_fraction >= minimum_win_fraction
     )
     return HybridReliabilityCalibration(
         source_case_ids=identifiers,
