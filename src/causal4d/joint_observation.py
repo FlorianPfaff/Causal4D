@@ -239,15 +239,18 @@ class LinearJointObservationEvidence:
             )
         for row in np.unique(rows[frames == 0]):
             selected = rows == row
-            if not np.isclose(
-                float(np.sum(coefficients[selected])),
-                0.0,
-                atol=1e-12,
-                rtol=1e-12,
-            ):
-                raise ValueError(
-                    "endpoint frame zero may appear only in a zero-sum contrast"
-                )
+            for coordinate in np.unique(coordinates[selected]):
+                coordinate_terms = selected & (coordinates == coordinate)
+                if not np.isclose(
+                    float(np.sum(coefficients[coordinate_terms])),
+                    0.0,
+                    atol=1e-12,
+                    rtol=1e-12,
+                ):
+                    raise ValueError(
+                        "endpoint zero-sum contrast must be "
+                        "translation-neutral per coordinate"
+                    )
             if not np.any(frames[selected] > 0):
                 raise ValueError("endpoint contrasts require a response frame")
         object.__setattr__(self, "evidence_id", evidence_id)
@@ -531,6 +534,8 @@ def _low_rank_terms(
         whitened_factor,
         whitened_factor,
     )
+    if not np.all(np.isfinite(low_rank_system)):
+        raise ValueError("low-rank covariance system must be finite")
     try:
         low_rank_cholesky = np.linalg.cholesky(low_rank_system)
     except np.linalg.LinAlgError as error:
@@ -555,6 +560,10 @@ def _low_rank_terms(
         np.log(np.diagonal(low_rank_cholesky, axis1=-2, axis2=-1)),
         axis=-1,
     )
+    if not np.all(np.isfinite(correction)) or not np.all(
+        np.isfinite(log_determinant)
+    ):
+        raise ValueError("low-rank likelihood correction must be finite")
     return correction, log_determinant
 
 
@@ -604,9 +613,12 @@ def _joint_gaussian_log_density_dense(
         )
         quadratic = np.maximum(quadratic - correction, 0.0)
         log_determinant += low_rank_log_determinant
-    return -0.5 * (
+    result = -0.5 * (
         dimension * np.log(2.0 * np.pi) + log_determinant + quadratic
     )
+    if not np.all(np.isfinite(result)):
+        raise ValueError("joint Gaussian log likelihood must be finite")
+    return result
 
 
 def _joint_gaussian_log_density_blocks(
@@ -677,9 +689,12 @@ def _joint_gaussian_log_density_blocks(
         )
         quadratic = np.maximum(quadratic - correction, 0.0)
         log_determinant += low_rank_log_determinant
-    return -0.5 * (
+    result = -0.5 * (
         dimension * np.log(2.0 * np.pi) + log_determinant + quadratic
     )
+    if not np.all(np.isfinite(result)):
+        raise ValueError("joint Gaussian log likelihood must be finite")
+    return result
 
 
 def joint_component_log_likelihoods(
@@ -826,9 +841,17 @@ def posterior_weights_from_joint_observation(
         prior,
         name="prior_weights",
     ) + score
-    maximum = float(np.max(log_posterior))
+    finite_support = prior > 0.0
+    if not np.all(np.isfinite(log_posterior[finite_support])):
+        raise ValueError("joint posterior log likelihood must be finite on support")
+    maximum = float(np.max(log_posterior[finite_support]))
     posterior = np.exp(log_posterior - maximum)
-    posterior /= np.sum(posterior)
+    normalizer = float(np.sum(posterior))
+    if not np.isfinite(normalizer) or normalizer <= 0.0:
+        raise ValueError("joint posterior normalizer must be finite and positive")
+    posterior /= normalizer
+    if not np.all(np.isfinite(posterior)):
+        raise ValueError("joint posterior weights must be finite")
     return posterior, diagnostics
 
 
