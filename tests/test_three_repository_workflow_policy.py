@@ -35,6 +35,17 @@ def test_external_forks_use_the_same_public_installed_wheel_path() -> None:
     assert "private golden path" not in text
 
 
+def test_provider_checkouts_use_non_configurable_public_main_refs() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "workflow_dispatch:" in text
+    assert text.count("ref: main") == 2
+    assert "inputs.bpt_ref" not in text
+    assert "inputs.prob4d_ref" not in text
+    assert "Bayesian-PhysTwin revision to test" not in text
+    assert "Prob4D revision to test" not in text
+
+
 def test_strict_claim_bearing_path_is_mandatory() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 

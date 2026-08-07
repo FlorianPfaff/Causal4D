@@ -3,7 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 
-WORKFLOW = Path(".github/workflows/merge-gate.yml")
+ROOT = Path(__file__).resolve().parents[1]
+WORKFLOW = ROOT / ".github" / "workflows" / "merge-gate.yml"
+BPT_PIN = (
+    ROOT / "requirements" / "ci" / "bayesian-phystwin-provider-v1.sha"
+).read_text(encoding="utf-8").strip()
 
 
 def test_merge_gate_has_one_stable_pull_request_status() -> None:
@@ -43,7 +47,9 @@ def test_merge_gate_covers_quality_tests_build_and_provider_integration() -> Non
     assert "python -m pytest --junitxml=pytest-merge-gate.xml" in text
     assert "python -m build" in text
     assert "python -m twine check dist/*" in text
-    assert "python scripts/ci/read_bpt_pin.py" in text
+    assert f"ref: {BPT_PIN}" in text
+    assert "python scripts/ci/read_bpt_pin.py" not in text
+    assert "steps.pin.outputs.sha" not in text
     assert "scripts/ci/run_bpt_integration_tests.py" in text
     assert "CAUSAL4D_REQUIRE_BPT_PROVIDER: \"1\"" in text
 

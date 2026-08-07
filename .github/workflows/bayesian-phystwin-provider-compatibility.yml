@@ -74,15 +74,6 @@ on:
       - "tests/test_rollout_cache.py"
       - "tests/test_three_repository_workflow_policy.py"
   workflow_dispatch:
-    inputs:
-      bpt_ref:
-        description: Bayesian-PhysTwin revision to test
-        required: false
-        default: main
-      prob4d_ref:
-        description: Prob4D revision to test
-        required: false
-        default: main
   schedule:
     - cron: "17 4 * * 1"
 
@@ -109,7 +100,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: IPS-Stuttgart/BayesianPhysTwin
-          ref: ${{ inputs.bpt_ref || 'main' }}
+          ref: main
           path: bayesian-phystwin
           persist-credentials: false
 
@@ -117,7 +108,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: IPS-Stuttgart/Prob4D
-          ref: ${{ inputs.prob4d_ref || 'main' }}
+          ref: main
           path: prob4d
           persist-credentials: false
 
