@@ -181,9 +181,7 @@ class FunctionalSupportActionV1:
                 "schema_version": FUNCTIONAL_SUPPORT_CERTIFICATE_SCHEMA_VERSION,
                 "artifact_kind": "Causal4DFunctionalSupportActionV1",
                 "action_id": self.action_id,
-                "full_trajectories_sha256": array_sha256(
-                    self.full_trajectories_m
-                ),
+                "full_trajectories_sha256": array_sha256(self.full_trajectories_m),
                 "full_weights_sha256": array_sha256(self.full_weights),
                 "reduced_trajectories_sha256": array_sha256(
                     self.reduced_trajectories_m
@@ -331,9 +329,7 @@ class FunctionalSupportActionMetricsV1:
             "normalized_mean_error": self.normalized_mean_error,
             "full_variance_trace_m2": self.full_variance_trace_m2,
             "reduced_variance_trace_m2": self.reduced_variance_trace_m2,
-            "variance_trace_relative_error": (
-                self.variance_trace_relative_error
-            ),
+            "variance_trace_relative_error": (self.variance_trace_relative_error),
             "maximum_interval_endpoint_error_m": (
                 self.maximum_interval_endpoint_error_m
             ),
