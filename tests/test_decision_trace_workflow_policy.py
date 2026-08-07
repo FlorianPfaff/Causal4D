@@ -22,6 +22,7 @@ REQUIRED_TRIGGER_PATHS = (
     "requirements/ci/bayesian-phystwin-three-repository.sha",
     "requirements/ci/prob4d-three-repository.sha",
     "src/causal4d/__init__.py",
+    "src/causal4d/artifact_io.py",
     "src/causal4d/atomic_io.py",
     "src/causal4d/cli/root.py",
     "src/causal4d/cli/stack.py",
