@@ -5,9 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
-LEGACY_WORKFLOW = (
-    ROOT / ".github" / "workflows" / "quality-failure-diagnostics.yml"
-)
+LEGACY_WORKFLOW = ROOT / ".github" / "workflows" / "quality-failure-diagnostics.yml"
 
 
 def test_ruff_diagnostics_stay_in_the_read_only_pull_request_workflow() -> None:
