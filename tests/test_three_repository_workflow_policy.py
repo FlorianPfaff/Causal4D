@@ -5,9 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = (
-    ROOT / ".github"
-    / "workflows"
-    / "bayesian-phystwin-provider-compatibility.yml"
+    ROOT / ".github" / "workflows" / "bayesian-phystwin-provider-compatibility.yml"
 )
 BPT_PIN = ROOT / "requirements" / "ci" / "bayesian-phystwin-three-repository.sha"
 PROB4D_PIN = ROOT / "requirements" / "ci" / "prob4d-three-repository.sha"
