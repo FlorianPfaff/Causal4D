@@ -127,9 +127,7 @@ class ConditionalPredictiveUncertaintyV2:
         )
         independent = readonly_array(self.independent_variance_m2, dtype=float)
         if not np.all(np.isfinite(independent)) or np.any(independent < 0.0):
-            raise ValueError(
-                "independent_variance_m2 must be finite and nonnegative"
-            )
+            raise ValueError("independent_variance_m2 must be finite and nonnegative")
         factors = None
         if self.low_rank_factors_m is not None:
             factors = readonly_array(self.low_rank_factors_m, dtype=float)
@@ -181,9 +179,7 @@ class ConditionalPredictiveUncertaintyV2:
             "artifact_id": self.artifact_id,
             "uncertainty_id": self.uncertainty_id,
             "source_artifact_ids": list(self.source_artifact_ids),
-            "independent_variance_sha256": array_sha256(
-                self.independent_variance_m2
-            ),
+            "independent_variance_sha256": array_sha256(self.independent_variance_m2),
             "low_rank_factors_sha256": (
                 None
                 if self.low_rank_factors_m is None
@@ -369,9 +365,7 @@ def posterior_weights_with_conditional_uncertainty_v2(
         bank.trajectories_m,
         evidence,
         prefix_frame_count=prefix_frame_count,
-        component_variance_m2=(
-            uncertainty.independent_component_variance_m2(bank)
-        ),
+        component_variance_m2=(uncertainty.independent_component_variance_m2(bank)),
         component_group_covariance_m2=group_covariance,
     )
 
@@ -400,12 +394,9 @@ def predictive_distribution_with_conditional_uncertainty_v2(
         -1,
         *bank.trajectories_m.shape[-3:],
     )
-    conditional_variance = (
-        multiplier
-        * uncertainty.marginal_component_variance_m2(bank).reshape(
-            components.shape
-        )
-    )
+    conditional_variance = multiplier * uncertainty.marginal_component_variance_m2(
+        bank
+    ).reshape(components.shape)
     mean = np.sum(flat_weights[:, None, None, None] * components, axis=0)
     variance = np.sum(
         flat_weights[:, None, None, None]
@@ -463,9 +454,7 @@ def joint_predictive_moments_with_conditional_uncertainty_v2(
     independent = uncertainty.independent_component_variance_m2(bank).reshape(
         components.shape
     )
-    covariance += np.diag(
-        multiplier * np.sum(weights[:, None] * independent, axis=0)
-    )
+    covariance += np.diag(multiplier * np.sum(weights[:, None] * independent, axis=0))
     factors = uncertainty.component_low_rank_factors_m(bank)
     if factors is not None:
         flat_factors = factors.reshape(
