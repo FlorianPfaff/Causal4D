@@ -12,12 +12,18 @@ on:
       - "docs/molmo_visual_inputs_v2.md"
       - "docs/prob4d_provider_attestation.md"
       - "docs/stack_lock.md"
+      - "docs/decision_trace.md"
       - "pyproject.toml"
+      - "src/causal4d/__init__.py"
+      - "src/causal4d/artifact_io.py"
+      - "src/causal4d/atomic_io.py"
       - "src/causal4d/bpt_belief.py"
       - "src/causal4d/claim_bearing_observation_lineage.py"
+      - "src/causal4d/decision_trace.py"
       - "src/causal4d/cli/molmo_phystwin_forecast_v2.py"
       - "src/causal4d/cli/root.py"
       - "src/causal4d/cli/stack.py"
+      - "src/causal4d/immutable_json.py"
       - "src/causal4d/molmo_visual_inputs_v2.py"
       - "src/causal4d/observation_lineage.py"
       - "src/causal4d/phystwin_backend.py"
@@ -35,6 +41,7 @@ on:
       - "tests/test_bpt_provider_integration.py"
       - "tests/test_causal4d_bpt_belief.py"
       - "tests/test_causal4d_molmo_visual_inputs_v2.py"
+      - "tests/test_decision_trace.py"
       - "tests/test_causal4d_phystwin_backend.py"
       - "tests/test_causal4d_rollout_bank.py"
       - "tests/test_rollout_bank_io.py"
@@ -55,12 +62,18 @@ on:
       - "docs/molmo_visual_inputs_v2.md"
       - "docs/prob4d_provider_attestation.md"
       - "docs/stack_lock.md"
+      - "docs/decision_trace.md"
       - "pyproject.toml"
+      - "src/causal4d/__init__.py"
+      - "src/causal4d/artifact_io.py"
+      - "src/causal4d/atomic_io.py"
       - "src/causal4d/bpt_belief.py"
       - "src/causal4d/claim_bearing_observation_lineage.py"
+      - "src/causal4d/decision_trace.py"
       - "src/causal4d/cli/molmo_phystwin_forecast_v2.py"
       - "src/causal4d/cli/root.py"
       - "src/causal4d/cli/stack.py"
+      - "src/causal4d/immutable_json.py"
       - "src/causal4d/molmo_visual_inputs_v2.py"
       - "src/causal4d/observation_lineage.py"
       - "src/causal4d/phystwin_backend.py"
@@ -78,6 +91,7 @@ on:
       - "tests/test_bpt_provider_integration.py"
       - "tests/test_causal4d_bpt_belief.py"
       - "tests/test_causal4d_molmo_visual_inputs_v2.py"
+      - "tests/test_decision_trace.py"
       - "tests/test_causal4d_phystwin_backend.py"
       - "tests/test_causal4d_rollout_bank.py"
       - "tests/test_rollout_bank_io.py"
@@ -188,6 +202,31 @@ jobs:
             opencv-python-headless
           "$venv/bin/python" -m pip check
 
+      - name: Verify imports originate only from installed wheels
+        env:
+          CAUSAL4D_SOURCE: ${{ github.workspace }}/causal4d
+          BPT_SOURCE: ${{ github.workspace }}/bayesian-phystwin
+          PROB4D_SOURCE: ${{ github.workspace }}/prob4d
+        run: |
+          "$RUNNER_TEMP/three-repository-venv/bin/python" - <<'PY'
+          import os
+          from pathlib import Path
+
+          import bayesian_phystwin
+          import causal4d
+          import prob4d
+          from causal4d import decision_trace
+
+          roots = tuple(
+              Path(os.environ[name]).resolve()
+              for name in ("CAUSAL4D_SOURCE", "BPT_SOURCE", "PROB4D_SOURCE")
+          )
+          for module in (causal4d, decision_trace, bayesian_phystwin, prob4d):
+              origin = Path(module.__file__).resolve()
+              if any(origin.is_relative_to(root) for root in roots):
+                  raise SystemExit(f"source-tree import detected: {origin}")
+          PY
+
       - name: Create and verify content-addressed stack lock
         run: |
           set -o pipefail
@@ -281,6 +320,7 @@ jobs:
           env -u PYTHONPATH \
             "$RUNNER_TEMP/three-repository-venv/bin/python" -m pytest -q \
               --import-mode=importlib \
+              --junitxml="$RUNNER_TEMP/three-repository-contract-tests.xml" \
               "$GITHUB_WORKSPACE/prob4d/tests/test_claim_bearing_observation.py" \
               "$GITHUB_WORKSPACE/prob4d/tests/test_joint_observation_contract_fixture.py" \
               "$GITHUB_WORKSPACE/bayesian-phystwin/tests/test_causal4d_provider_v1.py" \
@@ -295,6 +335,7 @@ jobs:
               "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_phystwin_backend.py" \
               "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_bpt_belief.py" \
               "$GITHUB_WORKSPACE/causal4d/tests/test_causal4d_molmo_visual_inputs_v2.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_decision_trace.py" \
               "$GITHUB_WORKSPACE/causal4d/tests/test_phystwin_resumable.py" \
               "$GITHUB_WORKSPACE/causal4d/tests/test_replay_provider_contract.py" \
               "$GITHUB_WORKSPACE/causal4d/tests/test_rollout_cache.py" \
@@ -366,5 +407,6 @@ jobs:
             ${{ runner.temp }}/three-repository-golden-path.log
             ${{ runner.temp }}/three-repository-provider-v2-summary.json
             ${{ runner.temp }}/three-repository-provider-v2.log
+            ${{ runner.temp }}/three-repository-contract-tests.xml
           if-no-files-found: warn
           retention-days: 14
