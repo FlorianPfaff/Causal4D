@@ -57,6 +57,13 @@ only when supported posterior mass reaches the frozen minimum. The decision reco
 all distances, supported flags, component weights, supported mass, rejection
 reasons, and `future_observation_frames_read = 0`.
 
+The frozen mass threshold is a deployment gate for the complete candidate. Passing
+the gate deploys the candidate exactly as constructed; failing it preserves the
+complete baseline. The selector does not drop unsupported components, renormalize
+the supported subset, or construct a hybrid posterior. Such component-level
+modification would be a different method requiring its own source calibration,
+registration, and validation.
+
 ## Exact fallback
 
 The generic selector preserves the caller-provided baseline object by identity:
