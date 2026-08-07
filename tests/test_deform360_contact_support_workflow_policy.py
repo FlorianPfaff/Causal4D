@@ -39,7 +39,9 @@ def test_gpu_path_reuses_the_locked_conditional_runtime() -> None:
     assert "select_deform360_prefix_kinematics_python.py" in workflow
     assert "python-selection.json" in workflow
     assert "CONTACT_SUPPORT_PYTHON=" in workflow
-    assert "BPT_READ_SSH_KEY" in workflow
+    assert "Check out pinned public BayesianPhysTwin" in workflow
+    assert "BPT_READ_SSH_KEY" not in workflow
+    assert "ssh-key:" not in workflow
     assert "IPS-Stuttgart/BayesianPhysTwin" in workflow
     assert "lhy0807/deform360" in workflow
     assert "Jianghanxiao/PhysTwin" in workflow
