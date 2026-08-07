@@ -7,9 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = (
     ROOT / ".github" / "workflows" / "bayesian-phystwin-provider-compatibility.yml"
 )
-PROVIDER_V2_ATTESTATION = (
-    ROOT / "ci" / "three_repository_provider_v2_attestation.py"
-)
+PROVIDER_V2_ATTESTATION = ROOT / "ci" / "three_repository_provider_v2_attestation.py"
 BPT_PIN = ROOT / "requirements" / "ci" / "bayesian-phystwin-three-repository.sha"
 PROB4D_PIN = ROOT / "requirements" / "ci" / "prob4d-three-repository.sha"
 
