@@ -92,6 +92,14 @@ def _normalized_weights(
     return readonly_array(weights / total, dtype=float)
 
 
+def _require_no_target_access(value: Any, *, name: str) -> bool:
+    if type(value) is not bool:
+        raise ValueError(f"{name} must be a boolean")
+    if value:
+        raise ValueError(f"{name} must be false for source-only certification")
+    return False
+
+
 @dataclass(frozen=True)
 class FunctionalSupportActionV1:
     """Full and reduced predictive components for one frozen source action."""
@@ -103,6 +111,7 @@ class FunctionalSupportActionV1:
     reduced_weights: np.ndarray
     full_component_variance_m2: np.ndarray | None = None
     reduced_component_variance_m2: np.ndarray | None = None
+    target_outcomes_used: bool = False
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -140,6 +149,10 @@ class FunctionalSupportActionV1:
             reduced.shape,
             name="reduced_component_variance_m2",
         )
+        target_outcomes_used = _require_no_target_access(
+            self.target_outcomes_used,
+            name="target_outcomes_used",
+        )
         metadata = validated_json_mapping(
             self.metadata,
             error_message="support-action metadata must contain finite JSON data",
@@ -155,6 +168,7 @@ class FunctionalSupportActionV1:
             "reduced_component_variance_m2",
             reduced_variance,
         )
+        object.__setattr__(self, "target_outcomes_used", target_outcomes_used)
         object.__setattr__(self, "metadata", metadata)
 
     @staticmethod
@@ -198,6 +212,7 @@ class FunctionalSupportActionV1:
                     if self.reduced_component_variance_m2 is None
                     else array_sha256(self.reduced_component_variance_m2)
                 ),
+                "target_outcomes_used": self.target_outcomes_used,
                 "metadata": plain_json(self.metadata),
             }
         )
@@ -330,7 +345,7 @@ class FunctionalSupportActionMetricsV1:
             "normalized_mean_error": self.normalized_mean_error,
             "full_variance_trace_m2": self.full_variance_trace_m2,
             "reduced_variance_trace_m2": self.reduced_variance_trace_m2,
-            "variance_trace_relative_error": (self.variance_trace_relative_error),
+            "variance_trace_relative_error": self.variance_trace_relative_error,
             "maximum_interval_endpoint_error_m": (
                 self.maximum_interval_endpoint_error_m
             ),
@@ -349,6 +364,7 @@ class FunctionalSupportCertificateV1:
     action_metrics: tuple[FunctionalSupportActionMetricsV1, ...]
     policy: FunctionalSupportPolicyV1
     source_artifact_ids: tuple[str, ...]
+    target_outcomes_used: bool = False
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -375,6 +391,10 @@ class FunctionalSupportCertificateV1:
             self.source_artifact_ids,
             name="source_artifact_ids",
         )
+        target_outcomes_used = _require_no_target_access(
+            self.target_outcomes_used,
+            name="target_outcomes_used",
+        )
         metadata = validated_json_mapping(
             self.metadata,
             error_message="certificate metadata must contain finite JSON data",
@@ -382,6 +402,7 @@ class FunctionalSupportCertificateV1:
         object.__setattr__(self, "reasons", reasons)
         object.__setattr__(self, "action_metrics", metrics)
         object.__setattr__(self, "source_artifact_ids", source_ids)
+        object.__setattr__(self, "target_outcomes_used", target_outcomes_used)
         object.__setattr__(self, "metadata", metadata)
 
     @property
@@ -395,6 +416,7 @@ class FunctionalSupportCertificateV1:
                 "action_metrics": [metric.as_dict() for metric in self.action_metrics],
                 "policy": asdict(self.policy),
                 "source_artifact_ids": list(self.source_artifact_ids),
+                "target_outcomes_used": self.target_outcomes_used,
                 "metadata": plain_json(self.metadata),
             }
         )
@@ -409,6 +431,7 @@ class FunctionalSupportCertificateV1:
             "action_metrics": [metric.as_dict() for metric in self.action_metrics],
             "policy": asdict(self.policy),
             "source_artifact_ids": list(self.source_artifact_ids),
+            "target_outcomes_used": self.target_outcomes_used,
             "metadata": plain_json(self.metadata),
         }
 
@@ -622,6 +645,8 @@ def certify_functional_support_v1(
         raise ValueError("actions must contain FunctionalSupportActionV1 values")
     if len({action.action_id for action in action_tuple}) != len(action_tuple):
         raise ValueError("source action IDs must be unique")
+    if any(action.target_outcomes_used for action in action_tuple):
+        raise ValueError("source actions must not use target outcomes")
     metrics = tuple(_evaluate_action(action, policy) for action in action_tuple)
     reasons = tuple(
         f"{metric.action_id}:{reason}"
@@ -641,6 +666,7 @@ def certify_functional_support_v1(
         action_metrics=metrics,
         policy=policy,
         source_artifact_ids=provenance,
+        target_outcomes_used=False,
         metadata={} if metadata is None else metadata,
     )
 
