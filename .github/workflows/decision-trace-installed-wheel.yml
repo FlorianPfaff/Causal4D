@@ -213,4 +213,18 @@ jobs:
           env -u PYTHONPATH \
             "$RUNNER_TEMP/decision-trace-venv/bin/python" -m pytest -q \
               --import-mode=importlib \
+              --junitxml="$RUNNER_TEMP/decision-trace-installed-wheel.xml" \
               test_decision_trace.py
+
+      - name: Retain exact compatibility evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v6.0.0
+        with:
+          name: decision-trace-installed-wheel-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/decision-trace-wheel-sha256.txt
+            ${{ runner.temp }}/decision-trace-stack-lock.json
+            ${{ runner.temp }}/decision-trace-stack-verification.json
+            ${{ runner.temp }}/decision-trace-installed-wheel.xml
+          if-no-files-found: warn
+          retention-days: 14
