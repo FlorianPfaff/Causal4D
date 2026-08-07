@@ -1,0 +1,107 @@
+name: One-shot fail-closed joint observation quadratic
+
+on:
+  push:
+    branches: [agent/full-joint-observation]
+    paths:
+      - ".github/workflows/_one_shot_fail_closed_joint_quadratic.yml"
+      - "scripts/ci/_one_shot_fail_closed_joint_quadratic.py"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-shot-fail-closed-joint-observation-quadratic
+  cancel-in-progress: true
+
+jobs:
+  harden:
+    if: >-
+      github.repository == 'IPS-Stuttgart/Causal4D' &&
+      github.ref == 'refs/heads/agent/full-joint-observation'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out exact branch revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+          clean: true
+
+      - name: Provision Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Apply exact numerical hardening
+        run: |
+          set -euo pipefail
+          python scripts/ci/_one_shot_fail_closed_joint_quadratic.py
+
+      - name: Install and validate affected contracts
+        run: |
+          set -euo pipefail
+          python -m pip install -e ".[dev]"
+          python -m ruff format \
+            src/causal4d/joint_observation.py \
+            tests/test_joint_observation_adversarial.py
+          python -m ruff check \
+            src/causal4d/joint_observation.py \
+            tests/test_joint_observation.py \
+            tests/test_joint_observation_adversarial.py \
+            tests/test_prob4d_joint_observation.py
+          python -m ruff format --check \
+            src/causal4d/joint_observation.py \
+            tests/test_joint_observation.py \
+            tests/test_joint_observation_adversarial.py \
+            tests/test_prob4d_joint_observation.py
+          python -m mypy \
+            src/causal4d/joint_observation.py \
+            src/causal4d/prob4d_joint_observation.py
+          python -m pytest -q \
+            tests/test_joint_observation.py \
+            tests/test_joint_observation_adversarial.py \
+            tests/test_prob4d_joint_observation.py \
+            tests/test_prob4d_joint_observation_provenance.py
+          python -m py_compile \
+            src/causal4d/joint_observation.py \
+            tests/test_joint_observation_adversarial.py
+          python -m pip check
+
+      - name: Remove one-shot transport and verify scope
+        run: |
+          set -euo pipefail
+          rm -- \
+            .github/workflows/_one_shot_fail_closed_joint_quadratic.yml \
+            scripts/ci/_one_shot_fail_closed_joint_quadratic.py
+          git diff --check
+          actual="$(git diff --name-only | sort)"
+          printf 'Final working-tree paths:\n%s\n' "${actual}"
+          while IFS= read -r path; do
+            case "${path}" in
+              .github/workflows/_one_shot_fail_closed_joint_quadratic.yml|\
+              scripts/ci/_one_shot_fail_closed_joint_quadratic.py|\
+              src/causal4d/joint_observation.py|\
+              tests/test_joint_observation_adversarial.py)
+                ;;
+              *)
+                echo "unexpected final-scope path: ${path}" >&2
+                exit 1
+                ;;
+            esac
+          done <<<"${actual}"
+
+      - name: Commit validated final source
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- \
+            .github/workflows/_one_shot_fail_closed_joint_quadratic.yml \
+            scripts/ci/_one_shot_fail_closed_joint_quadratic.py \
+            src/causal4d/joint_observation.py \
+            tests/test_joint_observation_adversarial.py
+          git commit -m 'Fail closed on inconsistent low-rank quadratics'
+          git push origin HEAD:agent/full-joint-observation
