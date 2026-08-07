@@ -1,0 +1,153 @@
+# Pre-acquisition next-action decision
+
+The registered physical experiment has several independent prerequisite,
+source-panel, approval, freeze, and software-lineage gates. The authoritative
+status commands remain the source of truth, but their complete blocker lists are
+not an operator runbook.
+
+`causal4d protocol readiness next-action` derives exactly one admissible next
+step from the current hash-verified readiness and source-panel status. It does
+not create evidence, repair invalid artifacts, choose scientific settings, or
+inspect target outcomes.
+
+## Usage
+
+```bash
+causal4d protocol readiness next-action \
+  /opt/causal4d-frozen \
+  /data/causal4d-sloth-multi-action-v1 \
+  --output-json \
+  /data/causal4d-sloth-multi-action-v1/operator/next-action.json \
+  --output-markdown \
+  /data/causal4d-sloth-multi-action-v1/operator/next-action.md
+```
+
+File hashes are verified by default. `--skip-file-hashes` is available for a
+structure-only inspection, but such a run can never authorize confirmatory
+collection. When all logical evidence is present, the resulting action remains
+`run_final_hash_verified_readiness_gate` until a hash-verified decision passes.
+
+The command returns:
+
+- exit code `0` only when the readiness decision already authorizes the first
+  confirmatory execution;
+- exit code `3` for a valid but incomplete state with one prescribed next action;
+- exit code `2` when present evidence is malformed, contradictory, out of order,
+  or otherwise invalid.
+
+## Deterministic action order
+
+The decision follows the registered information order. It emits the first
+applicable action from this sequence:
+
+1. create the registered real-dataset scaffold when the dataset root is absent
+   or empty;
+2. create the non-overwriting pre-acquisition gate and source-panel templates;
+3. scaffold and seal the operator identity registry;
+4. stop on malformed evidence, chronology violations, unexpected source-panel
+   entries, or confirmatory collection that began before readiness;
+5. complete the fixed object registration, slip pilot, shared timebase, and
+   independently reviewed contact registration;
+6. acquire, verify, independently review, and publish exactly the next
+   registered source-panel execution;
+7. seal source-panel completion, actuator synchronization, support/gravity, and
+   nonconfirmatory end-to-end dry-run gates;
+8. seal the exact clean method freeze;
+9. obtain an independent freeze attestation;
+10. seal the deployed software environment;
+11. run the final hash-verified readiness gate; and
+12. validate the freeze and begin only the first registered confirmatory session.
+
+The source-panel action includes the exact execution ID, session ID, registered
+command profile, manifest template, staging destination, preflight-report path,
+and exactly-once publication command. It never skips ahead or selects a
+different source execution.
+
+## Source-panel publication sequence
+
+A physical source execution has an irreversible claim-bearing publication step.
+The next-action artifact therefore represents five explicit phases:
+
+```text
+acquire registered execution
+        ↓
+verify staged manifest and every referenced artifact
+        ↓
+independently review the content-addressed preflight report
+        ↓
+publish the manifest exactly once
+        ↓
+recompute the next action
+```
+
+The preflight command is emitted under
+`post_acquisition_verification_argv` and writes the path recorded in
+`preflight_report_path`. The publication command is separate under
+`claim_bearing_publication_argv`; it is never presented as the immediate
+post-acquisition command. `independent_review_required_before_publication=true`
+records the human decision boundary explicitly.
+
+Publication reruns all registered validation and hash checks. A preflight report
+is a snapshot and never reserves the next execution slot or counts as physical
+evidence.
+
+## Output contract
+
+The JSON report is content addressed and contains:
+
+- the protocol, design, pre-acquisition plan, and amendment identities;
+- the source readiness and source-panel evidence/status identities;
+- one `action` object with a stable `action_id` and category;
+- an argv representation and shell-rendered form for executable commands;
+- required inputs, outputs, and operator role;
+- explicit post-acquisition verification and claim-bearing publication commands
+  when applicable;
+- whether independent review is required before publication;
+- the completion check that should be run after the action sequence;
+- whether physical acquisition is required;
+- whether the action is mechanically automatable;
+- a portable `evidence_sha256` that normalizes repository and dataset mount
+  points; and
+- an exact host-local `status_sha256`.
+
+Every action records:
+
+```json
+{
+  "changes_registered_method": false,
+  "target_outcomes_permitted": false
+}
+```
+
+The Markdown report renders the same sequence for an acquisition operator. Both
+formats are derived artifacts and may be overwritten by a newer status
+snapshot; they are never counted as experimental evidence.
+
+## Invalid evidence
+
+An invalid state always yields `stop_and_repair_invalid_evidence`. The command
+lists the detected malformed prerequisites, invalid gates, chronology blockers,
+source-panel blockers, or premature-collection condition. It deliberately does
+not synthesize a repair command because a method-affecting defect may require a
+new protocol version rather than mutation of the current registration.
+
+The operator must resolve the first invalid boundary under the applicable
+runbook and independent-review policy, then rerun the decision command.
+
+## Scientific boundary
+
+This interface is operational provenance only. It does not modify:
+
+- the frozen estimator or intervention posterior;
+- the six-frame causal information boundary;
+- the 12-source-execution or 36-confirmatory-execution order;
+- any fit, calibration, or target split;
+- a quality gate, exclusion rule, conformal threshold, or analysis decision;
+- the physical evidence count; or
+- the distinction between controlled counterfactual evidence and real held-out
+  interventional prediction.
+
+A `begin_first_confirmatory_session` action is emitted only when the existing
+readiness status already has `ready=true`, all requested hashes were verified,
+and `first_confirmatory_execution_allowed=true` follows from the registered
+collection gate.

@@ -6,6 +6,7 @@ import argparse
 import json
 from collections.abc import Sequence
 
+from causal4d import preacquisition_operator_flow as _operator_flow
 from causal4d.operator_registry import (
     scaffold_operator_registry,
     seal_operator_registry,
@@ -22,7 +23,20 @@ from causal4d.preacquisition_source_panel_control import (
     publish_source_panel_manifest,
     write_source_panel_status,
 )
+from causal4d.preacquisition_source_panel_staging import (
+    verify_source_panel_manifest_staging,
+    write_source_panel_staging_preflight,
+)
 
+build_preacquisition_next_action = (
+    _operator_flow.build_preacquisition_operator_next_action
+)
+write_preacquisition_next_action = (
+    _operator_flow.write_preacquisition_operator_next_action
+)
+write_preacquisition_next_action_markdown = (
+    _operator_flow.write_preacquisition_operator_next_action_markdown
+)
 
 _VALID_BUT_INCOMPLETE = 3
 
@@ -79,6 +93,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="return exit code 3 while the valid source panel is incomplete",
     )
 
+    source_verify = subparsers.add_parser(
+        "source-panel-verify-staged",
+        help=(
+            "hash-verify exactly the next staged source manifest without publishing it"
+        ),
+    )
+    source_verify.add_argument("repository_root")
+    source_verify.add_argument("dataset_root")
+    source_verify.add_argument("source_json")
+    source_verify.add_argument("--output-json")
+
     source_publish = subparsers.add_parser(
         "source-panel-publish",
         help="hash-verify and publish exactly the next source execution manifest",
@@ -99,6 +124,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--require-ready",
         action="store_true",
         help="return exit code 3 when evidence is valid but incomplete",
+    )
+
+    next_action = subparsers.add_parser(
+        "next-action",
+        help="derive exactly one admissible operator action from current evidence",
+    )
+    next_action.add_argument("repository_root")
+    next_action.add_argument("dataset_root")
+    next_action.add_argument("--output-json")
+    next_action.add_argument("--output-markdown")
+    next_action.add_argument(
+        "--skip-file-hashes",
+        action="store_true",
+        help="inspect structure only; the suggested action cannot authorize collection",
     )
     return parser
 
@@ -140,12 +179,33 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             if args.output_json:
                 write_source_panel_status(args.output_json, result)
+        elif args.command == "source-panel-verify-staged":
+            result = verify_source_panel_manifest_staging(
+                args.repository_root,
+                args.dataset_root,
+                args.source_json,
+            )
+            if args.output_json:
+                write_source_panel_staging_preflight(args.output_json, result)
         elif args.command == "source-panel-publish":
             result = publish_source_panel_manifest(
                 args.repository_root,
                 args.dataset_root,
                 args.source_json,
             )
+        elif args.command == "next-action":
+            result = build_preacquisition_next_action(
+                args.repository_root,
+                args.dataset_root,
+                verify_file_hashes=not args.skip_file_hashes,
+            )
+            if args.output_json:
+                write_preacquisition_next_action(args.output_json, result)
+            if args.output_markdown:
+                write_preacquisition_next_action_markdown(
+                    args.output_markdown,
+                    result,
+                )
         else:
             result = build_preacquisition_readiness(
                 args.repository_root,
@@ -180,6 +240,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not result["valid"]:
             return 2
         if args.require_complete and not result["complete"]:
+            return _VALID_BUT_INCOMPLETE
+    if args.command == "next-action":
+        if not result["valid"]:
+            return 2
+        if not result["ready"]:
             return _VALID_BUT_INCOMPLETE
     return 0
 
