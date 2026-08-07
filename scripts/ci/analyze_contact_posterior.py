@@ -15,6 +15,9 @@ from causal4d.contact_posterior_diagnostics import (
     DiagnosticConfig,
     write_contact_posterior_diagnostics,
 )
+from causal4d.contact_posterior_topology_scores import (
+    augment_contact_posterior_result_from_bundle,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -47,6 +50,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not isinstance(source_integrity, dict):
         raise ValueError("diagnostic result is missing admission verification")
 
+    result = augment_contact_posterior_result_from_bundle(
+        result,
+        args.bundle_dir,
+        diffusion_strength=args.diffusion_strength,
+    )
     paths = write_contact_posterior_diagnostics(result, args.output_dir)
     print(
         json.dumps(
@@ -56,6 +64,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "recomputation_parity": result["recomputation_parity"],
                 "overall": result["overall"],
                 "by_topology": result["by_topology"],
+                "posterior_topology_scores": result["posterior_topology_scores"],
                 "artifacts": paths,
                 "claim_boundary": result["claim_boundary"],
             },
