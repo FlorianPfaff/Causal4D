@@ -10,8 +10,10 @@ def test_tag_release_requires_public_provider_integration() -> None:
         pytest.skip("GitHub workflow is not included in the source distribution")
     text = workflow.read_text(encoding="utf-8")
     bpt_pin = (
-        root / "requirements/ci/bayesian-phystwin-provider-v1.sha"
-    ).read_text(encoding="utf-8").strip()
+        (root / "requirements/ci/bayesian-phystwin-provider-v1.sha")
+        .read_text(encoding="utf-8")
+        .strip()
+    )
     assert "Pinned Bayesian-PhysTwin installed-wheel integration" in text
     assert "repository: IPS-Stuttgart/BayesianPhysTwin" in text
     assert f"ref: {bpt_pin}" in text
