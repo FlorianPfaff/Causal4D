@@ -1,19 +1,13 @@
 name: Controlled reproducibility evidence
 
 on:
-  push:
-    branches: ["evidence/controlled-reproducibility-20260807"]
-    paths: [".github/workflows/controlled-reproducibility-evidence.yml"]
-  pull_request:
-    branches: [main]
-    paths: [".github/workflows/controlled-reproducibility-evidence.yml"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: controlled-evidence-${{ github.ref }}
+  group: controlled-reproducibility-evidence
   cancel-in-progress: false
 
 env:
@@ -69,21 +63,28 @@ jobs:
           from pathlib import Path
 
           root = Path("evidence")
-          cf = json.loads((root / "counterfactual/canonical/summary.json").read_text())
-          lc = json.loads((root / "latent-contact/canonical/summary.json").read_text())
+          counterfactual = json.loads(
+              (root / "counterfactual/canonical/summary.json").read_text()
+          )
+          latent = json.loads(
+              (root / "latent-contact/canonical/summary.json").read_text()
+          )
           gates = json.loads(
               (root / "latent-contact/canonical/success_gates.json").read_text()
           )
-          if cf["seeds"] != list(range(64)):
+          if counterfactual["seeds"] != list(range(64)):
               raise SystemExit("counterfactual seed inventory mismatch")
-          if lc["seeds"] != list(range(10)):
+          if latent["seeds"] != list(range(10)):
               raise SystemExit("latent-contact seed inventory mismatch")
           if gates.get("overall_passed") is not True:
               raise SystemExit("registered latent-contact gates did not pass")
 
           def bind(path):
               data = path.read_bytes()
-              return {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
+              return {
+                  "sha256": hashlib.sha256(data).hexdigest(),
+                  "bytes": len(data),
+              }
 
           tracked = [
               root / "counterfactual/canonical/summary.json",
@@ -101,22 +102,29 @@ jobs:
               "python": platform.python_version(),
               "counterfactual": {
                   "seed_count": 64,
-                  "aggregate": cf["aggregate"],
+                  "aggregate": counterfactual["aggregate"],
               },
               "latent_contact": {
                   "seed_count": 10,
-                  "aggregate": lc["aggregate"],
+                  "aggregate": latent["aggregate"],
                   "success_gates": gates,
               },
               "bound_files": {
-                  path.relative_to(root).as_posix(): bind(path) for path in tracked
+                  path.relative_to(root).as_posix(): bind(path)
+                  for path in tracked
               },
               "physical_evidence_increment": 0,
               "target_outcomes_used": False,
               "passed": True,
           }
           (root / "report.json").write_text(
-              json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n"
+              json.dumps(
+                  report,
+                  indent=2,
+                  sort_keys=True,
+                  allow_nan=False,
+              )
+              + "\n"
           )
           PY
           python -VV > evidence/python-version.txt
@@ -213,7 +221,13 @@ jobs:
               "passed": True,
           }
           (directory / "evidence.json").write_text(
-              json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n"
+              json.dumps(
+                  report,
+                  indent=2,
+                  sort_keys=True,
+                  allow_nan=False,
+              )
+              + "\n"
           )
           PY
           find evidence -type f ! -name SHA256SUMS -print0 \
@@ -284,7 +298,13 @@ jobs:
               "passed": True,
           }
           (directory / "evidence.json").write_text(
-              json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n"
+              json.dumps(
+                  report,
+                  indent=2,
+                  sort_keys=True,
+                  allow_nan=False,
+              )
+              + "\n"
           )
           PY
           find evidence -type f ! -name SHA256SUMS -print0 \
@@ -298,5 +318,3 @@ jobs:
           path: evidence
           if-no-files-found: error
           retention-days: 90
-
-# Second indexed push intentionally triggers this workflow on its evidence branch.

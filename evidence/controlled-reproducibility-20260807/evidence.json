@@ -1,0 +1,491 @@
+{
+  "artifact_kind": "Causal4DWorkflowControlledEvidenceRecord",
+  "artifacts": [
+    {
+      "digest": "sha256:7bce879285c050a652dbf746fe1283f02911564ce9361fef0e69c1440daf7cad",
+      "expires_at": "2026-11-05T07:12:02Z",
+      "id": 8985833844,
+      "kind": "canonical",
+      "name": "causal4d-controlled-evidence-5621c4d32667d738180aadc9d96baaf99cbded2a",
+      "size_bytes": 261200
+    },
+    {
+      "digest": "sha256:6ea4131ff3b1d2234cc10cdbdeabcbd9c94c9011b028495a9f2ba9d6a6408f02",
+      "expires_at": "2026-11-05T07:12:02Z",
+      "id": 8985503491,
+      "kind": "stress_observation_noise_3mm",
+      "name": "causal4d-stress-observation-noise-3mm-5621c4d32667d738180aadc9d96baaf99cbded2a",
+      "size_bytes": 65513
+    },
+    {
+      "digest": "sha256:dbde3d3124cc895db0e37e8c5d3ae2ebdead0c15be10d3cb3bb6915bbacc84fa",
+      "expires_at": "2026-11-05T07:12:02Z",
+      "id": 8985495674,
+      "kind": "stress_observation_noise_6mm",
+      "name": "causal4d-stress-observation-noise-6mm-5621c4d32667d738180aadc9d96baaf99cbded2a",
+      "size_bytes": 65431
+    },
+    {
+      "digest": "sha256:29c093f4f5661195f64b7819132e001627bf873b9de3cc6818f25221fe1541af",
+      "expires_at": "2026-11-05T07:12:02Z",
+      "id": 8985494728,
+      "kind": "stress_rotation_15deg",
+      "name": "causal4d-stress-rotation-15deg-5621c4d32667d738180aadc9d96baaf99cbded2a",
+      "size_bytes": 68604
+    },
+    {
+      "digest": "sha256:6e95e185abf7ec58a74ffb02351cdabd6fb05456704979b5e517e619bbc12d50",
+      "expires_at": "2026-11-05T07:12:02Z",
+      "id": 8985481069,
+      "kind": "stress_nonlinearity_0p30",
+      "name": "causal4d-stress-nonlinearity-0p30-5621c4d32667d738180aadc9d96baaf99cbded2a",
+      "size_bytes": 67763
+    },
+    {
+      "digest": "sha256:9680f7e4574c4d93e49163d42deed729280c5af8f8b97edbdee1e4ac609e6e0a",
+      "expires_at": "2026-11-05T07:12:02Z",
+      "id": 8985463359,
+      "kind": "portability_python_3_10",
+      "name": "causal4d-portability-py3.10-5621c4d32667d738180aadc9d96baaf99cbded2a",
+      "size_bytes": 46145
+    },
+    {
+      "digest": "sha256:bd40ee3ba3d2d47a39de6ded5b4bec824e7e8548e33da01d37a0d5cbc5303200",
+      "expires_at": "2026-11-05T07:12:02Z",
+      "id": 8985460671,
+      "kind": "portability_python_3_14",
+      "name": "causal4d-portability-py3.14-5621c4d32667d738180aadc9d96baaf99cbded2a",
+      "size_bytes": 46143
+    }
+  ],
+  "boundary": {
+    "confirmatory_physical_evidence": false,
+    "controlled_computational_evidence": true,
+    "physical_evidence_increment": 0,
+    "physical_executions_acquired": 0,
+    "physical_executions_specified": 36,
+    "physical_executions_validated": 0,
+    "registered_physical_method_changed": false,
+    "target_outcomes_used": false
+  },
+  "counterfactual": {
+    "cases_per_method_condition": 192,
+    "hybrid_vs_generative_rmse_reduction": {
+      "matched_percent": 86.83453440826155,
+      "shifted_percent": 65.78862219414825
+    },
+    "manifest_sha256": "bc15b527be9963cbee7af04355d006c918e97a3437fb06745676008630cce686",
+    "physics_minus_hybrid_rmse_mm": {
+      "matched": 0.012195970750200711,
+      "shifted": -0.03185391659721575
+    },
+    "rows": [
+      {
+        "condition": "matched_contact",
+        "coverage": 0.9792462937866119,
+        "gaussian_nll": -2.8801152744179532,
+        "gross_failure_rate": 0.3333333333333333,
+        "method": "generative_only",
+        "nees": 0.45282142851362533,
+        "rmse_mm": 16.349238811582776
+      },
+      {
+        "condition": "shifted_contact",
+        "coverage": 0.997517165503354,
+        "gaussian_nll": -2.9696198896806187,
+        "gross_failure_rate": 0.3333333333333333,
+        "method": "generative_only",
+        "nees": 0.27381219798829554,
+        "rmse_mm": 12.86038079875366
+      },
+      {
+        "condition": "matched_contact",
+        "coverage": 0.9457042691208427,
+        "gaussian_nll": -4.58622945540129,
+        "gross_failure_rate": 0.0,
+        "method": "hybrid",
+        "nees": 0.8690655142695233,
+        "rmse_mm": 2.15245341025008
+      },
+      {
+        "condition": "shifted_contact",
+        "coverage": 0.845204602023101,
+        "gaussian_nll": -3.1187769284687303,
+        "gross_failure_rate": 0.0,
+        "method": "hybrid",
+        "nees": 3.803970568134643,
+        "rmse_mm": 4.399713462332829
+      },
+      {
+        "condition": "matched_contact",
+        "coverage": 0.9370372769333427,
+        "gaussian_nll": -4.723377876157084,
+        "gross_failure_rate": 0.0,
+        "method": "physics_only",
+        "nees": 0.9648055326127986,
+        "rmse_mm": 2.1646493810002805
+      },
+      {
+        "condition": "shifted_contact",
+        "coverage": 0.8095484450290532,
+        "gaussian_nll": -3.1623742038293643,
+        "gross_failure_rate": 0.0,
+        "method": "physics_only",
+        "nees": 4.086812877268237,
+        "rmse_mm": 4.367859545735614
+      }
+    ],
+    "seed_count": 64,
+    "summary_sha256": "1854e56ea0e0772652f153a2ee9305dc000f6f0b72ed399860120018384bc31c"
+  },
+  "latent_contact": {
+    "gates": [
+      {
+        "comparison": ">=",
+        "name": "shifted_oracle_gap_closure",
+        "passed": true,
+        "threshold": 0.5,
+        "value": 0.8040463930461011
+      },
+      {
+        "comparison": "<=",
+        "name": "matched_contact_relative_degradation",
+        "passed": true,
+        "threshold": 0.1,
+        "value": -0.1888576477696608
+      },
+      {
+        "comparison": "<=",
+        "name": "maximum_online_coverage_error",
+        "passed": true,
+        "threshold": 0.05,
+        "value": 0.008347613035112889
+      },
+      {
+        "comparison": ">=",
+        "name": "shifted_node_accuracy",
+        "passed": true,
+        "threshold": 0.8,
+        "value": 0.8333333333333334
+      },
+      {
+        "comparison": ">=",
+        "name": "shifted_node_credible_coverage",
+        "passed": true,
+        "threshold": 0.8,
+        "value": 0.9
+      },
+      {
+        "comparison": "<=",
+        "name": "shifted_node_calibration_error",
+        "passed": true,
+        "threshold": 0.15,
+        "value": 0.11620422436174527
+      },
+      {
+        "comparison": "<=",
+        "name": "shifted_gain_mae",
+        "passed": true,
+        "threshold": 0.15,
+        "value": 0.08738738168417638
+      },
+      {
+        "comparison": ">=",
+        "name": "shifted_gain_coverage",
+        "passed": true,
+        "threshold": 0.8,
+        "value": 0.9666666666666667
+      },
+      {
+        "comparison": "<=",
+        "name": "shifted_delay_mae_steps",
+        "passed": true,
+        "threshold": 0.5,
+        "value": 0.33772076365079134
+      },
+      {
+        "comparison": ">=",
+        "name": "shifted_delay_map_accuracy",
+        "passed": true,
+        "threshold": 0.8,
+        "value": 0.9333333333333333
+      },
+      {
+        "comparison": ">=",
+        "name": "shifted_delay_coverage",
+        "passed": true,
+        "threshold": 0.8,
+        "value": 0.9333333333333333
+      },
+      {
+        "comparison": ">=",
+        "name": "held_out_topology_count",
+        "passed": true,
+        "threshold": 3,
+        "value": 3
+      },
+      {
+        "comparison": ">=",
+        "name": "minimum_topology_oracle_gap_closure",
+        "passed": true,
+        "threshold": 0.0,
+        "value": 0.669181192161227
+      }
+    ],
+    "held_out_topology": [
+      {
+        "latent_rmse_m": 0.0007331862638319212,
+        "nominal_rmse_m": 0.002214906874403144,
+        "object": "cloth",
+        "oracle_gap_closure": 0.669181192161227,
+        "oracle_gap_m": 0.002214229311773947,
+        "oracle_rmse_m": 6.775626291971704e-07
+      },
+      {
+        "latent_rmse_m": 0.0009631973838927985,
+        "nominal_rmse_m": 0.007629276735375344,
+        "object": "rope",
+        "oracle_gap_closure": 0.8753802667313734,
+        "oracle_gap_m": 0.007615066965552418,
+        "oracle_rmse_m": 1.4209769822926423e-05
+      },
+      {
+        "latent_rmse_m": 0.0007520512950114092,
+        "nominal_rmse_m": 0.0025877949558900343,
+        "object": "soft_block",
+        "oracle_gap_closure": 0.7095127471215884,
+        "oracle_gap_m": 0.0025873300632385057,
+        "oracle_rmse_m": 4.648926515285416e-07
+      }
+    ],
+    "manifest_sha256": "98027fa260cb9d510cfd795da50765a34678664e0c32e244c39cfdc17316cbdc",
+    "nominal_to_latent_rmse_reduction": {
+      "matched_percent": 18.88576477696608,
+      "shifted_percent": 80.30534777869073
+    },
+    "online_rows": [
+      {
+        "condition": "matched_contact",
+        "coverage": 0.8916523869648871,
+        "gaussian_nll": -4.367175411340423,
+        "method": "latent_contact",
+        "nees": 2.3387132195967424,
+        "rmse_mm": 1.970431399096007
+      },
+      {
+        "condition": "shifted_contact",
+        "coverage": 0.9024613696488697,
+        "gaussian_nll": -3.054513592723273,
+        "method": "latent_contact",
+        "nees": 6.856384575997404,
+        "rmse_mm": 0.8161449809120431
+      },
+      {
+        "condition": "matched_contact",
+        "coverage": 0.8889279701779702,
+        "gaussian_nll": -4.551548848426232,
+        "method": "nominal_physics",
+        "nees": 1.3293418914458799,
+        "rmse_mm": 2.429205420821703
+      },
+      {
+        "condition": "shifted_contact",
+        "coverage": 0.7799933862433863,
+        "gaussian_nll": -2.8857286502571573,
+        "method": "nominal_physics",
+        "nees": 4.715740716979144,
+        "rmse_mm": 4.143992855222841
+      },
+      {
+        "condition": "matched_contact",
+        "coverage": 0.9318602693602693,
+        "gaussian_nll": -4.908411906268455,
+        "method": "oracle_contact",
+        "nees": 0.6104922310410519,
+        "rmse_mm": 1.652595172380687
+      },
+      {
+        "condition": "shifted_contact",
+        "coverage": 0.9752164502164503,
+        "gaussian_nll": -5.09434059700071,
+        "method": "oracle_contact",
+        "nees": 0.35785346235058846,
+        "rmse_mm": 1.16503606108619
+      },
+      {
+        "condition": "matched_contact",
+        "coverage": 1.0,
+        "gaussian_nll": -5.2950467687869365,
+        "method": "oracle_contact_theta",
+        "nees": 0.001245592861166651,
+        "rmse_mm": 0.04471091898184514
+      },
+      {
+        "condition": "shifted_contact",
+        "coverage": 1.0,
+        "gaussian_nll": -5.295661123851906,
+        "method": "oracle_contact_theta",
+        "nees": 1.6882731226206676e-05,
+        "rmse_mm": 0.005117408367884043
+      }
+    ],
+    "overall_passed": true,
+    "registered_gate_count": 13,
+    "registered_gates_passed": 13,
+    "seed_count": 10,
+    "success_gates_sha256": "e5ae280e8ada4f6a0f469b60d06854e7cd24c27b94da4933e1bc50477991fe5e",
+    "summary_sha256": "076c6b3c4207a4b77f6c6c135be46b655eca2c5f7e8c19c59630c2b10707cd49"
+  },
+  "passed": true,
+  "portability": {
+    "byte_identical_files": [
+      "interventions.csv",
+      "fit_diagnostics.csv",
+      "protocol.json"
+    ],
+    "maximum_row_level_numeric_delta": {
+      "absolute_delta": 2.7755575615628914e-16,
+      "field": "parameter_recovery.crps"
+    },
+    "only_aggregate_difference": {
+      "absolute_delta": 2.7755575615628914e-17,
+      "field": "damping.mean_crps"
+    },
+    "passed": true,
+    "python_runtimes": [
+      "3.10.20",
+      "3.14.6"
+    ],
+    "seed_count": 10
+  },
+  "pull_request": 223,
+  "recorded_date": "2026-08-07",
+  "repository": "IPS-Stuttgart/Causal4D",
+  "schema_version": 1,
+  "stress": [
+    {
+      "case": "observation-noise-3mm",
+      "condition": "matched_contact",
+      "generative_gross_failure_rate": 0.3333333333333333,
+      "generative_rmse_mm": 16.456977564687936,
+      "hybrid_gross_failure_rate": 0.0,
+      "hybrid_rmse_mm": 2.165005152156315,
+      "physics_gross_failure_rate": 0.0,
+      "physics_minus_hybrid_rmse_mm": 0.00012059500869199269,
+      "physics_rmse_mm": 2.165125747165007,
+      "seed_count": 20
+    },
+    {
+      "case": "observation-noise-3mm",
+      "condition": "shifted_contact",
+      "generative_gross_failure_rate": 0.3333333333333333,
+      "generative_rmse_mm": 12.990991880809013,
+      "hybrid_gross_failure_rate": 0.0,
+      "hybrid_rmse_mm": 4.3743263669044605,
+      "physics_gross_failure_rate": 0.0,
+      "physics_minus_hybrid_rmse_mm": -0.0051277531465769854,
+      "physics_rmse_mm": 4.3691986137578835,
+      "seed_count": 20
+    },
+    {
+      "case": "observation-noise-6mm",
+      "condition": "matched_contact",
+      "generative_gross_failure_rate": 0.3333333333333333,
+      "generative_rmse_mm": 16.840976325608683,
+      "hybrid_gross_failure_rate": 0.0,
+      "hybrid_rmse_mm": 2.1723574317107612,
+      "physics_gross_failure_rate": 0.0,
+      "physics_minus_hybrid_rmse_mm": -0.0030580455663753447,
+      "physics_rmse_mm": 2.169299386144386,
+      "seed_count": 20
+    },
+    {
+      "case": "observation-noise-6mm",
+      "condition": "shifted_contact",
+      "generative_gross_failure_rate": 0.3333333333333333,
+      "generative_rmse_mm": 13.462192806401386,
+      "hybrid_gross_failure_rate": 0.0,
+      "hybrid_rmse_mm": 4.382968914803238,
+      "physics_gross_failure_rate": 0.0,
+      "physics_minus_hybrid_rmse_mm": -0.004689477436067513,
+      "physics_rmse_mm": 4.37827943736717,
+      "seed_count": 20
+    },
+    {
+      "case": "rotation-15deg",
+      "condition": "matched_contact",
+      "generative_gross_failure_rate": 0.3333333333333333,
+      "generative_rmse_mm": 16.355851976443144,
+      "hybrid_gross_failure_rate": 0.0,
+      "hybrid_rmse_mm": 3.3315665101944862,
+      "physics_gross_failure_rate": 0.0,
+      "physics_minus_hybrid_rmse_mm": -0.007438366178629252,
+      "physics_rmse_mm": 3.324128144015857,
+      "seed_count": 20
+    },
+    {
+      "case": "rotation-15deg",
+      "condition": "shifted_contact",
+      "generative_gross_failure_rate": 0.3333333333333333,
+      "generative_rmse_mm": 12.866480367086323,
+      "hybrid_gross_failure_rate": 0.0,
+      "hybrid_rmse_mm": 4.758893362558705,
+      "physics_gross_failure_rate": 0.0,
+      "physics_minus_hybrid_rmse_mm": -0.15603928278752743,
+      "physics_rmse_mm": 4.602854079771178,
+      "seed_count": 20
+    },
+    {
+      "case": "nonlinearity-0p30",
+      "condition": "matched_contact",
+      "generative_gross_failure_rate": 0.3333333333333333,
+      "generative_rmse_mm": 16.341500914405792,
+      "hybrid_gross_failure_rate": 0.0,
+      "hybrid_rmse_mm": 2.1525285345398895,
+      "physics_gross_failure_rate": 0.0,
+      "physics_minus_hybrid_rmse_mm": 0.01267940953938318,
+      "physics_rmse_mm": 2.1652079440792726,
+      "seed_count": 20
+    },
+    {
+      "case": "nonlinearity-0p30",
+      "condition": "shifted_contact",
+      "generative_gross_failure_rate": 0.3333333333333333,
+      "generative_rmse_mm": 12.857803153763163,
+      "hybrid_gross_failure_rate": 0.0,
+      "hybrid_rmse_mm": 4.3874774126189795,
+      "physics_gross_failure_rate": 0.0,
+      "physics_minus_hybrid_rmse_mm": -0.03295734361887792,
+      "physics_rmse_mm": 4.354520069000102,
+      "seed_count": 20
+    }
+  ],
+  "validation_runs": {
+    "ci_and_release": {
+      "conclusion": "success",
+      "run_id": 31156729352
+    },
+    "extended_compatibility": {
+      "conclusion": "success",
+      "run_id": 31156729513
+    },
+    "merge_gate": {
+      "conclusion": "success",
+      "run_id": 31156729349
+    },
+    "security_scanning": {
+      "conclusion": "success",
+      "run_id": 31156729464
+    }
+  },
+  "workflow": {
+    "base_revision": "8f23bc05e6f142f8d0ddccbf06ba641fe90875b9",
+    "branch_head_revision": "5a722b86902c2e6f890745aab682d4be9e12f787",
+    "canonical_python": "3.12.13",
+    "conclusion": "success",
+    "name": "Controlled reproducibility evidence",
+    "run_id": 31156729576,
+    "run_number": 3,
+    "tested_merge_revision": "5621c4d32667d738180aadc9d96baaf99cbded2a"
+  }
+}
