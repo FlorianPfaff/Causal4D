@@ -98,11 +98,20 @@ jobs:
     env:
       DEFORM360_REPLICATION_ROOT: ${{ inputs.data_root }}
     steps:
-      - name: Check out Causal4D
+      - name: Check out exact reviewed Causal4D revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
           persist-credentials: false
           clean: true
+
+      - name: Verify reviewed main revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test -z "$(git status --porcelain=v1)"
 
       - name: Initialize source-evidence directory
         shell: bash
