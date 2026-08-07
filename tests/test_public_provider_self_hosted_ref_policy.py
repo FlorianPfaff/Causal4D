@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SELF_HOSTED_JOBS = {
     ".github/workflows/self-hosted-evaluation.yml": "evaluate",
     ".github/workflows/optional-integrations.yml": "gpu",
+    ".github/workflows/workstation2-evaluation.yml": "evaluate",
     ".github/workflows/deform360-contact-support.yml": "source-diagnostic",
     ".github/workflows/deform360-prefix-kinematics.yml": "source-diagnostic",
     ".github/workflows/deform360-reset-mechanics.yml": "source-diagnostic",
