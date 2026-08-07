@@ -11,21 +11,27 @@ WORKFLOW = (
 )
 
 
-def test_requested_provider_validation_uses_ssh_and_fails_closed() -> None:
+def test_requested_provider_validation_uses_public_pinned_wheel() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
-    assert "Require private BayesianPhysTwin credential" in text
-    assert "BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}" in text
-    assert "ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}" in text
-    assert "provider checks were requested and cannot run" in text
-    assert text.count("if: ${{ inputs.run_bpt }}") >= 5
-    assert "BPT_READ_TOKEN" not in text
+    assert "repository: IPS-Stuttgart/BayesianPhysTwin" in text
+    assert "ref: ${{ steps.pin.outputs.sha }}" in text
+    assert "Check out pinned public BayesianPhysTwin" in text
+    assert "Build and install exact BayesianPhysTwin wheel" in text
+    assert "bayesian_phystwin-*.whl" in text
+    assert "self-hosted-evaluation/wheel-sha256.txt" in text
+    assert text.count("if: ${{ inputs.run_bpt }}") >= 4
+    assert "BPT_READ_SSH_KEY" not in text
+    assert "ssh-key:" not in text
     assert "continue-on-error: true" not in text
-    assert "Report unavailable Bayesian-PhysTwin access" not in text
 
 
-def test_self_hosted_gpu_stack_does_not_use_actions_pip_cache() -> None:
+def test_self_hosted_gpu_stack_uses_installed_wheels_without_actions_cache() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
     assert "cache: pip" not in text
-    assert 'python -m pip install -e ".[dev,warp]"' in text
+    assert "Build and install exact Causal4D wheel" in text
+    assert "python -m build --wheel --outdir self-hosted-evaluation/wheels ." in text
+    assert "Causal4D resolved from the checkout instead of the wheel" in text
+    assert "BayesianPhysTwin resolved from the checkout instead of the wheel" in text
+    assert "python -m pip install -e" not in text
