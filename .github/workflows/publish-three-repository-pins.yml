@@ -71,7 +71,7 @@ jobs:
           assert workflow.count(f"ref: {bpt_pin}") == 1
           assert workflow.count(f"ref: {prob4d_pin}") == 1
           assert "ref: main" not in workflow
-          assert "ref: ${{" not in workflow
+          assert "ref: $" + "{{" not in workflow
           assert not (root / ".github" / "code-scanning-pins").exists()
           assert not (
               root
