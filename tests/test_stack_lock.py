@@ -31,11 +31,7 @@ def _write_wheel(tmp_path: Path, name: str, version: str) -> Path:
     with ZipFile(path, "w") as archive:
         archive.writestr(
             f"{dist_info}/METADATA",
-            (
-                "Metadata-Version: 2.1\n"
-                f"Name: {name}\n"
-                f"Version: {version}\n"
-            ),
+            (f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n"),
         )
         archive.writestr(
             f"{dist_info}/WHEEL",
@@ -135,8 +131,7 @@ def test_stack_lock_verifies_exact_wheels_and_detects_drift(tmp_path: Path) -> N
     )
     assert drifted["valid"] is False
     assert any(
-        "wheel identity mismatch for causal4d" in item
-        for item in drifted["errors"]
+        "wheel identity mismatch for causal4d" in item for item in drifted["errors"]
     )
 
 
@@ -161,9 +156,7 @@ def test_stack_cli_creates_and_verifies_lock(tmp_path: Path, capsys) -> None:
     verified = json.loads(capsys.readouterr().out)
     assert verified["valid"] is True
 
-    assert stack_main(
-        ["verify", "--lock", str(output), "--lock-only", "--json"]
-    ) == 0
+    assert stack_main(["verify", "--lock", str(output), "--lock-only", "--json"]) == 0
     lock_only = json.loads(capsys.readouterr().out)
     assert lock_only["valid"] is True
     assert lock_only["wheel_set"]["verified"] is False
