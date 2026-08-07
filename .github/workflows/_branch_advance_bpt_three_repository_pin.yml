@@ -1,8 +1,9 @@
 name: Branch advance BPT three-repository pin
 
 on:
-  push:
-    branches: [chore/advance-bpt-three-repository-pin]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
     paths:
       - ".github/workflows/_branch_advance_bpt_three_repository_pin.yml"
       - "scripts/ci/apply_bpt_three_repository_pin_advance.py"
@@ -10,23 +11,29 @@ on:
 
 permissions:
   contents: write
+  pull-requests: read
 
 concurrency:
-  group: branch-advance-bpt-three-repository-pin
+  group: branch-advance-bpt-three-repository-pin-pr-236
   cancel-in-progress: false
 
 jobs:
   synchronize-and-validate:
     if: >-
       github.repository == 'IPS-Stuttgart/Causal4D' &&
-      github.ref == 'refs/heads/chore/advance-bpt-three-repository-pin'
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.number == 236 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref ==
+        'chore/advance-bpt-three-repository-pin' &&
+      github.event.pull_request.user.login == 'FlorianPfaff'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Check out exact branch revision
+      - name: Check out exact PR head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: true
           clean: true
@@ -83,5 +90,6 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
+          git diff --cached --check
           git commit -m 'Advance BayesianPhysTwin compatibility pin'
           git push origin HEAD:chore/advance-bpt-three-repository-pin
