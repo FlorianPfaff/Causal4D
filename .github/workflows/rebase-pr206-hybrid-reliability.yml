@@ -1,0 +1,134 @@
+name: Rebase PR 206 hybrid reliability correction
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/rebase-pr206-hybrid-reliability.yml
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rebase-pr206-hybrid-reliability
+  cancel-in-progress: false
+
+env:
+  EXPECTED_HEAD: 790210aede3a6a06531e79dc87e9ee700576d0bf
+  PRODUCT_BRANCH: fix/hybrid-reliability-derived-validation-v2
+
+jobs:
+  rebuild:
+    name: Rebuild seven-file correction on current main
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out current main with full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify immutable source head and rebuild product commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin \
+            "${PRODUCT_BRANCH}:refs/remotes/origin/${PRODUCT_BRANCH}"
+          test "$(git rev-parse "refs/remotes/origin/${PRODUCT_BRANCH}")" \
+            = "${EXPECTED_HEAD}"
+          base_head="$(git rev-parse origin/main)"
+          git checkout -B pr206-rebuilt "${base_head}"
+          git checkout "${EXPECTED_HEAD}" -- \
+            docs/hybrid_reliability_admission.md \
+            docs/hybrid_reliability_gate.md \
+            src/causal4d/hybrid_reliability.py \
+            src/causal4d/hybrid_reliability_admission.py \
+            tests/test_hybrid_reliability_admission.py \
+            tests/test_hybrid_reliability_integrity.py \
+            tests/test_hybrid_reliability_schema_v2.py
+          git diff --cached --name-only | sort > /tmp/actual-files.txt
+          cat > /tmp/expected-files.txt <<'EOF'
+          docs/hybrid_reliability_admission.md
+          docs/hybrid_reliability_gate.md
+          src/causal4d/hybrid_reliability.py
+          src/causal4d/hybrid_reliability_admission.py
+          tests/test_hybrid_reliability_admission.py
+          tests/test_hybrid_reliability_integrity.py
+          tests/test_hybrid_reliability_schema_v2.py
+          EOF
+          diff -u /tmp/expected-files.txt /tmp/actual-files.txt
+          test "$(git rev-parse ":docs/hybrid_reliability_admission.md")" \
+            = "99595ffb3c62694d77328b968d0294912df6c880"
+          test "$(git rev-parse ":docs/hybrid_reliability_gate.md")" \
+            = "11c6b9491e14ca8b766df9a7a398b63634bf7d47"
+          test "$(git rev-parse ":src/causal4d/hybrid_reliability.py")" \
+            = "7ac2aad24d93b39b7440a4a55def31ba539fafa9"
+          test "$(git rev-parse ":src/causal4d/hybrid_reliability_admission.py")" \
+            = "4c55f5301473e5eeca86595c889387ae62dac4a9"
+          test "$(git rev-parse ":tests/test_hybrid_reliability_admission.py")" \
+            = "f0c41ced3414bc7bf58f93dc04f4888f62eebb4c"
+          test "$(git rev-parse ":tests/test_hybrid_reliability_integrity.py")" \
+            = "1be1750f7ad6b7d119370c8ab0ce841da188ca8e"
+          test "$(git rev-parse ":tests/test_hybrid_reliability_schema_v2.py")" \
+            = "476f2dcd8d525f040224fbc4ef2433061360a42a"
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m \
+            "Recompute and validate hybrid reliability calibration derivations"
+
+      - name: Validate focused and repository quality boundaries
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m ruff check .
+          python -m ruff format --check \
+            src/causal4d/hybrid_reliability.py \
+            src/causal4d/hybrid_reliability_admission.py \
+            tests/test_hybrid_reliability_admission.py \
+            tests/test_hybrid_reliability_integrity.py \
+            tests/test_hybrid_reliability_schema_v2.py
+          PYTHONPYCACHEPREFIX="$RUNNER_TEMP/python-syntax-cache" \
+            python -W error::SyntaxWarning -m compileall -q -f \
+              src/causal4d/hybrid_reliability.py \
+              src/causal4d/hybrid_reliability_admission.py \
+              tests/test_hybrid_reliability.py \
+              tests/test_hybrid_reliability_admission.py \
+              tests/test_hybrid_reliability_integrity.py \
+              tests/test_hybrid_reliability_schema_v2.py
+          python -m pytest -q \
+            tests/test_hybrid_reliability.py \
+            tests/test_hybrid_reliability_admission.py \
+            tests/test_hybrid_reliability_integrity.py \
+            tests/test_hybrid_reliability_schema_v2.py
+          git diff --check origin/main...HEAD
+
+      - name: Publish rebuilt branch with lease
+        run: |
+          git push --force-with-lease=refs/heads/${PRODUCT_BRANCH}:${EXPECTED_HEAD} \
+            origin HEAD:refs/heads/${PRODUCT_BRANCH}
+
+      - name: Remove this temporary workflow from main
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch main \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            cleanup
+          git -C cleanup config user.name "github-actions[bot]"
+          git -C cleanup config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          if test -f \
+            cleanup/.github/workflows/rebase-pr206-hybrid-reliability.yml; then
+            git -C cleanup rm \
+              .github/workflows/rebase-pr206-hybrid-reliability.yml
+            git -C cleanup commit -m \
+              "Remove temporary PR 206 rebase workflow"
+            git -C cleanup push origin HEAD:main
+          fi
