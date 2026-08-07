@@ -1,8 +1,9 @@
 name: Publish code-scanning remediations
 
 on:
-  push:
-    branches: [agent/fix-code-scanning-alerts]
+  pull_request:
+    branches: [main]
+    types: [synchronize]
 
 permissions:
   contents: write
@@ -15,7 +16,8 @@ jobs:
   publish:
     name: Apply validated security patch
     if: >-
-      github.repository == 'IPS-Stuttgart/Causal4D' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/fix-code-scanning-alerts' &&
       github.actor == 'FlorianPfaff'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -23,7 +25,7 @@ jobs:
       - name: Check out exact publisher revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: true
 
