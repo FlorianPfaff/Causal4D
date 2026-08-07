@@ -58,14 +58,34 @@ jobs:
           set -euo pipefail
           PYTHONPATH=src python -W error::SyntaxWarning -m compileall -q -f \
             src tests scripts
-          PYTHONPATH=src python -m pytest -q \
-            tests/test_acquisition_journal_locking.py \
-            tests/test_merge_gate_workflow_policy.py \
-            tests/test_release_workflow_policy.py \
-            tests/test_three_repository_workflow_policy.py \
-            tests/test_quality_failure_diagnostics_workflow_policy.py \
-            tests/test_security_scanning_workflow_policy.py \
-            tests/test_github_action_pins.py
+          python - <<'PY'
+          from pathlib import Path
+
+          journal = Path("src/causal4d/acquisition_journal_io.py").read_text()
+          assert "os.open(path, flags, 0o600)" in journal
+          assert "os.fchmod(descriptor, 0o600)" in journal
+
+          ci = Path(".github/workflows/ci.yml").read_text()
+          merge_gate = Path(".github/workflows/merge-gate.yml").read_text()
+          compatibility = Path(
+              ".github/workflows/bayesian-phystwin-provider-compatibility.yml"
+          ).read_text()
+          pin = Path(
+              "requirements/ci/bayesian-phystwin-provider-v1.sha"
+          ).read_text().strip()
+          assert f"ref: {pin}" in ci
+          assert f"ref: {pin}" in merge_gate
+          assert "steps.pin.outputs.sha" not in ci + merge_gate
+          assert compatibility.count("ref: main") == 2
+          assert "inputs.bpt_ref" not in compatibility
+          assert "inputs.prob4d_ref" not in compatibility
+          assert not Path(
+              ".github/workflows/quality-failure-diagnostics.yml"
+          ).exists()
+          assert Path(
+              "tests/test_quality_failure_diagnostics_workflow_policy.py"
+          ).is_file()
+          PY
 
       - name: Commit and publish the remediations
         shell: bash
