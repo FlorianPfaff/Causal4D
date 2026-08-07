@@ -7,6 +7,9 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = (
     ROOT / ".github" / "workflows" / "bayesian-phystwin-provider-compatibility.yml"
 )
+PROVIDER_V2_ATTESTATION = (
+    ROOT / "ci" / "three_repository_provider_v2_attestation.py"
+)
 BPT_PIN = ROOT / "requirements" / "ci" / "bayesian-phystwin-three-repository.sha"
 PROB4D_PIN = ROOT / "requirements" / "ci" / "prob4d-three-repository.sha"
 
@@ -70,6 +73,16 @@ def test_strict_claim_bearing_path_is_mandatory() -> None:
     assert text.count('python" -m json.tool') >= 2
     assert text.count('test -s "$RUNNER_TEMP/three-repository-') >= 2
     assert "steps.prob4d-access.outputs.available" not in text
+
+
+def test_provider_v2_attestation_serializes_frozen_json_at_output_boundary() -> None:
+    text = PROVIDER_V2_ATTESTATION.read_text(encoding="utf-8")
+
+    assert "from causal4d.immutable_json import plain_json" in text
+    assert "json.dumps(plain_json(summary), indent=2, sort_keys=True)" in text
+    assert 'args.output.write_text(rendered + "\\n", encoding="utf-8")' in text
+    assert "print(rendered)" in text
+    assert "json.dumps(summary" not in text
 
 
 def test_built_wheels_receive_persistent_content_identities() -> None:
