@@ -27,6 +27,24 @@ from causal4d.action_support import (
 from causal4d.action_support_counterfactual import (
     apply_guarded_action_conditioned_counterfactual_operator,
 )
+from causal4d.counterfactual_regret import (
+    COUNTERFACTUAL_REGRET_ENDPOINTS,
+    COUNTERFACTUAL_REGRET_SCHEMA_VERSION,
+    CounterfactualRegretCertificate,
+    CounterfactualRegretDecision,
+    CounterfactualRegretFeatures,
+    CounterfactualRegretPrerequisite,
+    CounterfactualRegretSelection,
+    CounterfactualRegretSourceCase,
+    CounterfactualRegretTarget,
+    evaluate_counterfactual_regret,
+    fit_counterfactual_regret_certificate,
+    load_claim_bearing_counterfactual_regret_certificate,
+    load_counterfactual_regret_certificate,
+    select_counterfactual_regret_candidate,
+    write_counterfactual_regret_certificate,
+    write_counterfactual_regret_decision,
+)
 from causal4d.benchmark import CounterfactualBenchmarkConfig, build_protocol
 from causal4d.causal_sufficiency import (
     CausalSufficiencyResult,
@@ -144,6 +162,22 @@ from causal4d.stable_discrepancy_dynamics import (
 )
 
 __all__ = [
+    "COUNTERFACTUAL_REGRET_ENDPOINTS",
+    "COUNTERFACTUAL_REGRET_SCHEMA_VERSION",
+    "CounterfactualRegretCertificate",
+    "CounterfactualRegretDecision",
+    "CounterfactualRegretFeatures",
+    "CounterfactualRegretPrerequisite",
+    "CounterfactualRegretSelection",
+    "CounterfactualRegretSourceCase",
+    "CounterfactualRegretTarget",
+    "evaluate_counterfactual_regret",
+    "fit_counterfactual_regret_certificate",
+    "load_claim_bearing_counterfactual_regret_certificate",
+    "load_counterfactual_regret_certificate",
+    "select_counterfactual_regret_candidate",
+    "write_counterfactual_regret_certificate",
+    "write_counterfactual_regret_decision",
     "ACTION_SUPPORT_SCHEMA_VERSION",
     "ActionConditionedDiscrepancyFeatures",
     "ActionConditionedDiscrepancyForecast",
