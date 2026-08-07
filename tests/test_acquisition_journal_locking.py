@@ -69,6 +69,9 @@ def test_append_restricts_an_existing_journal_to_owner_only(
 ) -> None:
     journal = tmp_path / "acquisition.jsonl"
     journal.touch()
+    # This test intentionally creates a group-readable fixture so the production
+    # repair path can prove that it restores owner-only permissions.
+    # codeql[py/overly-permissive-file]
     os.chmod(journal, 0o640)
 
     _append(journal, "session_started", monotonic_ns=10)
