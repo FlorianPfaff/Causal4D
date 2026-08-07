@@ -34,6 +34,7 @@ env:
 jobs:
   evaluate:
     name: Higher-powered controlled and GPU diagnostics
+    if: github.ref == 'refs/heads/main'
     runs-on: [self-hosted, Linux, X64, nvidia-smi]
     timeout-minutes: 480
     steps:
