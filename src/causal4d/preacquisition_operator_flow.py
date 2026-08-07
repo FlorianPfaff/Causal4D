@@ -1,0 +1,271 @@
+"""Operator sequencing for pre-acquisition next-action decisions."""
+
+from __future__ import annotations
+
+import shlex
+from collections.abc import Mapping
+from copy import deepcopy
+from pathlib import Path
+from typing import Any
+
+from causal4d.atomic_io import atomic_write_json, atomic_write_text
+from causal4d.preacquisition_next_action import (
+    build_preacquisition_next_action as _build_next_action,
+    derive_preacquisition_next_action as _derive_next_action,
+    next_action_evidence_sha256,
+    next_action_status_sha256,
+)
+
+OPERATOR_FLOW_SCHEMA_VERSION = 1
+NEXT_ACTION_SCHEMA_VERSION = 2
+
+
+def _command_pair(argv: list[str]) -> tuple[list[str], str]:
+    return argv, shlex.join(argv)
+
+
+def _expected_publication_command(
+    repository_root: str,
+    dataset_root: str,
+    staging_path: str,
+) -> list[str]:
+    return [
+        "causal4d",
+        "protocol",
+        "readiness",
+        "source-panel-publish",
+        repository_root,
+        dataset_root,
+        staging_path,
+    ]
+
+
+def enrich_preacquisition_next_action(
+    decision: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Insert the staged preflight before claim-bearing source publication."""
+
+    result = deepcopy(dict(decision))
+    action_value = result.get("action")
+    if not isinstance(action_value, Mapping):
+        raise ValueError("next-action decision has no action object")
+    action = deepcopy(dict(action_value))
+    result["schema_version"] = NEXT_ACTION_SCHEMA_VERSION
+    result["operator_flow_schema_version"] = OPERATOR_FLOW_SCHEMA_VERSION
+
+    if action.get("action_id") == "acquire_next_source_panel_execution":
+        repository = result.get("repository_root")
+        dataset = result.get("dataset_root")
+        execution = action.get("registered_execution")
+        if not isinstance(repository, str) or not repository:
+            raise ValueError("next-action repository root is missing")
+        if not isinstance(dataset, str) or not dataset:
+            raise ValueError("next-action dataset root is missing")
+        if not isinstance(execution, Mapping):
+            raise ValueError("registered source execution is missing")
+        execution_id = execution.get("execution_id")
+        if not isinstance(execution_id, str) or not execution_id:
+            raise ValueError("registered source execution id is missing")
+
+        root = Path(dataset)
+        staging = str(root / "staging" / f"{execution_id}.json")
+        preflight = str(root / "operator" / f"{execution_id}-preflight.json")
+        expected_publication = _expected_publication_command(
+            repository,
+            dataset,
+            staging,
+        )
+        legacy_publication = action.get("after_completion_argv")
+        if legacy_publication != expected_publication:
+            raise ValueError(
+                "source action publication command differs from the registered path"
+            )
+
+        verification_argv, verification_text = _command_pair(
+            [
+                "causal4d",
+                "protocol",
+                "readiness",
+                "source-panel-verify-staged",
+                repository,
+                dataset,
+                staging,
+                "--output-json",
+                preflight,
+            ]
+        )
+        publication_argv, publication_text = _command_pair(expected_publication)
+        action["after_completion_argv"] = None
+        action["after_completion_text"] = None
+        action["post_acquisition_verification_argv"] = verification_argv
+        action["post_acquisition_verification_text"] = verification_text
+        action["preflight_report_path"] = preflight
+        action["independent_review_required_before_publication"] = True
+        action["claim_bearing_publication_argv"] = publication_argv
+        action["claim_bearing_publication_text"] = publication_text
+        action["operator_sequence"] = [
+            "acquire_registered_source_execution",
+            "verify_staged_manifest_and_artifacts",
+            "independent_review_of_preflight_report",
+            "publish_exactly_once",
+            "recompute_next_action",
+        ]
+        outputs = list(action.get("output_paths", []))
+        if preflight not in outputs:
+            outputs.insert(1 if outputs else 0, preflight)
+        action["output_paths"] = outputs
+    else:
+        action.setdefault("post_acquisition_verification_argv", None)
+        action.setdefault("post_acquisition_verification_text", None)
+        action.setdefault("preflight_report_path", None)
+        action.setdefault("independent_review_required_before_publication", False)
+        action.setdefault("claim_bearing_publication_argv", None)
+        action.setdefault("claim_bearing_publication_text", None)
+        action.setdefault("operator_sequence", [])
+
+    result["action"] = action
+    result.pop("evidence_sha256", None)
+    result.pop("status_sha256", None)
+    result["evidence_sha256"] = next_action_evidence_sha256(result)
+    result["status_sha256"] = next_action_status_sha256(result)
+    return result
+
+
+def build_preacquisition_operator_next_action(
+    repository_root: str | Path,
+    dataset_root: str | Path,
+    *,
+    verify_file_hashes: bool = True,
+) -> dict[str, Any]:
+    """Build one decision with explicit verification and publication stages."""
+
+    return enrich_preacquisition_next_action(
+        _build_next_action(
+            repository_root,
+            dataset_root,
+            verify_file_hashes=verify_file_hashes,
+        )
+    )
+
+
+def derive_preacquisition_operator_next_action(
+    readiness: Mapping[str, Any],
+    source_panel: Mapping[str, Any],
+    *,
+    repository_root: str | Path,
+    dataset_root: str | Path,
+) -> dict[str, Any]:
+    """Derive an operator-sequenced decision from validated status snapshots."""
+
+    return enrich_preacquisition_next_action(
+        _derive_next_action(
+            readiness,
+            source_panel,
+            repository_root=repository_root,
+            dataset_root=dataset_root,
+        )
+    )
+
+
+def render_preacquisition_operator_next_action_markdown(
+    decision: Mapping[str, Any],
+) -> str:
+    """Render the explicit operator sequence without collapsing publication."""
+
+    action = decision.get("action")
+    if not isinstance(action, Mapping):
+        raise ValueError("next-action decision has no action object")
+    lines = [
+        "# Causal4D pre-acquisition next action",
+        "",
+        f"- Protocol: `{decision['protocol_id']}`",
+        f"- Valid: `{str(decision['valid']).lower()}`",
+        f"- Ready: `{str(decision['ready']).lower()}`",
+        "- Target outcomes permitted: `false`",
+        "",
+        f"## {action['title']}",
+        "",
+        f"- Action ID: `{action['action_id']}`",
+        f"- Operator role: `{action['operator_role']}`",
+        "- Physical acquisition required: "
+        f"`{str(action['physical_acquisition_required']).lower()}`",
+    ]
+    sections = (
+        ("Command", "command_text"),
+        ("Verify staged evidence", "post_acquisition_verification_text"),
+        (
+            "Publish after independent review",
+            "claim_bearing_publication_text",
+        ),
+        ("Completion check", "completion_check_text"),
+    )
+    for heading, field in sections:
+        value = action.get(field)
+        if value:
+            lines += ["", f"### {heading}", "", "```bash", str(value), "```"]
+    if action.get("independent_review_required_before_publication") is True:
+        lines += [
+            "",
+            "Publication is claim-bearing and requires independent review of the ",
+            "content-addressed preflight report before the publication command is run.",
+        ]
+    blockers = action.get("blocking_items")
+    if isinstance(blockers, list) and blockers:
+        lines += ["", "### Blocking items", ""]
+        lines += [f"- `{item}`" for item in blockers]
+    execution = action.get("registered_execution")
+    if isinstance(execution, Mapping):
+        lines += [
+            "",
+            "### Registered source execution",
+            "",
+            f"- Execution: `{execution['execution_id']}`",
+            f"- Session: `{execution['session_id']}`",
+            f"- Command profile: `{execution['command_profile_id']}`",
+        ]
+    lines += [
+        "",
+        "---",
+        "",
+        f"Evidence SHA-256: `{decision['evidence_sha256']}`  ",
+        f"Host-local status SHA-256: `{decision['status_sha256']}`",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def write_preacquisition_operator_next_action(
+    path: str | Path,
+    decision: Mapping[str, Any],
+) -> Path:
+    """Atomically write one operator-sequenced JSON decision."""
+
+    output = Path(path)
+    atomic_write_json(output, dict(decision))
+    return output
+
+
+def write_preacquisition_operator_next_action_markdown(
+    path: str | Path,
+    decision: Mapping[str, Any],
+) -> Path:
+    """Atomically write one operator-sequenced Markdown report."""
+
+    output = Path(path)
+    atomic_write_text(
+        output,
+        render_preacquisition_operator_next_action_markdown(decision),
+    )
+    return output
+
+
+__all__ = [
+    "NEXT_ACTION_SCHEMA_VERSION",
+    "OPERATOR_FLOW_SCHEMA_VERSION",
+    "build_preacquisition_operator_next_action",
+    "derive_preacquisition_operator_next_action",
+    "enrich_preacquisition_next_action",
+    "render_preacquisition_operator_next_action_markdown",
+    "write_preacquisition_operator_next_action",
+    "write_preacquisition_operator_next_action_markdown",
+]
