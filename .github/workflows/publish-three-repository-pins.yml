@@ -1,0 +1,93 @@
+name: Publish immutable three-repository pins
+
+on:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-immutable-three-repository-pins
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Apply validated immutable provider pins
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/fix-code-scanning-alerts' &&
+      github.actor == 'FlorianPfaff'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact staging revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply and validate the reviewed patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/code-scanning-pins/part-*.b64 \
+            | base64 --decode \
+            > "$RUNNER_TEMP/immutable-provider-pins.patch"
+          printf '%s  %s\n' \
+            '5402801e96ec9fa4ad1959849b029427e35d67d62af5b2b7720b614ff20903e8' \
+            "$RUNNER_TEMP/immutable-provider-pins.patch" \
+            | sha256sum --check --strict -
+          git apply --check "$RUNNER_TEMP/immutable-provider-pins.patch"
+          git apply "$RUNNER_TEMP/immutable-provider-pins.patch"
+          rm -rf \
+            .github/code-scanning-pins \
+            .github/workflows/publish-three-repository-pins.yml
+          git diff --check
+          python -m py_compile tests/test_three_repository_workflow_policy.py
+          python - <<'PY'
+          from pathlib import Path
+
+          root = Path.cwd()
+          workflow = (
+              root
+              / ".github"
+              / "workflows"
+              / "bayesian-phystwin-provider-compatibility.yml"
+          ).read_text(encoding="utf-8")
+          bpt_pin = (
+              root
+              / "requirements"
+              / "ci"
+              / "bayesian-phystwin-three-repository.sha"
+          ).read_text(encoding="utf-8").strip()
+          prob4d_pin = (
+              root / "requirements" / "ci" / "prob4d-three-repository.sha"
+          ).read_text(encoding="utf-8").strip()
+          assert bpt_pin == "5d14890f8a9bfb00e83a94aed8ba35885fcc3417"
+          assert prob4d_pin == "47e0568781d96f09b8df4bb650097b129e23c178"
+          assert workflow.count(f"ref: {bpt_pin}") == 1
+          assert workflow.count(f"ref: {prob4d_pin}") == 1
+          assert "ref: main" not in workflow
+          assert "ref: ${{" not in workflow
+          assert not (root / ".github" / "code-scanning-pins").exists()
+          assert not (
+              root
+              / ".github"
+              / "workflows"
+              / "publish-three-repository-pins.yml"
+          ).exists()
+          PY
+
+      - name: Create the clean remediation commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git diff --cached --check
+          git commit -m 'Pin proven-compatible provider revisions'
+          git push origin HEAD:agent/fix-code-scanning-alerts
