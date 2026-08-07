@@ -2,9 +2,9 @@
 
 The grouped robust likelihood deliberately caps repeated evidence group by group.
 This module provides the complementary exact Gaussian path for producers such as
-Prob4D that export one covariance over all selected observation rows. Dense and
-low-rank covariance contributions are both supported without forming the
-low-rank update.
+Prob4D that export one covariance over all selected observation rows. Dense,
+block-diagonal, and low-rank covariance contributions are supported without
+forming the low-rank update.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 import json
-from typing import Any, Mapping, Sequence
+from typing import Any, Literal, Mapping, Sequence
 
 import numpy as np
 
@@ -23,6 +23,7 @@ from causal4d.weighting import log_weights_from_probabilities
 
 
 JOINT_OBSERVATION_SCHEMA_VERSION = 1
+CovarianceRepresentation = Literal["dense", "block_diagonal"]
 
 
 def _require_nonempty_string(value: Any, *, name: str) -> str:
@@ -80,6 +81,49 @@ def _validated_covariance(
     return covariance
 
 
+def _validated_covariance_blocks(
+    values: np.ndarray,
+    *,
+    observation_count: int,
+    name: str,
+    leading_shape: tuple[int, ...] = (),
+) -> np.ndarray:
+    covariance = np.asarray(values, dtype=float)
+    if covariance.ndim < 3 or covariance.shape[-1] != covariance.shape[-2]:
+        raise ValueError(f"{name} must end in (block, coordinate, coordinate)")
+    block_count = covariance.shape[-3]
+    block_size = covariance.shape[-1]
+    if block_count < 1 or block_size < 1:
+        raise ValueError(f"{name} blocks must be nonempty")
+    if block_count * block_size != observation_count:
+        raise ValueError(
+            f"{name} blocks must cover exactly {observation_count} observations"
+        )
+    try:
+        covariance = np.broadcast_to(
+            covariance,
+            (*leading_shape, block_count, block_size, block_size),
+        )
+    except ValueError as error:
+        raise ValueError(
+            f"{name} must broadcast to component leading dimensions"
+        ) from error
+    if not np.all(np.isfinite(covariance)):
+        raise ValueError(f"{name} must be finite")
+    if not np.allclose(
+        covariance,
+        covariance.swapaxes(-1, -2),
+        atol=1e-12,
+        rtol=1e-10,
+    ):
+        raise ValueError(f"{name} must be symmetric")
+    try:
+        np.linalg.cholesky(covariance)
+    except np.linalg.LinAlgError as error:
+        raise ValueError(f"{name} must be positive definite") from error
+    return covariance
+
+
 def _validated_factor(
     values: np.ndarray,
     *,
@@ -110,8 +154,10 @@ class LinearJointObservationEvidence:
 
     Parallel sparse term vectors encode a linear map from trajectories ending in
     ``(frame, node, coordinate)`` to the observation rows. ``base_covariance_m2``
-    is positive definite. ``shared_covariance_factor_m`` optionally adds a
-    positive-semidefinite cross-row contribution ``U U.T``.
+    may be either a dense positive-definite matrix of shape ``(D, D)`` or a fixed
+    block-diagonal representation of shape ``(B, C, C)`` with ``B * C == D``.
+    ``shared_covariance_factor_m`` optionally adds a positive-semidefinite
+    cross-row contribution ``U U.T``.
     """
 
     evidence_id: str
@@ -160,14 +206,27 @@ class LinearJointObservationEvidence:
             raise ValueError("joint observation values and coefficients must be finite")
         if np.any(coefficients == 0.0):
             raise ValueError("zero joint observation coefficients are not allowed")
-        covariance = readonly_array(
-            _validated_covariance(
-                self.base_covariance_m2,
+
+        supplied_covariance = np.asarray(self.base_covariance_m2)
+        if supplied_covariance.ndim == 2:
+            covariance = _validated_covariance(
+                supplied_covariance,
                 dimension=len(values),
                 name="base_covariance_m2",
-            ),
-            dtype=float,
-        )
+            )
+        elif supplied_covariance.ndim == 3:
+            covariance = _validated_covariance_blocks(
+                supplied_covariance,
+                observation_count=len(values),
+                name="base_covariance_m2",
+            )
+        else:
+            raise ValueError(
+                "base_covariance_m2 must be dense (D, D) or block diagonal "
+                "(B, C, C)"
+            )
+        covariance = readonly_array(covariance, dtype=float)
+
         factor = None
         if self.shared_covariance_factor_m is not None:
             factor = readonly_array(
@@ -222,6 +281,22 @@ class LinearJointObservationEvidence:
         return 0 if factor is None else factor.shape[-1]
 
     @property
+    def base_covariance_representation(self) -> CovarianceRepresentation:
+        return "dense" if self.base_covariance_m2.ndim == 2 else "block_diagonal"
+
+    @property
+    def base_block_count(self) -> int:
+        if self.base_covariance_representation == "dense":
+            return 1
+        return self.base_covariance_m2.shape[0]
+
+    @property
+    def base_block_size(self) -> int:
+        if self.base_covariance_representation == "dense":
+            return self.observation_count
+        return self.base_covariance_m2.shape[-1]
+
+    @property
     def artifact_id(self) -> str:
         factor = self.shared_covariance_factor_m
         return _canonical_sha256(
@@ -237,6 +312,9 @@ class LinearJointObservationEvidence:
                     self.coordinate_indices
                 ),
                 "coefficients_sha256": array_sha256(self.coefficients),
+                "base_covariance_representation": (
+                    self.base_covariance_representation
+                ),
                 "base_covariance_sha256": array_sha256(
                     self.base_covariance_m2
                 ),
@@ -299,24 +377,24 @@ class LinearJointObservationEvidence:
             )
         return output
 
-    def apply_independent_covariance(self, variance_m2: np.ndarray) -> np.ndarray:
-        """Propagate diagonal trajectory variance through the sparse operator.
-
-        Reusing one trajectory scalar in multiple observation rows correctly
-        creates cross-row covariance instead of silently retaining only a diagonal.
-        """
-
+    def _selected_independent_variance(self, variance_m2: np.ndarray) -> np.ndarray:
         variances = np.asarray(variance_m2, dtype=float)
         if variances.ndim < 3:
             raise ValueError("variance_m2 must end in (frame, node, coordinate)")
         if not np.all(np.isfinite(variances)) or np.any(variances < 0.0):
             raise ValueError("component variances must be finite and nonnegative")
-        selected = variances[
+        return variances[
             ...,
             self.frame_indices,
             self.node_indices,
             self.coordinate_indices,
         ]
+
+    def apply_independent_covariance(self, variance_m2: np.ndarray) -> np.ndarray:
+        """Propagate diagonal trajectory variance through the sparse operator."""
+
+        variances = np.asarray(variance_m2, dtype=float)
+        selected = self._selected_independent_variance(variances)
         output = np.zeros(
             (
                 *variances.shape[:-3],
@@ -345,16 +423,71 @@ class LinearJointObservationEvidence:
                 )
         return output
 
+    def apply_independent_covariance_blocks(
+        self,
+        variance_m2: np.ndarray,
+    ) -> np.ndarray:
+        """Propagate diagonal trajectory variance into existing covariance blocks.
+
+        A scalar reused across different blocks would induce off-block covariance
+        and therefore fails closed rather than being silently discarded.
+        """
+
+        if self.base_covariance_representation != "block_diagonal":
+            raise ValueError("block covariance propagation requires block evidence")
+        variances = np.asarray(variance_m2, dtype=float)
+        selected = self._selected_independent_variance(variances)
+        block_count = self.base_block_count
+        block_size = self.base_block_size
+        output = np.zeros(
+            (*variances.shape[:-3], block_count, block_size, block_size),
+            dtype=float,
+        )
+        selectors = tuple(
+            zip(
+                map(int, self.frame_indices),
+                map(int, self.node_indices),
+                map(int, self.coordinate_indices),
+            )
+        )
+        for left, left_selector in enumerate(selectors):
+            left_row = int(self.row_indices[left])
+            left_block, left_coordinate = divmod(left_row, block_size)
+            for right, right_selector in enumerate(selectors):
+                if left_selector != right_selector:
+                    continue
+                right_row = int(self.row_indices[right])
+                right_block, right_coordinate = divmod(right_row, block_size)
+                if left_block != right_block:
+                    raise ValueError(
+                        "independent component variance induces off-block "
+                        "covariance; use dense base covariance"
+                    )
+                output[
+                    ...,
+                    left_block,
+                    left_coordinate,
+                    right_coordinate,
+                ] += (
+                    self.coefficients[left]
+                    * self.coefficients[right]
+                    * selected[..., left]
+                )
+        return output
+
 
 @dataclass(frozen=True)
 class JointGaussianLikelihoodDiagnostics:
     """Representation and dimension details for a full-joint update."""
 
     observation_count: int
+    base_covariance_representation: CovarianceRepresentation
+    base_block_count: int
+    base_block_size: int
     evidence_shared_rank: int
     component_shared_rank: int
     used_component_independent_covariance: bool
-    used_component_dense_covariance: bool
+    used_component_covariance: bool
     used_low_rank_path: bool
 
 
@@ -388,7 +521,44 @@ def block_diagonalize_covariance(
     return result
 
 
-def _joint_gaussian_log_density(
+def _low_rank_terms(
+    whitened_residual: np.ndarray,
+    whitened_factor: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    rank = whitened_factor.shape[-1]
+    low_rank_system = np.eye(rank) + np.einsum(
+        "...ir,...is->...rs",
+        whitened_factor,
+        whitened_factor,
+    )
+    try:
+        low_rank_cholesky = np.linalg.cholesky(low_rank_system)
+    except np.linalg.LinAlgError as error:
+        raise ValueError(
+            "low-rank covariance system must be positive definite"
+        ) from error
+    projection = np.einsum(
+        "...ir,...i->...r",
+        whitened_factor,
+        whitened_residual,
+    )
+    whitened_projection = np.linalg.solve(
+        low_rank_cholesky,
+        projection[..., None],
+    )[..., 0]
+    correction = np.einsum(
+        "...r,...r->...",
+        whitened_projection,
+        whitened_projection,
+    )
+    log_determinant = 2.0 * np.sum(
+        np.log(np.diagonal(low_rank_cholesky, axis1=-2, axis2=-1)),
+        axis=-1,
+    )
+    return correction, log_determinant
+
+
+def _joint_gaussian_log_density_dense(
     residual: np.ndarray,
     base_covariance_m2: np.ndarray,
     covariance_factor_m: np.ndarray | None = None,
@@ -428,43 +598,85 @@ def _joint_gaussian_log_density(
             leading_shape=leading_shape,
         )
         whitened_factor = np.linalg.solve(base_cholesky, factor)
-        rank = factor.shape[-1]
-        low_rank_system = np.eye(rank) + np.einsum(
-            "...ir,...is->...rs",
-            whitened_factor,
-            whitened_factor,
-        )
-        try:
-            low_rank_cholesky = np.linalg.cholesky(low_rank_system)
-        except np.linalg.LinAlgError as error:
-            raise ValueError(
-                "low-rank covariance system must be positive definite"
-            ) from error
-        projection = np.einsum(
-            "...ir,...i->...r",
-            whitened_factor,
+        correction, low_rank_log_determinant = _low_rank_terms(
             whitened_residual,
-        )
-        whitened_projection = np.linalg.solve(
-            low_rank_cholesky,
-            projection[..., None],
-        )[..., 0]
-        correction = np.einsum(
-            "...r,...r->...",
-            whitened_projection,
-            whitened_projection,
+            whitened_factor,
         )
         quadratic = np.maximum(quadratic - correction, 0.0)
-        log_determinant += 2.0 * np.sum(
-            np.log(
-                np.diagonal(
-                    low_rank_cholesky,
-                    axis1=-2,
-                    axis2=-1,
-                )
-            ),
-            axis=-1,
+        log_determinant += low_rank_log_determinant
+    return -0.5 * (
+        dimension * np.log(2.0 * np.pi) + log_determinant + quadratic
+    )
+
+
+def _joint_gaussian_log_density_blocks(
+    residual: np.ndarray,
+    base_covariance_blocks_m2: np.ndarray,
+    covariance_factor_m: np.ndarray | None = None,
+) -> np.ndarray:
+    values = np.asarray(residual, dtype=float)
+    if values.ndim < 1 or values.shape[-1] < 1:
+        raise ValueError("residual must end in a nonempty observation dimension")
+    if not np.all(np.isfinite(values)):
+        raise ValueError("residual must be finite")
+    dimension = values.shape[-1]
+    leading_shape = values.shape[:-1]
+    base = _validated_covariance_blocks(
+        base_covariance_blocks_m2,
+        observation_count=dimension,
+        name="base_covariance_m2",
+        leading_shape=leading_shape,
+    )
+    block_count = base.shape[-3]
+    block_size = base.shape[-1]
+    base_cholesky = np.linalg.cholesky(base)
+    residual_blocks = values.reshape(*leading_shape, block_count, block_size)
+    whitened_residual_blocks = np.linalg.solve(
+        base_cholesky,
+        residual_blocks[..., None],
+    )[..., 0]
+    quadratic = np.einsum(
+        "...bi,...bi->...",
+        whitened_residual_blocks,
+        whitened_residual_blocks,
+    )
+    log_determinant = 2.0 * np.sum(
+        np.log(np.diagonal(base_cholesky, axis1=-2, axis2=-1)),
+        axis=(-2, -1),
+    )
+    if covariance_factor_m is not None:
+        factor = _validated_factor(
+            covariance_factor_m,
+            dimension=dimension,
+            name="covariance_factor_m",
+            leading_shape=leading_shape,
         )
+        rank = factor.shape[-1]
+        factor_blocks = factor.reshape(
+            *leading_shape,
+            block_count,
+            block_size,
+            rank,
+        )
+        whitened_factor_blocks = np.linalg.solve(
+            base_cholesky,
+            factor_blocks,
+        )
+        flattened_residual = whitened_residual_blocks.reshape(
+            *leading_shape,
+            dimension,
+        )
+        flattened_factor = whitened_factor_blocks.reshape(
+            *leading_shape,
+            dimension,
+            rank,
+        )
+        correction, low_rank_log_determinant = _low_rank_terms(
+            flattened_residual,
+            flattened_factor,
+        )
+        quadratic = np.maximum(quadratic - correction, 0.0)
+        log_determinant += low_rank_log_determinant
     return -0.5 * (
         dimension * np.log(2.0 * np.pi) + log_determinant + quadratic
     )
@@ -495,25 +707,53 @@ def joint_component_log_likelihoods(
     leading_shape = components.shape[:-3]
     predictions = evidence.apply(components)
     residual = predictions - evidence.values_m
-    base = np.broadcast_to(
-        evidence.base_covariance_m2,
-        (*leading_shape, evidence.observation_count, evidence.observation_count),
-    ).copy()
     used_independent = component_independent_variance_m2 is not None
+    used_component_covariance = component_joint_covariance_m2 is not None
+
+    variance = None
     if component_independent_variance_m2 is not None:
         variance = np.broadcast_to(
             np.asarray(component_independent_variance_m2, dtype=float),
             components.shape,
         )
-        base += evidence.apply_independent_covariance(variance)
-    used_dense = component_joint_covariance_m2 is not None
-    if component_joint_covariance_m2 is not None:
-        base += _validated_covariance(
-            component_joint_covariance_m2,
-            dimension=evidence.observation_count,
-            name="component_joint_covariance_m2",
-            leading_shape=leading_shape,
-        )
+
+    if evidence.base_covariance_representation == "dense":
+        base = np.broadcast_to(
+            evidence.base_covariance_m2,
+            (
+                *leading_shape,
+                evidence.observation_count,
+                evidence.observation_count,
+            ),
+        ).copy()
+        if variance is not None:
+            base += evidence.apply_independent_covariance(variance)
+        if component_joint_covariance_m2 is not None:
+            base += _validated_covariance(
+                component_joint_covariance_m2,
+                dimension=evidence.observation_count,
+                name="component_joint_covariance_m2",
+                leading_shape=leading_shape,
+            )
+    else:
+        base = np.broadcast_to(
+            evidence.base_covariance_m2,
+            (
+                *leading_shape,
+                evidence.base_block_count,
+                evidence.base_block_size,
+                evidence.base_block_size,
+            ),
+        ).copy()
+        if variance is not None:
+            base += evidence.apply_independent_covariance_blocks(variance)
+        if component_joint_covariance_m2 is not None:
+            base += _validated_covariance_blocks(
+                component_joint_covariance_m2,
+                observation_count=evidence.observation_count,
+                name="component_joint_covariance_m2",
+                leading_shape=leading_shape,
+            )
 
     factors = []
     if evidence.shared_covariance_factor_m is not None:
@@ -538,13 +778,19 @@ def joint_component_log_likelihoods(
         component_rank = component_factor.shape[-1]
         factors.append(component_factor)
     factor = None if not factors else np.concatenate(factors, axis=-1)
-    score = _joint_gaussian_log_density(residual, base, factor)
+    if evidence.base_covariance_representation == "dense":
+        score = _joint_gaussian_log_density_dense(residual, base, factor)
+    else:
+        score = _joint_gaussian_log_density_blocks(residual, base, factor)
     diagnostics = JointGaussianLikelihoodDiagnostics(
         observation_count=evidence.observation_count,
+        base_covariance_representation=evidence.base_covariance_representation,
+        base_block_count=evidence.base_block_count,
+        base_block_size=evidence.base_block_size,
         evidence_shared_rank=evidence.shared_rank,
         component_shared_rank=component_rank,
         used_component_independent_covariance=used_independent,
-        used_component_dense_covariance=used_dense,
+        used_component_covariance=used_component_covariance,
         used_low_rank_path=factor is not None,
     )
     return score, diagnostics
@@ -588,6 +834,7 @@ def posterior_weights_from_joint_observation(
 
 __all__ = [
     "JOINT_OBSERVATION_SCHEMA_VERSION",
+    "CovarianceRepresentation",
     "JointGaussianLikelihoodDiagnostics",
     "LinearJointObservationEvidence",
     "block_diagonalize_covariance",
