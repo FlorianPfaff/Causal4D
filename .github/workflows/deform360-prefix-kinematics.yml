@@ -137,11 +137,6 @@ jobs:
             '{"schema_version":1,"state":"initialized","head_sha":"'"${GITHUB_SHA}"'","run_id":"'"${GITHUB_RUN_ID}"'"}' \
             > deform360-prefix-kinematics/status.json
 
-      - name: Require BayesianPhysTwin read access
-        env:
-          BPT_READ_SSH_KEY: ${{ secrets.BPT_READ_SSH_KEY }}
-        run: test -n "${BPT_READ_SSH_KEY}"
-
       - name: Select the conditional reproduction runtime
         shell: bash
         run: |
@@ -185,12 +180,11 @@ jobs:
               print(f"{name}={value}")
           PY
 
-      - name: Check out pinned BayesianPhysTwin
+      - name: Check out pinned public BayesianPhysTwin
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: IPS-Stuttgart/BayesianPhysTwin
           ref: ${{ steps.repository-pins.outputs.bpt_sha }}
-          ssh-key: ${{ secrets.BPT_READ_SSH_KEY }}
           path: _bpt
           persist-credentials: false
           clean: true
