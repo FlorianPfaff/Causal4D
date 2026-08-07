@@ -1,0 +1,63 @@
+name: Format PR 206 hybrid reliability implementation
+
+on:
+  push:
+    branches:
+      - fix/hybrid-reliability-derived-validation-v2
+    paths:
+      - .github/workflows/format-pr206.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: format-pr206-hybrid-reliability
+  cancel-in-progress: false
+
+jobs:
+  format:
+    name: Apply repository Ruff formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/hybrid-reliability-derived-validation-v2
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install development dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Format and validate the hybrid correction
+        run: |
+          python -m ruff format src/causal4d/hybrid_reliability.py
+          python -m ruff check .
+          python -m ruff format --check \
+            src/causal4d/hybrid_reliability.py \
+            src/causal4d/hybrid_reliability_admission.py \
+            tests/test_hybrid_reliability_admission.py \
+            tests/test_hybrid_reliability_integrity.py \
+            tests/test_hybrid_reliability_schema_v2.py
+          python -m pytest -q \
+            tests/test_hybrid_reliability.py \
+            tests/test_hybrid_reliability_admission.py \
+            tests/test_hybrid_reliability_integrity.py \
+            tests/test_hybrid_reliability_schema_v2.py
+          git diff --check
+
+      - name: Commit formatted product file and remove this helper
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/format-pr206.yml
+          git add src/causal4d/hybrid_reliability.py
+          git commit -m "Format hybrid reliability validation"
+          git push origin HEAD:fix/hybrid-reliability-derived-validation-v2
