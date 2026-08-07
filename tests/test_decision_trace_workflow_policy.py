@@ -88,8 +88,12 @@ def test_all_actions_and_checkouts_are_immutable_and_read_only() -> None:
 
     checkout = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
     setup_python = "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
+    upload_artifact = (
+        "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+    )
     assert text.count(checkout) == 3
     assert text.count(setup_python) == 1
+    assert text.count(upload_artifact) == 1
     assert text.count("persist-credentials: false") == 3
     for line in text.splitlines():
         stripped = line.strip()
@@ -114,3 +118,19 @@ def test_contracts_run_from_the_installed_stack_not_source_trees() -> None:
     assert "cp causal4d/tests/test_decision_trace.py" in text
     assert "env -u PYTHONPATH" in text
     assert "--import-mode=importlib" in text
+    assert "--junitxml=" in text
+
+
+def test_exact_non_sensitive_evidence_is_retained() -> None:
+    text = _workflow_text()
+
+    assert "if: ${{ always() }}" in text
+    assert "decision-trace-wheel-sha256.txt" in text
+    assert "decision-trace-stack-lock.json" in text
+    assert "decision-trace-stack-verification.json" in text
+    assert "decision-trace-installed-wheel.xml" in text
+    assert "if-no-files-found: warn" in text
+    assert "retention-days: 14" in text
+    assert "decision-trace-wheelhouse" not in text.split(
+        "- name: Retain exact compatibility evidence", maxsplit=1
+    )[1]
