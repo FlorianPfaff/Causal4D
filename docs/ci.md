@@ -43,6 +43,15 @@ and release tags remain blocked unless the pinned public-provider job passes.
 Hardware workflows retain only their platform, device, and dataset
 requirements; public provider source access is never a reason to skip a job.
 
+Public source access does not authorize arbitrary-ref execution on a self-hosted
+runner. Operational GPU and data jobs are admitted only for a manual dispatch
+whose job-level condition requires `github.ref == 'refs/heads/main'`. They check
+out the exact dispatch `github.sha`, verify that `git rev-parse HEAD` equals
+`GITHUB_SHA` and that the checkout is clean, and only then install packages or
+execute repository scripts. Pull-request source remains testable through hosted
+contract, policy, package, and compatibility jobs without allocating the
+privileged runner.
+
 ## Three-repository installed-wheel golden path
 
 `.github/workflows/bayesian-phystwin-provider-compatibility.yml` is the terminal
@@ -152,14 +161,17 @@ core job:
   labels `self-hosted`, `Linux`, `X64`, and `nvidia-smi`.
 
 The manual GPU job uses the same public immutable provider pin. It needs a
-working CUDA/Warp runtime, but no BayesianPhysTwin deploy key.
+working CUDA/Warp runtime, but no BayesianPhysTwin deploy key. The Deform360
+prefix-kinematics, contact/support, and reset-mechanics operational jobs use the
+same main-only exact-SHA boundary; their hosted contract jobs continue to test
+pull requests.
 
-`Self-hosted research evaluation` additionally builds Causal4D and, when
-requested, the pinned BayesianPhysTwin revision as wheels. It installs those
-wheel bytes into an isolated environment, rejects imports that resolve into a
-source checkout, and archives the wheel SHA-256 values, resolved dependency
-set, runner identity, and GPU identity with the evaluation bundle. Editable
-installs are intentionally excluded from this evidence path.
+`Self-hosted research evaluation` and `Workstation2 GPU evaluation` build
+Causal4D and the pinned BayesianPhysTwin revision as wheels. They install those
+wheel bytes into an isolated environment, reject imports that resolve into a
+source checkout, and archive the wheel SHA-256 values, resolved dependency set,
+runner identity, and GPU identity with the evaluation bundle. Editable installs
+are intentionally excluded from these evidence paths.
 
 ## Reproducing the wheel boundary locally
 
