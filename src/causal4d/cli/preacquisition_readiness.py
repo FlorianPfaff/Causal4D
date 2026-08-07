@@ -11,6 +11,10 @@ from causal4d.operator_registry import (
     scaffold_operator_registry,
     seal_operator_registry,
 )
+from causal4d.preacquisition_next_action_validation import (
+    validate_preacquisition_next_action_report,
+    write_preacquisition_next_action_validation,
+)
 from causal4d.preacquisition_readiness import (
     GATE_PATHS,
     build_preacquisition_readiness,
@@ -139,6 +143,15 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="inspect structure only; the suggested action cannot authorize collection",
     )
+
+    next_action_validate = subparsers.add_parser(
+        "next-action-validate",
+        help="require a persisted action to equal the current hash-verified decision",
+    )
+    next_action_validate.add_argument("repository_root")
+    next_action_validate.add_argument("dataset_root")
+    next_action_validate.add_argument("decision_json")
+    next_action_validate.add_argument("--output-json")
     return parser
 
 
@@ -204,6 +217,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.output_markdown:
                 write_preacquisition_next_action_markdown(
                     args.output_markdown,
+                    result,
+                )
+        elif args.command == "next-action-validate":
+            result = validate_preacquisition_next_action_report(
+                args.repository_root,
+                args.dataset_root,
+                args.decision_json,
+            )
+            if args.output_json:
+                write_preacquisition_next_action_validation(
+                    args.output_json,
                     result,
                 )
         else:
