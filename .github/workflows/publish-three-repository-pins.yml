@@ -40,8 +40,54 @@ jobs:
             '5402801e96ec9fa4ad1959849b029427e35d67d62af5b2b7720b614ff20903e8' \
             "$RUNNER_TEMP/immutable-provider-pins.patch" \
             | sha256sum --check --strict -
-          git apply --check "$RUNNER_TEMP/immutable-provider-pins.patch"
-          git apply "$RUNNER_TEMP/immutable-provider-pins.patch"
+          git apply --check \
+            --exclude=docs/ci.md \
+            "$RUNNER_TEMP/immutable-provider-pins.patch"
+          git apply \
+            --exclude=docs/ci.md \
+            "$RUNNER_TEMP/immutable-provider-pins.patch"
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("docs/ci.md")
+          text = path.read_text(encoding="utf-8")
+          old_golden_path = """pull requests and pushes, can be dispatched manually, and runs weekly against
+          both public repositories' trusted `main` branches. Pull-request code cannot
+          select alternate provider revisions for this executable compatibility path.
+          All events execute the full path; an unavailable checkout or contract failure is
+          a failing check rather than a credential-dependent skip.
+          """
+          new_golden_path = """pull requests and pushes, can be dispatched manually, and runs weekly against a
+          previously validated immutable provider pair. The exact revisions are recorded
+          in `requirements/ci/prob4d-three-repository.sha` and
+          `requirements/ci/bayesian-phystwin-three-repository.sha`; literal checkout refs
+          in the workflow are required to match those files. Pull-request code cannot
+          select alternate provider revisions for this executable compatibility path. All
+          events execute the full path; an unavailable checkout or contract failure is a
+          failing check rather than a credential-dependent skip.
+
+          Provider upgrades are intentional changes: update the relevant pin file and its
+          matching literal checkout ref in one pull request, then require the complete
+          installed-wheel path to pass before advancing the compatibility baseline.
+          """
+          old_local = """The workflow is the canonical executable specification. A local equivalent
+          requires checkouts of all three public repositories:
+          """
+          new_local = """The workflow is the canonical executable specification. A local equivalent
+          requires checkouts of all three public repositories. Check out the exact Prob4D
+          and BayesianPhysTwin revisions recorded in
+          `requirements/ci/prob4d-three-repository.sha` and
+          `requirements/ci/bayesian-phystwin-three-repository.sha` before building the
+          wheels:
+          """
+          if text.count(old_golden_path) != 1:
+              raise RuntimeError("expected one three-repository documentation block")
+          if text.count(old_local) != 1:
+              raise RuntimeError("expected one local reproduction documentation block")
+          text = text.replace(old_golden_path, new_golden_path)
+          text = text.replace(old_local, new_local)
+          path.write_text(text, encoding="utf-8")
+          PY
           rm -rf \
             .github/code-scanning-pins \
             .github/workflows/publish-three-repository-pins.yml
@@ -57,6 +103,7 @@ jobs:
               / "workflows"
               / "bayesian-phystwin-provider-compatibility.yml"
           ).read_text(encoding="utf-8")
+          docs = (root / "docs" / "ci.md").read_text(encoding="utf-8")
           bpt_pin = (
               root
               / "requirements"
@@ -72,6 +119,8 @@ jobs:
           assert workflow.count(f"ref: {prob4d_pin}") == 1
           assert "ref: main" not in workflow
           assert "ref: $" + "{{" not in workflow
+          assert "previously validated immutable provider pair" in docs
+          assert "before advancing the compatibility baseline" in docs
           assert not (root / ".github" / "code-scanning-pins").exists()
           assert not (
               root
