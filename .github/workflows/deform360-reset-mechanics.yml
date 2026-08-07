@@ -89,9 +89,9 @@ jobs:
   source-diagnostic:
     name: Locked source-only observed-reset evaluation
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.run_source_diagnostic) ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      inputs.run_source_diagnostic
     needs: contract
     runs-on: [self-hosted, Linux, X64, nvidia-smi]
     timeout-minutes: 480
