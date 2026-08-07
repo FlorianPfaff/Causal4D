@@ -25,6 +25,18 @@ The expected ID must come from a protocol or source-manifest artifact frozen
 independently of the calibration file being admitted. Copying the ID from the
 same calibration file does not establish independent admission.
 
+## Information order
+
+The independent expected ID must be fixed before the calibration is admitted for
+a promoted target evaluation. It must not be selected, replaced, or copied after
+observing target prefixes, acceptance decisions, predictions, or outcomes. An ID
+mismatch fails before the calibration can enter the promoted path.
+
+Identity admission establishes only that the loaded calibration is the one named
+by the independent registration. It does not change `hybrid_enabled`, authorize
+target access, waive source/target disjointness, or turn an exploratory policy
+into a registered estimator.
+
 The separation is deliberate:
 
 - exploratory tooling may reconstruct and inspect any internally valid
