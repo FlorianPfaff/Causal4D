@@ -88,9 +88,13 @@ This preserves the exact weighted metric while bounding pairwise working memory
 to fixed component blocks.
 
 All thresholds are mandatory constructor arguments and should be frozen from
-source-only data before target evaluation. The certificate fails if any source
-action fails any threshold and binds the policy, per-action metrics, input
-content hashes, and source artifact IDs into one deterministic certificate ID.
+source-only data before target evaluation. Every source-action artifact and the
+resulting certificate bind `target_outcomes_used=false`; constructors reject a
+true or non-Boolean declaration. This records the no-target-access boundary in
+the content identity rather than leaving it only in documentation. The
+certificate fails if any source action fails any threshold and binds the policy,
+per-action metrics, input content hashes, and source artifact IDs into one
+deterministic certificate ID.
 
 ```python
 from causal4d.functional_support_v1 import (
@@ -105,6 +109,7 @@ source_case = FunctionalSupportActionV1(
     full_weights=full_weights,
     reduced_trajectories_m=reduced_components,
     reduced_weights=reduced_weights,
+    target_outcomes_used=False,
 )
 policy = FunctionalSupportPolicyV1(
     maximum_normalized_mean_error=0.05,
