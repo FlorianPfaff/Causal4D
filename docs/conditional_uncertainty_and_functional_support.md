@@ -61,7 +61,12 @@ trajectory covariance according to
 
 The dense joint covariance is intended for NEES, calibration, and covariance
 consistency checks. It is deliberately not produced by default because its
-storage is quadratic in the number of queried trajectory coordinates.
+storage is quadratic in the number of queried trajectory coordinates. The
+function checks `maximum_joint_dimension` before entering either dense `einsum`
+allocation; the default limit is 2,048 coordinates. Raising the limit is an
+explicit operator decision. The rejection reports the requested dimension and
+the minimum byte count of the dense covariance so an unexpectedly long query
+cannot silently exhaust a workstation or CI runner.
 
 ## Functional support certificate
 
