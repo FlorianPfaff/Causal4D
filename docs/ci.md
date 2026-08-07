@@ -46,11 +46,18 @@ workflows retain their separately documented runtime requirements.
 
 `.github/workflows/bayesian-phystwin-provider-compatibility.yml` is the terminal
 Prob4D -> BayesianPhysTwin -> Causal4D compatibility check. It runs on relevant
-pull requests and pushes, can be dispatched manually, and runs weekly against
-both public repositories' trusted `main` branches. Pull-request code cannot
-select alternate provider revisions for this executable compatibility path.
-All events execute the full path; an unavailable checkout or contract failure is
-a failing check rather than a credential-dependent skip.
+pull requests and pushes, can be dispatched manually, and runs weekly against a
+previously validated immutable provider pair. The exact revisions are recorded
+in `requirements/ci/prob4d-three-repository.sha` and
+`requirements/ci/bayesian-phystwin-three-repository.sha`; literal checkout refs
+in the workflow are required to match those files. Pull-request code cannot
+select alternate provider revisions for this executable compatibility path. All
+events execute the full path; an unavailable checkout or contract failure is a
+failing check rather than a credential-dependent skip.
+
+Provider upgrades are intentional changes: update the relevant pin file and its
+matching literal checkout ref in one pull request, then require the complete
+installed-wheel path to pass before advancing the compatibility baseline.
 
 The installed-wheel job records the exact clean revision of every checkout,
 builds one wheel for each repository, records each wheel's SHA-256 identity, and
@@ -148,7 +155,11 @@ The manual GPU job additionally requires `BPT_READ_SSH_KEY`.
 ## Reproducing the wheel boundary locally
 
 The workflow is the canonical executable specification. A local equivalent
-requires checkouts of all three public repositories:
+requires checkouts of all three public repositories. Check out the exact Prob4D
+and BayesianPhysTwin revisions recorded in
+`requirements/ci/prob4d-three-repository.sha` and
+`requirements/ci/bayesian-phystwin-three-repository.sha` before building the
+wheels:
 
 ```bash
 python -m build --wheel --outdir /tmp/three-repo-wheels Prob4D

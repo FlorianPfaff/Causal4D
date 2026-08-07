@@ -3,12 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 
+ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = (
-    Path(__file__).resolve().parents[1]
-    / ".github"
+    ROOT / ".github"
     / "workflows"
     / "bayesian-phystwin-provider-compatibility.yml"
 )
+BPT_PIN = ROOT / "requirements" / "ci" / "bayesian-phystwin-three-repository.sha"
+PROB4D_PIN = ROOT / "requirements" / "ci" / "prob4d-three-repository.sha"
 
 
 def test_public_provider_workflow_is_mandatory_and_secret_free() -> None:
@@ -35,11 +37,21 @@ def test_external_forks_use_the_same_public_installed_wheel_path() -> None:
     assert "private golden path" not in text
 
 
-def test_provider_checkouts_use_non_configurable_public_main_refs() -> None:
+def test_provider_checkouts_use_non_configurable_immutable_refs() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
+    bpt_pin = BPT_PIN.read_text(encoding="utf-8").strip()
+    prob4d_pin = PROB4D_PIN.read_text(encoding="utf-8").strip()
 
     assert "workflow_dispatch:" in text
-    assert text.count("ref: main") == 2
+    assert len(bpt_pin) == 40
+    assert len(prob4d_pin) == 40
+    assert all(character in "0123456789abcdef" for character in bpt_pin)
+    assert all(character in "0123456789abcdef" for character in prob4d_pin)
+    assert text.count(f"ref: {bpt_pin}") == 1
+    assert text.count(f"ref: {prob4d_pin}") == 1
+    assert text.count(f'"{BPT_PIN.relative_to(ROOT).as_posix()}"') == 2
+    assert text.count(f'"{PROB4D_PIN.relative_to(ROOT).as_posix()}"') == 2
+    assert "ref: main" not in text
     assert "ref: ${{" not in text
     assert "inputs.bpt_ref" not in text
     assert "inputs.prob4d_ref" not in text
