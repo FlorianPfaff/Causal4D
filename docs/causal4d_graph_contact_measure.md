@@ -69,6 +69,11 @@ a different mesh topology are therefore a different diagnostic object, even when
 node labels happen to match. This prevents results from being compared across
 incompatible graph registrations without an explicit transformation.
 
+The graph-Bayes estimate minimizes posterior expected assignment distance over the
+retained posterior support. It does not synthesize an unrepresented contact subset.
+Expanding the admissible decision space requires an explicit method change and must
+not be inferred from this diagnostic summary.
+
 ## Multi-contact states
 
 Node order is not semantic. `(4, 0)` and `(0, 4)` are canonicalized and their masses
