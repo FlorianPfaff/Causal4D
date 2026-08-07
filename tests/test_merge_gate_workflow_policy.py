@@ -6,8 +6,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "merge-gate.yml"
 BPT_PIN = (
-    ROOT / "requirements" / "ci" / "bayesian-phystwin-provider-v1.sha"
-).read_text(encoding="utf-8").strip()
+    (ROOT / "requirements" / "ci" / "bayesian-phystwin-provider-v1.sha")
+    .read_text(encoding="utf-8")
+    .strip()
+)
 
 
 def test_merge_gate_has_one_stable_pull_request_status() -> None:
@@ -38,8 +40,7 @@ def test_merge_gate_covers_quality_tests_build_and_provider_integration() -> Non
 
     assert 'PYTHONPYCACHEPREFIX="$RUNNER_TEMP/python-syntax-cache"' in text
     assert (
-        "python -W error::SyntaxWarning -m compileall -q -f src tests scripts"
-        in text
+        "python -W error::SyntaxWarning -m compileall -q -f src tests scripts" in text
     )
     assert "python -m ruff check ." in text
     assert "python -m mypy --python-version 3.12" in text
@@ -51,19 +52,14 @@ def test_merge_gate_covers_quality_tests_build_and_provider_integration() -> Non
     assert "python scripts/ci/read_bpt_pin.py" not in text
     assert "steps.pin.outputs.sha" not in text
     assert "scripts/ci/run_bpt_integration_tests.py" in text
-    assert "CAUSAL4D_REQUIRE_BPT_PROVIDER: \"1\"" in text
+    assert 'CAUSAL4D_REQUIRE_BPT_PROVIDER: "1"' in text
 
 
 def test_merge_gate_pins_external_actions() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
-    assert text.count(
-        "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
-    ) == 2
-    assert (
-        "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
-        in text
-    )
+    assert text.count("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1") == 2
+    assert "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" in text
     for line in text.splitlines():
         stripped = line.strip()
         if stripped.startswith("uses:"):
