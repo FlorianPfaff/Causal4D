@@ -223,15 +223,18 @@ class LinearContactObservationGroup:
         )
         for row in np.unique(rows[frames == 0]):
             row_terms = rows == row
-            if not np.isclose(
-                float(np.sum(coefficients[row_terms])),
-                0.0,
-                atol=1e-12,
-                rtol=1e-12,
-            ):
-                raise ValueError(
-                    "endpoint frame zero may appear only in a zero-sum contrast"
-                )
+            for coordinate in np.unique(coordinates[row_terms]):
+                coordinate_terms = row_terms & (coordinates == coordinate)
+                if not np.isclose(
+                    float(np.sum(coefficients[coordinate_terms])),
+                    0.0,
+                    atol=1e-12,
+                    rtol=1e-12,
+                ):
+                    raise ValueError(
+                        "endpoint frame zero may appear only in a "
+                        "coordinate-wise zero-sum contrast"
+                    )
             if not np.any(frames[row_terms] > 0):
                 raise ValueError("endpoint contrasts require a positive response frame")
         prior = _finite_float(
