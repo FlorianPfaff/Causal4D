@@ -32,6 +32,7 @@ def _root_help() -> str:
         groups.setdefault(command.route[0], []).append(command)
     lines = [
         "usage: causal4d <group> <command> [arguments]",
+        "       causal4d stack {create,verify} ...",
         "       causal4d commands {list,describe,migrate,validate} ...",
         "",
         "Single executable for all Causal4D commands. Modules are imported lazily.",
@@ -45,6 +46,11 @@ def _root_help() -> str:
             lines.append(f"    {suffix:<40} {command.summary}")
     lines.extend(
         (
+            "",
+            "stack locks:",
+            "  stack create --wheel PATH ... --revision DISTRIBUTION=SHA ...",
+            "  stack verify --lock PATH --wheel PATH ... [--json]",
+            "  stack verify --lock PATH --lock-only [--json]",
             "",
             "introspection:",
             "  commands list [--json] [--removed-only]",
@@ -210,6 +216,11 @@ def _commands(arguments: Sequence[str]) -> int:
     raise SystemExit(f"unknown commands operation: {operation}")
 
 
+def _stack(arguments: Sequence[str]) -> int:
+    function = getattr(import_module("causal4d.cli.stack"), "main")
+    return int(function(list(arguments)) or 0)
+
+
 def _resolve_route(arguments: Sequence[str]) -> tuple[CommandSpec, list[str]]:
     for command in sorted(
         grouped_commands(),
@@ -245,6 +256,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments[0] == "--version":
         print(_version())
         return 0
+    if arguments[0] == "stack":
+        return _stack(arguments[1:])
     if arguments[0] == "commands":
         return _commands(arguments[1:])
     if arguments[0].startswith("causal4d-") and _print_removed_migration(arguments[0]):

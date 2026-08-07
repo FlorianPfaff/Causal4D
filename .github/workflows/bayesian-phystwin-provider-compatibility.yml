@@ -11,10 +11,13 @@ on:
       - "docs/ci.md"
       - "docs/molmo_visual_inputs_v2.md"
       - "docs/prob4d_provider_attestation.md"
+      - "docs/stack_lock.md"
       - "pyproject.toml"
       - "src/causal4d/bpt_belief.py"
       - "src/causal4d/claim_bearing_observation_lineage.py"
       - "src/causal4d/cli/molmo_phystwin_forecast_v2.py"
+      - "src/causal4d/cli/root.py"
+      - "src/causal4d/cli/stack.py"
       - "src/causal4d/molmo_visual_inputs_v2.py"
       - "src/causal4d/observation_lineage.py"
       - "src/causal4d/phystwin_backend.py"
@@ -27,6 +30,7 @@ on:
       - "src/causal4d/provider_contract.py"
       - "src/causal4d/replay_provider_contract.py"
       - "src/causal4d/rollout_cache.py"
+      - "src/causal4d/stack_lock.py"
       - "tests/test_bpt_provider_import_boundary.py"
       - "tests/test_bpt_provider_integration.py"
       - "tests/test_causal4d_bpt_belief.py"
@@ -38,6 +42,7 @@ on:
       - "tests/test_prob4d_stream_contract_version.py"
       - "tests/test_replay_provider_contract.py"
       - "tests/test_rollout_cache.py"
+      - "tests/test_stack_lock.py"
       - "tests/test_three_repository_workflow_policy.py"
   push:
     branches: [main]
@@ -49,10 +54,13 @@ on:
       - "docs/ci.md"
       - "docs/molmo_visual_inputs_v2.md"
       - "docs/prob4d_provider_attestation.md"
+      - "docs/stack_lock.md"
       - "pyproject.toml"
       - "src/causal4d/bpt_belief.py"
       - "src/causal4d/claim_bearing_observation_lineage.py"
       - "src/causal4d/cli/molmo_phystwin_forecast_v2.py"
+      - "src/causal4d/cli/root.py"
+      - "src/causal4d/cli/stack.py"
       - "src/causal4d/molmo_visual_inputs_v2.py"
       - "src/causal4d/observation_lineage.py"
       - "src/causal4d/phystwin_backend.py"
@@ -65,6 +73,7 @@ on:
       - "src/causal4d/provider_contract.py"
       - "src/causal4d/replay_provider_contract.py"
       - "src/causal4d/rollout_cache.py"
+      - "src/causal4d/stack_lock.py"
       - "tests/test_bpt_provider_import_boundary.py"
       - "tests/test_bpt_provider_integration.py"
       - "tests/test_causal4d_bpt_belief.py"
@@ -76,6 +85,7 @@ on:
       - "tests/test_prob4d_stream_contract_version.py"
       - "tests/test_replay_provider_contract.py"
       - "tests/test_rollout_cache.py"
+      - "tests/test_stack_lock.py"
       - "tests/test_three_repository_workflow_policy.py"
   workflow_dispatch:
   schedule:
@@ -178,6 +188,50 @@ jobs:
             opencv-python-headless
           "$venv/bin/python" -m pip check
 
+      - name: Create and verify content-addressed stack lock
+        run: |
+          set -o pipefail
+          venv="$RUNNER_TEMP/three-repository-venv"
+          wheelhouse="$RUNNER_TEMP/three-repository-wheelhouse"
+          lock="$RUNNER_TEMP/three-repository-stack-lock.json"
+          create_output="$RUNNER_TEMP/three-repository-stack-lock-create.json"
+          report="$RUNNER_TEMP/three-repository-stack-lock-verification.json"
+          mapfile -t wheels < <(find "$wheelhouse" -maxdepth 1 -name '*.whl' -print | sort)
+
+          create=("$venv/bin/causal4d" stack create)
+          for wheel in "${wheels[@]}"; do
+            create+=(--wheel "$wheel")
+          done
+          create+=(
+            --revision "prob4d=${{ steps.revisions.outputs.prob4d }}"
+            --revision "bayesian-phystwin=${{ steps.revisions.outputs.bpt }}"
+            --revision "causal4d=${{ steps.revisions.outputs.causal4d }}"
+            --output "$lock"
+            --json
+          )
+          "${create[@]}" > "$create_output"
+          cmp "$lock" "$create_output"
+
+          verify=("$venv/bin/causal4d" stack verify --lock "$lock")
+          for wheel in "${wheels[@]}"; do
+            verify+=(--wheel "$wheel")
+          done
+          verify+=(--json)
+          "${verify[@]}" | tee "$report"
+          "$venv/bin/python" -m json.tool "$lock" >/dev/null
+          "$venv/bin/python" -m json.tool "$report" >/dev/null
+          STACK_REPORT="$report" "$venv/bin/python" - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(Path(os.environ["STACK_REPORT"]).read_text())
+          if report.get("valid") is not True:
+              raise SystemExit("stack-lock verification did not pass")
+          if report.get("wheel_set", {}).get("verified") is not True:
+              raise SystemExit("stack-lock wheel identities were not verified")
+          PY
+
       - name: Run the isolated three-repository compatibility path
         run: |
           set -o pipefail
@@ -246,11 +300,30 @@ jobs:
               "$GITHUB_WORKSPACE/causal4d/tests/test_rollout_cache.py" \
               "$GITHUB_WORKSPACE/causal4d/tests/test_observation_lineage.py" \
               "$GITHUB_WORKSPACE/causal4d/tests/test_prob4d_joint_contract_fixture.py" \
-              "$GITHUB_WORKSPACE/causal4d/tests/test_prob4d_stream_contract_version.py"
+              "$GITHUB_WORKSPACE/causal4d/tests/test_prob4d_stream_contract_version.py" \
+              "$GITHUB_WORKSPACE/causal4d/tests/test_stack_lock.py"
 
       - name: Publish compatibility summary
         if: always()
         run: |
+          if [[ -f "$RUNNER_TEMP/three-repository-stack-lock.json" ]]; then
+            {
+              echo "### Content-addressed stack lock"
+              echo
+              echo '```json'
+              cat "$RUNNER_TEMP/three-repository-stack-lock.json"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [[ -f "$RUNNER_TEMP/three-repository-stack-lock-verification.json" ]]; then
+            {
+              echo "### Stack-lock verification"
+              echo
+              echo '```json'
+              cat "$RUNNER_TEMP/three-repository-stack-lock-verification.json"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
           if [[ -f "$RUNNER_TEMP/three-repository-summary.json" ]]; then
             {
               echo "### Compatibility path"
@@ -279,16 +352,19 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Upload golden-path diagnostics
+      - name: Upload golden-path diagnostics and locked wheels
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: three-repository-installed-wheel-golden-path
           path: |
+            ${{ runner.temp }}/three-repository-wheelhouse/*.whl
+            ${{ runner.temp }}/three-repository-wheel-sha256.txt
+            ${{ runner.temp }}/three-repository-stack-lock.json
+            ${{ runner.temp }}/three-repository-stack-lock-verification.json
             ${{ runner.temp }}/three-repository-summary.json
             ${{ runner.temp }}/three-repository-golden-path.log
             ${{ runner.temp }}/three-repository-provider-v2-summary.json
             ${{ runner.temp }}/three-repository-provider-v2.log
-            ${{ runner.temp }}/three-repository-wheel-sha256.txt
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 14
