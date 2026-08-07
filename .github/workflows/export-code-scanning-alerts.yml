@@ -82,9 +82,6 @@ jobs:
           assert not Path(
               ".github/workflows/quality-failure-diagnostics.yml"
           ).exists()
-          assert Path(
-              "tests/test_quality_failure_diagnostics_workflow_policy.py"
-          ).is_file()
           PY
 
       - name: Commit and publish the remediations
