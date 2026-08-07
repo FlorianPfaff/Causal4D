@@ -1,0 +1,157 @@
+name: Finalize PR 206 hybrid reliability correction
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/finalize-pr206-hybrid-reliability.yml
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-pr206-hybrid-reliability
+  cancel-in-progress: false
+
+env:
+  EXPECTED_HEAD: 444fbd0fcf7588dadd5bcae4ba278059f9f57c26
+  PRODUCT_BRANCH: fix/hybrid-reliability-derived-validation-v2
+
+jobs:
+  finalize:
+    name: Format and rebuild seven-file correction on current main
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out current main with full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Fetch and verify immutable source head
+        run: |
+          set -euo pipefail
+          git fetch origin \
+            "${PRODUCT_BRANCH}:refs/remotes/origin/${PRODUCT_BRANCH}"
+          test "$(git rev-parse "refs/remotes/origin/${PRODUCT_BRANCH}")" \
+            = "${EXPECTED_HEAD}"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Format exact source and stage product snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout --detach "${EXPECTED_HEAD}"
+          python -m pip install -e ".[dev]"
+          python -m ruff format src/causal4d/hybrid_reliability.py
+          python -m ruff check .
+          python -m ruff format --check \
+            src/causal4d/hybrid_reliability.py \
+            src/causal4d/hybrid_reliability_admission.py \
+            tests/test_hybrid_reliability_admission.py \
+            tests/test_hybrid_reliability_integrity.py \
+            tests/test_hybrid_reliability_schema_v2.py
+          python -m pytest -q \
+            tests/test_hybrid_reliability.py \
+            tests/test_hybrid_reliability_admission.py \
+            tests/test_hybrid_reliability_integrity.py \
+            tests/test_hybrid_reliability_schema_v2.py
+          mkdir -p "${RUNNER_TEMP}/pr206-product/docs"
+          mkdir -p "${RUNNER_TEMP}/pr206-product/src/causal4d"
+          mkdir -p "${RUNNER_TEMP}/pr206-product/tests"
+          cp docs/hybrid_reliability_admission.md \
+            "${RUNNER_TEMP}/pr206-product/docs/"
+          cp docs/hybrid_reliability_gate.md \
+            "${RUNNER_TEMP}/pr206-product/docs/"
+          cp src/causal4d/hybrid_reliability.py \
+            "${RUNNER_TEMP}/pr206-product/src/causal4d/"
+          cp src/causal4d/hybrid_reliability_admission.py \
+            "${RUNNER_TEMP}/pr206-product/src/causal4d/"
+          cp tests/test_hybrid_reliability_admission.py \
+            "${RUNNER_TEMP}/pr206-product/tests/"
+          cp tests/test_hybrid_reliability_integrity.py \
+            "${RUNNER_TEMP}/pr206-product/tests/"
+          cp tests/test_hybrid_reliability_schema_v2.py \
+            "${RUNNER_TEMP}/pr206-product/tests/"
+
+      - name: Rebuild one product commit on current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_head="$(git rev-parse origin/main)"
+          git checkout -B pr206-final "${base_head}"
+          cp "${RUNNER_TEMP}/pr206-product/docs/"* docs/
+          cp "${RUNNER_TEMP}/pr206-product/src/causal4d/"* src/causal4d/
+          cp "${RUNNER_TEMP}/pr206-product/tests/"* tests/
+          git add \
+            docs/hybrid_reliability_admission.md \
+            docs/hybrid_reliability_gate.md \
+            src/causal4d/hybrid_reliability.py \
+            src/causal4d/hybrid_reliability_admission.py \
+            tests/test_hybrid_reliability_admission.py \
+            tests/test_hybrid_reliability_integrity.py \
+            tests/test_hybrid_reliability_schema_v2.py
+          git diff --cached --name-only | sort > /tmp/actual-files.txt
+          cat > /tmp/expected-files.txt <<'EOF'
+          docs/hybrid_reliability_admission.md
+          docs/hybrid_reliability_gate.md
+          src/causal4d/hybrid_reliability.py
+          src/causal4d/hybrid_reliability_admission.py
+          tests/test_hybrid_reliability_admission.py
+          tests/test_hybrid_reliability_integrity.py
+          tests/test_hybrid_reliability_schema_v2.py
+          EOF
+          diff -u /tmp/expected-files.txt /tmp/actual-files.txt
+          python -m ruff check .
+          python -m ruff format --check \
+            src/causal4d/hybrid_reliability.py \
+            src/causal4d/hybrid_reliability_admission.py \
+            tests/test_hybrid_reliability_admission.py \
+            tests/test_hybrid_reliability_integrity.py \
+            tests/test_hybrid_reliability_schema_v2.py
+          python -m pytest -q \
+            tests/test_hybrid_reliability.py \
+            tests/test_hybrid_reliability_admission.py \
+            tests/test_hybrid_reliability_integrity.py \
+            tests/test_hybrid_reliability_schema_v2.py
+          git diff --check origin/main...HEAD
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m \
+            "Recompute and validate hybrid reliability calibration derivations"
+
+      - name: Publish rebuilt branch with lease
+        run: |
+          git push --force-with-lease=refs/heads/${PRODUCT_BRANCH}:${EXPECTED_HEAD} \
+            origin HEAD:refs/heads/${PRODUCT_BRANCH}
+
+      - name: Remove this temporary workflow from main
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch main \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            cleanup
+          git -C cleanup config user.name "github-actions[bot]"
+          git -C cleanup config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          if test -f \
+            cleanup/.github/workflows/finalize-pr206-hybrid-reliability.yml; then
+            git -C cleanup rm \
+              .github/workflows/finalize-pr206-hybrid-reliability.yml
+            git -C cleanup commit -m \
+              "Remove temporary PR 206 finalizer workflow"
+            git -C cleanup push origin HEAD:main
+          fi
