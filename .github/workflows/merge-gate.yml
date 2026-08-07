@@ -73,15 +73,11 @@ jobs:
           python -m build
           python -m twine check dist/*
 
-      - name: Read exact Bayesian-PhysTwin pin
-        id: pin
-        run: echo "sha=$(python scripts/ci/read_bpt_pin.py)" >> "$GITHUB_OUTPUT"
-
       - name: Check out pinned Bayesian-PhysTwin
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: IPS-Stuttgart/BayesianPhysTwin
-          ref: ${{ steps.pin.outputs.sha }}
+          ref: 695f7d7b949988052d8bd83ac7ac91620d1c6bb1
           path: _bpt
           persist-credentials: false
 

@@ -12,13 +12,17 @@ detecting drift at the Prob4D and Bayesian-PhysTwin boundaries.
   Warp and executes the default test suite on Python 3.10, 3.12, and 3.14.
 - **Pinned Bayesian-PhysTwin integration** checks out the exact provider-API
   revision recorded in `requirements/ci/bayesian-phystwin-provider-v1.sha` and
-  runs the BPT-facing Causal4D tests. The normal `phystwin` extra remains the
-  supported `>=0.4,<0.5` development range.
+  runs the BPT-facing Causal4D tests. The checkout uses that immutable revision
+  directly; a policy test keeps the workflow literal synchronized with the pin
+  file. The normal `phystwin` extra remains the supported `>=0.4,<0.5`
+  development range.
 - **Distributions and CLI help** build both wheel and source distribution,
   install each into a clean virtual environment, and require every declared
   console command to render `--help` without optional providers.
 - **Quality** runs Ruff on the repository, Ruff formatting on changed Python
-  files, and mypy on stable provider contracts and CI utilities.
+  files, and mypy on stable provider contracts and CI utilities. A Ruff failure
+  uploads focused diagnostics from this same read-only pull-request job; no
+  privileged follow-up workflow checks out or executes the failed revision.
 - **Result bundles** produce small deterministic benchmark bundles, verify their
   embedded checksums, archive them, extract them into a clean directory, and
   verify the consumed copies again.
@@ -42,10 +46,18 @@ workflows retain their separately documented runtime requirements.
 
 `.github/workflows/bayesian-phystwin-provider-compatibility.yml` is the terminal
 Prob4D -> BayesianPhysTwin -> Causal4D compatibility check. It runs on relevant
-pull requests and pushes, can be dispatched with explicit BPT and Prob4D
-revisions, and runs weekly against both public repositories' `main` branches.
-All events execute the full path; an unavailable checkout or contract failure is
-a failing check rather than a credential-dependent skip.
+pull requests and pushes, can be dispatched manually, and runs weekly against a
+previously validated immutable provider pair. The exact revisions are recorded
+in `requirements/ci/prob4d-three-repository.sha` and
+`requirements/ci/bayesian-phystwin-three-repository.sha`; literal checkout refs
+in the workflow are required to match those files. Pull-request code cannot
+select alternate provider revisions for this executable compatibility path. All
+events execute the full path; an unavailable checkout or contract failure is a
+failing check rather than a credential-dependent skip.
+
+Provider upgrades are intentional changes: update the relevant pin file and its
+matching literal checkout ref in one pull request, then require the complete
+installed-wheel path to pass before advancing the compatibility baseline.
 
 The installed-wheel job records the exact clean revision of every checkout,
 builds one wheel for each repository, records each wheel's SHA-256 identity, and
@@ -143,7 +155,11 @@ The manual GPU job additionally requires `BPT_READ_SSH_KEY`.
 ## Reproducing the wheel boundary locally
 
 The workflow is the canonical executable specification. A local equivalent
-requires checkouts of all three public repositories:
+requires checkouts of all three public repositories. Check out the exact Prob4D
+and BayesianPhysTwin revisions recorded in
+`requirements/ci/prob4d-three-repository.sha` and
+`requirements/ci/bayesian-phystwin-three-repository.sha` before building the
+wheels:
 
 ```bash
 python -m build --wheel --outdir /tmp/three-repo-wheels Prob4D

@@ -6,6 +6,8 @@ on:
     paths:
       - ".github/workflows/bayesian-phystwin-provider-compatibility.yml"
       - "ci/three_repository_*.py"
+      - "requirements/ci/bayesian-phystwin-three-repository.sha"
+      - "requirements/ci/prob4d-three-repository.sha"
       - "docs/ci.md"
       - "docs/molmo_visual_inputs_v2.md"
       - "docs/prob4d_provider_attestation.md"
@@ -42,6 +44,8 @@ on:
     paths:
       - ".github/workflows/bayesian-phystwin-provider-compatibility.yml"
       - "ci/three_repository_*.py"
+      - "requirements/ci/bayesian-phystwin-three-repository.sha"
+      - "requirements/ci/prob4d-three-repository.sha"
       - "docs/ci.md"
       - "docs/molmo_visual_inputs_v2.md"
       - "docs/prob4d_provider_attestation.md"
@@ -74,15 +78,6 @@ on:
       - "tests/test_rollout_cache.py"
       - "tests/test_three_repository_workflow_policy.py"
   workflow_dispatch:
-    inputs:
-      bpt_ref:
-        description: Bayesian-PhysTwin revision to test
-        required: false
-        default: main
-      prob4d_ref:
-        description: Prob4D revision to test
-        required: false
-        default: main
   schedule:
     - cron: "17 4 * * 1"
 
@@ -109,7 +104,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: IPS-Stuttgart/BayesianPhysTwin
-          ref: ${{ inputs.bpt_ref || 'main' }}
+          ref: 68eaf4f4daaf7066f56f3ef8a4add65a5ae70059
           path: bayesian-phystwin
           persist-credentials: false
 
@@ -117,7 +112,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: IPS-Stuttgart/Prob4D
-          ref: ${{ inputs.prob4d_ref || 'main' }}
+          ref: 47e0568781d96f09b8df4bb650097b129e23c178
           path: prob4d
           persist-credentials: false
 
@@ -137,6 +132,11 @@ jobs:
           for repository in prob4d bayesian-phystwin causal4d; do
             test -z "$(git -C "$repository" status --porcelain=v1 --untracked-files=all)"
           done
+          test "$(cat causal4d/requirements/ci/prob4d-three-repository.sha)" = \
+            "$(git -C prob4d rev-parse HEAD)"
+          test "$(cat \
+            causal4d/requirements/ci/bayesian-phystwin-three-repository.sha)" = \
+            "$(git -C bayesian-phystwin rev-parse HEAD)"
           echo "prob4d=$(git -C prob4d rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "bpt=$(git -C bayesian-phystwin rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "causal4d=$(git -C causal4d rev-parse HEAD)" >> "$GITHUB_OUTPUT"

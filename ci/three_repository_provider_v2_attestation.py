@@ -13,6 +13,7 @@ from typing import Any
 
 import numpy as np
 
+from causal4d.immutable_json import plain_json
 from three_repository_common import array_digest, require
 from three_repository_observation import fixture_artifact
 
@@ -415,12 +416,10 @@ def main() -> int:
         prob4d_revision=args.prob4d_revision,
         output_dir=args.output_dir,
     )
+    rendered = json.dumps(plain_json(summary), indent=2, sort_keys=True)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps(summary, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    print(json.dumps(summary, indent=2, sort_keys=True))
+    args.output.write_text(rendered + "\n", encoding="utf-8")
+    print(rendered)
     return 0
 
 

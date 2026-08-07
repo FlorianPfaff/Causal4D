@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import get_context
+import os
 from pathlib import Path
+import stat
 import tempfile
 
 import pytest
@@ -60,6 +62,21 @@ def test_append_fails_before_creating_a_journal_without_locking(
         _append(journal, "session_started", monotonic_ns=10)
 
     assert not journal.exists()
+
+
+def test_append_restricts_an_existing_journal_to_owner_only(
+    tmp_path: Path,
+) -> None:
+    journal = tmp_path / "acquisition.jsonl"
+    journal.touch()
+    # This test intentionally creates a group-readable fixture so the production
+    # repair path can prove that it restores owner-only permissions.
+    # codeql[py/overly-permissive-file]
+    os.chmod(journal, 0o640)
+
+    _append(journal, "session_started", monotonic_ns=10)
+
+    assert stat.S_IMODE(journal.stat().st_mode) == 0o600
 
 
 def test_seal_fails_without_publishing_when_locking_is_unavailable(

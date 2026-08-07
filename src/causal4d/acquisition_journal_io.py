@@ -84,8 +84,9 @@ def append_journal_event(
         flags |= os.O_CLOEXEC
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
-    descriptor = os.open(path, flags, 0o640)
+    descriptor = os.open(path, flags, 0o600)
     try:
+        os.fchmod(descriptor, 0o600)
         with os.fdopen(descriptor, "r+b") as handle:
             with exclusive_acquisition_journal_lock(handle):
                 _require(not seal.exists(), "acquisition journal is sealed")
