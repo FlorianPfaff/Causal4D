@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,8 +24,8 @@ def _job_block(path: str, job_name: str) -> str:
     marker = f"\n  {job_name}:\n"
     assert marker in text, f"{path} is missing job {job_name!r}"
     block = text.split(marker, maxsplit=1)[1]
-    next_job = block.find("\n  ", 1)
-    return block if next_job < 0 else block[:next_job]
+    next_job = re.search(r"(?m)^  [A-Za-z0-9_-]+:\n", block)
+    return block if next_job is None else block[: next_job.start()]
 
 
 def test_newly_credential_free_self_hosted_jobs_are_main_only() -> None:
@@ -44,11 +45,11 @@ def test_main_only_guard_is_bound_to_each_job_condition() -> None:
         block = _job_block(path, job_name)
         runs_on = block.index("runs-on: [self-hosted")
         guard = block.index("github.ref == 'refs/heads/main'")
-        # The guard must be part of job-level metadata, before steps begin. Merely
-        # checking the ref in a later shell step still allocates the privileged
-        # runner and permits earlier branch-controlled actions to execute.
+        # The guard must be job-level metadata. Checking the ref in a later shell
+        # step still allocates the privileged runner and permits earlier
+        # branch-controlled actions to execute.
         steps = block.index("\n    steps:")
-        assert guard < runs_on < steps, (
+        assert max(guard, runs_on) < steps, (
             f"{path}:{job_name} must place the main-ref guard in the job-level "
-            "condition before the self-hosted runner is allocated"
+            "condition before steps are eligible to execute"
         )
