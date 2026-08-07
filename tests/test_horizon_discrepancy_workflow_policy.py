@@ -42,10 +42,11 @@ def test_horizon_workflow_exercises_installed_wheels() -> None:
     assert "test_belief_provider_contract.py" in text
 
 
-def test_horizon_pull_request_validation_is_hosted_and_unique() -> None:
+def test_horizon_pull_request_validation_is_hosted_read_only_and_unique() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
     assert "pull_request:" in text
+    assert "permissions:\n  contents: read\n" in text
     assert "runs-on: ubuntu-latest" in text
     assert "self-hosted" not in text
     assert not REDUNDANT_SELF_HOSTED_WORKFLOW.exists(), (
