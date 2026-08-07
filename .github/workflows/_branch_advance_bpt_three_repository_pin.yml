@@ -1,0 +1,87 @@
+name: Branch advance BPT three-repository pin
+
+on:
+  push:
+    branches: [chore/advance-bpt-three-repository-pin]
+    paths:
+      - ".github/workflows/_branch_advance_bpt_three_repository_pin.yml"
+      - "scripts/ci/apply_bpt_three_repository_pin_advance.py"
+      - "requirements/ci/bayesian-phystwin-three-repository.sha"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: branch-advance-bpt-three-repository-pin
+  cancel-in-progress: false
+
+jobs:
+  synchronize-and-validate:
+    if: >-
+      github.repository == 'IPS-Stuttgart/Causal4D' &&
+      github.ref == 'refs/heads/chore/advance-bpt-three-repository-pin'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact branch revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+          clean: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Apply exact reviewed pin synchronization
+        run: python scripts/ci/apply_bpt_three_repository_pin_advance.py
+
+      - name: Install policy-test environment
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m pip check
+
+      - name: Validate synchronized workflow policy
+        run: |
+          python -m pytest -q \
+            tests/test_three_repository_workflow_policy.py \
+            tests/test_stack_lock.py \
+            tests/test_decision_trace_workflow_policy.py
+          python - <<'PY'
+          from pathlib import Path
+
+          revision = "4832d92699129b70ffa902ee5ced07bc7200de78"
+          pin = Path(
+              "requirements/ci/bayesian-phystwin-three-repository.sha"
+          ).read_text(encoding="utf-8").strip()
+          workflow = Path(
+              ".github/workflows/bayesian-phystwin-provider-compatibility.yml"
+          ).read_text(encoding="utf-8")
+          if pin != revision or workflow.count(f"ref: {revision}") != 1:
+              raise SystemExit("pin and workflow literal are not synchronized")
+          PY
+
+      - name: Remove branch transport and verify final scope
+        run: |
+          rm -- \
+            .github/workflows/_branch_advance_bpt_three_repository_pin.yml \
+            scripts/ci/apply_bpt_three_repository_pin_advance.py
+          git diff --check
+          allowed='^(.github/workflows/bayesian-phystwin-provider-compatibility.yml|requirements/ci/bayesian-phystwin-three-repository.sha)$'
+          unexpected="$(git diff --name-only 2c2ef42620adb5c77b14104b390beddf69118efa -- | grep -Ev "${allowed}" || true)"
+          if [[ -n "${unexpected}" ]]; then
+            printf 'Unexpected final paths:\n%s\n' "${unexpected}" >&2
+            exit 1
+          fi
+
+      - name: Commit validated final source
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Advance BayesianPhysTwin compatibility pin'
+          git push origin HEAD:chore/advance-bpt-three-repository-pin
