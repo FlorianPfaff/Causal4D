@@ -1,0 +1,86 @@
+name: Apply reviewed issue 233 repair
+
+on:
+  push:
+    branches: [fix/coordinatewise-frame-zero-invariance]
+    paths:
+      - ".github/issue233-repair.patch.b64"
+      - ".github/workflows/apply-issue233-coordinate-invariance.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-issue233-coordinate-invariance
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: >-
+      github.repository == 'IPS-Stuttgart/Causal4D' &&
+      github.ref == 'refs/heads/fix/coordinatewise-frame-zero-invariance'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the exact repair branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify and apply the reviewed patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode .github/issue233-repair.patch.b64 \
+            > "$RUNNER_TEMP/issue233.patch"
+          printf '%s  %s\n' \
+            '6f7c8ea80b8eefedfa0649b0eb8d53de1df8056eb7a2631be038ef2a3b306c2e' \
+            "$RUNNER_TEMP/issue233.patch" \
+            | sha256sum --check --strict -
+          git apply --check "$RUNNER_TEMP/issue233.patch"
+          git apply "$RUNNER_TEMP/issue233.patch"
+          git diff --check
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install development dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Validate the contract repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ruff check \
+            src/causal4d/latent_contact_v2.py \
+            tests/test_linear_contact_observation_invariance.py
+          python -m ruff format --check \
+            src/causal4d/latent_contact_v2.py \
+            tests/test_linear_contact_observation_invariance.py
+          python -W error::SyntaxWarning -m compileall -q -f \
+            src/causal4d/latent_contact_v2.py \
+            tests/test_linear_contact_observation_invariance.py
+          python -m pytest -q \
+            tests/test_linear_contact_observation_invariance.py \
+            tests/test_latent_contact_v2.py
+
+      - name: Publish the validated source repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email \
+            41898282+github-actions[bot]@users.noreply.github.com
+          git add \
+            src/causal4d/latent_contact_v2.py \
+            tests/test_linear_contact_observation_invariance.py \
+            docs/latent_contact_v2.md
+          git diff --cached --check
+          test -n "$(git diff --cached --name-only)"
+          git commit -m 'Reject mixed-coordinate endpoint cancellation'
+          git push origin HEAD:fix/coordinatewise-frame-zero-invariance
