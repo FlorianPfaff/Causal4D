@@ -1,7 +1,7 @@
 """Prospective structured conditional uncertainty for latent-contact v2.
 
 The registered estimator and the existing :mod:`causal4d.latent_contact_v2`
-rollout-bank contract remain unchanged.  This additive module supplies a
+rollout-bank contract remain unchanged. This additive module supplies a
 provenance-bearing uncertainty layer that can be projected through the existing
 linear observation groups and can expose the full law-of-total-covariance result
 for joint calibration diagnostics.
@@ -30,6 +30,7 @@ from causal4d.latent_contact_v2 import (
 
 
 CONDITIONAL_UNCERTAINTY_V2_SCHEMA_VERSION = 1
+DEFAULT_MAXIMUM_JOINT_DIMENSION = 2048
 
 
 def _canonical_sha256(payload: Mapping[str, Any]) -> str:
@@ -81,6 +82,18 @@ def _finite_positive_float(value: Any, *, name: str) -> float:
     return result
 
 
+def _positive_integer(value: Any, *, name: str) -> int:
+    if isinstance(value, (bool, np.bool_)) or not isinstance(
+        value,
+        (int, np.integer),
+    ):
+        raise ValueError(f"{name} must be a positive integer")
+    result = int(value)
+    if result < 1:
+        raise ValueError(f"{name} must be a positive integer")
+    return result
+
+
 def _normalized_weights(
     values: np.ndarray,
     *,
@@ -102,12 +115,12 @@ class ConditionalPredictiveUncertaintyV2:
     """Diagonal residual variance plus Gaussian low-rank trajectory modes.
 
     ``independent_variance_m2`` must broadcast to the rollout-bank trajectory
-    shape ``(state, particle, frame, node, coordinate)``.  It is added to the
+    shape ``(state, particle, frame, node, coordinate)``. It is added to the
     bank's existing scalar variance floor.
 
-    ``low_rank_factors_m`` may be shared or component-specific.  Its final four
+    ``low_rank_factors_m`` may be shared or component-specific. Its final four
     axes are ``(rank, frame, node, coordinate)``; any leading axes must broadcast
-    to ``(state, particle)``.  For one component, factors ``F`` define the
+    to ``(state, particle)``. For one component, factors ``F`` define the
     correlated conditional covariance ``F.T @ F`` after flattening the queried
     trajectory coordinates.
     """
@@ -428,13 +441,27 @@ def joint_predictive_moments_with_conditional_uncertainty_v2(
     *,
     method: str = "latent_contact_patch_v2_structured_uncertainty",
     conditional_variance_multiplier: float = 1.0,
+    maximum_joint_dimension: int = DEFAULT_MAXIMUM_JOINT_DIMENSION,
 ) -> JointPredictiveMomentsV2:
     """Apply the full law of total covariance in flattened trajectory space.
 
-    This diagnostic intentionally materializes a dense ``D x D`` covariance and
-    should therefore be used only for bounded query windows.
+    This diagnostic intentionally materializes a dense ``D x D`` covariance.
+    ``maximum_joint_dimension`` is checked before any quadratic allocation and
+    must be raised explicitly for larger bounded diagnostics.
     """
 
+    dimension = int(np.prod(bank.trajectories_m.shape[-3:]))
+    maximum_dimension = _positive_integer(
+        maximum_joint_dimension,
+        name="maximum_joint_dimension",
+    )
+    if dimension > maximum_dimension:
+        dense_bytes = dimension * dimension * np.dtype(float).itemsize
+        raise ValueError(
+            "joint predictive dimension exceeds maximum_joint_dimension: "
+            f"dimension={dimension}, maximum={maximum_dimension}, "
+            f"dense_covariance_bytes={dense_bytes}"
+        )
     weights = _normalized_weights(
         bank.prior_joint_weights if joint_weights is None else joint_weights,
         expected_shape=bank.prior_joint_weights.shape,
@@ -443,10 +470,7 @@ def joint_predictive_moments_with_conditional_uncertainty_v2(
         conditional_variance_multiplier,
         name="conditional_variance_multiplier",
     )
-    components = bank.trajectories_m.reshape(
-        -1,
-        int(np.prod(bank.trajectories_m.shape[-3:])),
-    )
+    components = bank.trajectories_m.reshape(-1, dimension)
     mean_flat = np.sum(weights[:, None] * components, axis=0)
     centered = components - mean_flat[None, :]
     covariance = np.einsum("k,ki,kj->ij", weights, centered, centered)
@@ -479,6 +503,7 @@ def joint_predictive_moments_with_conditional_uncertainty_v2(
 
 __all__ = [
     "CONDITIONAL_UNCERTAINTY_V2_SCHEMA_VERSION",
+    "DEFAULT_MAXIMUM_JOINT_DIMENSION",
     "ConditionalPredictiveUncertaintyV2",
     "JointPredictiveMomentsV2",
     "joint_predictive_moments_with_conditional_uncertainty_v2",
