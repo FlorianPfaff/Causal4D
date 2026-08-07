@@ -79,10 +79,7 @@ def test_companion_revisions_are_exact_checked_in_pins() -> None:
     assert "github.event.pull_request.head" not in text
     assert "github.head_ref" not in text
     assert "workflow_dispatch.inputs" not in text
-    assert (
-        "cat causal4d/requirements/ci/bayesian-phystwin-three-repository.sha"
-        in text
-    )
+    assert "cat causal4d/requirements/ci/bayesian-phystwin-three-repository.sha" in text
     assert "cat causal4d/requirements/ci/prob4d-three-repository.sha" in text
 
 
@@ -90,9 +87,7 @@ def test_all_actions_and_checkouts_are_immutable_and_read_only() -> None:
     text = _workflow_text()
 
     checkout = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
-    setup_python = (
-        "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
-    )
+    setup_python = "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
     assert text.count(checkout) == 3
     assert text.count(setup_python) == 1
     assert text.count("persist-credentials: false") == 3
