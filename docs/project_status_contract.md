@@ -47,6 +47,25 @@ pending. Completion, a failed registered endpoint, or a promoted claim requires
 a new reviewed schema bound to the completed evidence rather than an in-place
 reinterpretation of v2.
 
+## Readiness controls are not empirical evidence
+
+The repository may add or seal acquisition-readiness controls while the
+empirical status remains unchanged. Examples include a registered analysis
+manifest, method-freeze attestation, software-environment sealing, source-review
+records, staged-manifest preflight, action-support admission, identifiability
+checks, or baseline-relative fallback guards.
+
+Those controls can make future collection and analysis safer, more reproducible,
+or more fail closed. They do not by themselves establish a physical prediction
+result, independent-execution calibration, a fresh real-provider benefit, or a
+confirmatory method admission. In particular, they must not increment acquired
+or validated execution counters and must not change `claim_ready=false`.
+
+This omission is deliberate: version 2 summarizes empirical and admission states,
+not every piece of prospective infrastructure present in the development tree.
+A readiness control enters the status only when a reviewed schema defines its
+claim-relevant state and binds the corresponding evidence identity.
+
 ## Automated checks
 
 `ci/three_repository_status.py` fails closed when:
