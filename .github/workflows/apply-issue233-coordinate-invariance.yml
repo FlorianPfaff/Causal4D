@@ -1,9 +1,9 @@
 name: Apply reviewed issue 233 repair
 
-# Branch-local one-shot transport; removed before review.
 on:
-  push:
-    branches: [fix/coordinatewise-frame-zero-invariance]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
     paths:
       - ".github/issue233-repair.patch.b64"
       - ".github/workflows/apply-issue233-coordinate-invariance.yml"
@@ -18,15 +18,16 @@ concurrency:
 jobs:
   apply:
     if: >-
-      github.repository == 'IPS-Stuttgart/Causal4D' &&
-      github.ref == 'refs/heads/fix/coordinatewise-frame-zero-invariance'
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'fix/coordinatewise-frame-zero-invariance' &&
+      github.event.pull_request.user.login == 'FlorianPfaff'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Check out the exact repair branch
+      - name: Check out the exact repair head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: true
 
@@ -42,6 +43,9 @@ jobs:
             | sha256sum --check --strict -
           git apply --check "$RUNNER_TEMP/issue233.patch"
           git apply "$RUNNER_TEMP/issue233.patch"
+          rm \
+            .github/issue233-repair.patch.b64 \
+            .github/workflows/apply-issue233-coordinate-invariance.yml
           git diff --check
 
       - name: Set up Python 3.12
@@ -70,18 +74,16 @@ jobs:
             tests/test_linear_contact_observation_invariance.py \
             tests/test_latent_contact_v2.py
 
-      - name: Publish the validated source repair
+      - name: Publish only the validated reviewable repair
         shell: bash
         run: |
           set -euo pipefail
           git config user.name github-actions[bot]
           git config user.email \
             41898282+github-actions[bot]@users.noreply.github.com
-          git add \
-            src/causal4d/latent_contact_v2.py \
-            tests/test_linear_contact_observation_invariance.py \
-            docs/latent_contact_v2.md
+          git add -A
           git diff --cached --check
           test -n "$(git diff --cached --name-only)"
+          test "$(git diff --cached --name-only | wc -l)" -eq 5
           git commit -m 'Reject mixed-coordinate endpoint cancellation'
           git push origin HEAD:fix/coordinatewise-frame-zero-invariance
