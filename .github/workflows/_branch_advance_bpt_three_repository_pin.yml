@@ -11,7 +11,7 @@ on:
       - "requirements/ci/bayesian-phystwin-three-repository.sha"
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: read
 
 concurrency:
@@ -36,7 +36,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
           clean: true
 
       - name: Set up Python 3.12
@@ -85,11 +85,31 @@ jobs:
             exit 1
           fi
 
-      - name: Commit validated final source
+      - name: Stage validated ordinary source artifact
+        shell: bash
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git diff --cached --check
-          git commit -m 'Advance BayesianPhysTwin compatibility pin'
-          git push origin HEAD:chore/advance-bpt-three-repository-pin
+          set -euo pipefail
+          artifact="${RUNNER_TEMP}/bpt-pin-final"
+          mkdir -p \
+            "${artifact}/.github/workflows" \
+            "${artifact}/requirements/ci"
+          cp .github/workflows/bayesian-phystwin-provider-compatibility.yml \
+            "${artifact}/.github/workflows/bayesian-phystwin-provider-compatibility.yml"
+          cp requirements/ci/bayesian-phystwin-three-repository.sha \
+            "${artifact}/requirements/ci/bayesian-phystwin-three-repository.sha"
+          (
+            cd "${artifact}"
+            sha256sum \
+              .github/workflows/bayesian-phystwin-provider-compatibility.yml \
+              requirements/ci/bayesian-phystwin-three-repository.sha \
+              > SHA256SUMS
+          )
+          printf 'source_head=%s\n' "${GITHUB_SHA}" > "${artifact}/SOURCE"
+
+      - name: Upload validated ordinary source artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
+        with:
+          name: bpt-pin-final-source
+          path: ${{ runner.temp }}/bpt-pin-final
+          if-no-files-found: error
+          retention-days: 1
