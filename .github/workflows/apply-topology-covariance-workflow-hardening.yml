@@ -1,4 +1,4 @@
-# Retrigger after current-main CI restoration.
+# Artifact publication retry after hidden-file retention fix.
 name: Apply topology covariance workflow hardening
 
 on:
