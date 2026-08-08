@@ -112,4 +112,5 @@ jobs:
           name: bpt-pin-final-source
           path: ${{ runner.temp }}/bpt-pin-final
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 1
