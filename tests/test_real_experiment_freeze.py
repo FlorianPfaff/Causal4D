@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from causal4d.real_experiment_freeze import (
+    ACQUISITION_CANDIDATE_PATH,
     BPT_PIN_PATH,
     DIAGNOSTIC_ONLY_ANALYSIS_ENTRYPOINTS,
     MECHANISM_GATE_EVIDENCE_PATH,
@@ -93,6 +94,34 @@ def _repository(tmp_path: Path) -> Path:
     (root / PREACQUISITION_PATH).write_text(json.dumps(amendment), encoding="utf-8")
 
     (root / BPT_PIN_PATH).write_text(BPT_SHA + "\n", encoding="utf-8")
+    candidate: dict[str, object] = {
+        "schema_version": 1,
+        "candidate_id": "causal4d-sloth-primary-acquisition-v1",
+        "status": "selected_before_source_panel",
+        "protocol_design_sha256": PROTOCOL_SHA,
+        "physical_model": {"bayesian_phystwin_commit_sha": BPT_SHA},
+        "information_boundary": {
+            "allowed_post_intervention_prefix_frames": 6,
+            "source_or_target_outcomes_used_for_selection": False,
+            "confirmation_outcomes_used": False,
+            "target_outcomes_may_select_method_or_hyperparameters": False,
+        },
+        "observation_path": {
+            "prob4d": {
+                "used": False,
+                "package_compatibility_is_not_method_admission": True,
+            }
+        },
+        "semantic_path": {"molmomotion_beta": 0},
+    }
+    candidate["candidate_sha256"] = _canonical_payload_sha256(
+        candidate,
+        omitted_field="candidate_sha256",
+    )
+    (root / ACQUISITION_CANDIDATE_PATH).write_text(
+        json.dumps(candidate),
+        encoding="utf-8",
+    )
     (root / "pyproject.toml").write_text(
         "[project.optional-dependencies]\n"
         "phystwin = [\n"
@@ -120,6 +149,11 @@ def test_freeze_binds_method_files_dependency_and_registered_calibration(
     )
     assert result["locked_files_checked"] == len(REQUIRED_LOCKED_PATHS)
     assert result["bayesian_phystwin_commit_sha"] == BPT_SHA
+    assert result["prob4d_used"] is False
+    assert (
+        result["acquisition_candidate_sha256"]
+        == manifest["acquisition_candidate"]["candidate_sha256"]
+    )
     assert (
         result["preacquisition_amendment_sha256"]
         == manifest["preacquisition"]["amendment_sha256"]

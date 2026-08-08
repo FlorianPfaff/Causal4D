@@ -1,0 +1,51 @@
+{
+  "candidate_id": "causal4d-sloth-primary-acquisition-v1",
+  "candidate_sha256": "7ec76d93309e09615c2d7aeb868ce0e090497d0f121d7774be110cd3c707a8b7",
+  "claim_boundary": "Primary same-object physical acquisition candidate only. Selection does not establish real accuracy, calibration, contact recovery, safety, or state of the art.",
+  "comparison_arms": [
+    "nominal_phystwin",
+    "bayesian_phystwin_nominal_intervention",
+    "causal4d_realized_intervention_posterior",
+    "intervention_oracle_diagnostic_only"
+  ],
+  "discrepancy": {
+    "mean_model": "graph_persistence_from_allowed_prefix",
+    "role": "unresolved_predictive_fallback",
+    "source_panel_mechanism_may_replace_it": true,
+    "source_panel_promotion_gate_required": true
+  },
+  "information_boundary": {
+    "allowed_post_intervention_prefix_frames": 6,
+    "confirmation_outcomes_used": false,
+    "source_or_target_outcomes_used_for_selection": false,
+    "target_outcomes_may_select_method_or_hyperparameters": false
+  },
+  "milestone_id": "causal4d-same-object-real-v1",
+  "observation_path": {
+    "primary_producer": "registered_multiview_rgbd_material_tracking_and_hardware_telemetry",
+    "prob4d": {
+      "package_compatibility_is_not_method_admission": true,
+      "reason": "The Prob4D observation path has not passed an independent source competence and transfer gate for this physical protocol.",
+      "used": false
+    }
+  },
+  "physical_model": {
+    "bayesian_phystwin_commit_sha": "573ecd9b09a8145b680738c5e5f36415feefbfe3",
+    "causal4d_revision_source": "method_freeze.json",
+    "realized_intervention_variables": [
+      "gain",
+      "delay",
+      "controller_frame_bias",
+      "contact_patch",
+      "activation",
+      "slip"
+    ]
+  },
+  "protocol_design_sha256": "6d61f2bea96af0ba04faaf3476990b58cd87e0a9c826420c254a012dec647968",
+  "schema_version": 1,
+  "semantic_path": {
+    "molmomotion_beta": 0,
+    "role": "excluded_from_primary_physical_acquisition"
+  },
+  "status": "selected_before_source_panel"
+}

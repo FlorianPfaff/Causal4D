@@ -147,7 +147,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: IPS-Stuttgart/BayesianPhysTwin
-          ref: 695f7d7b949988052d8bd83ac7ac91620d1c6bb1
+          ref: 573ecd9b09a8145b680738c5e5f36415feefbfe3
           path: _bpt
           persist-credentials: false
       - name: Build Causal4D and pinned provider wheels
