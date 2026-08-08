@@ -8,6 +8,9 @@ from collections.abc import Sequence
 
 from causal4d import preacquisition_operator_flow as _operator_flow
 from causal4d.acquisition_environment import stage_software_environment_capsule
+from causal4d.acquisition_environment_sealing import (
+    seal_staged_software_environment_capsule,
+)
 from causal4d.operator_registry import (
     scaffold_operator_registry,
     seal_operator_registry,
@@ -233,13 +236,21 @@ def main(argv: Sequence[str] | None = None) -> int:
                 completed_at_utc=args.completed_at_utc,
             )
         elif args.command == "seal-gate":
-            result = seal_preacquisition_gate(
-                args.repository_root,
-                args.dataset_root,
-                args.gate_id,
-                approved_by=args.approved_by,
-                approved_at_utc=args.approved_at_utc,
-            )
+            if args.gate_id == "software_environment_locked":
+                result = seal_staged_software_environment_capsule(
+                    args.repository_root,
+                    args.dataset_root,
+                    approved_by=args.approved_by,
+                    approved_at_utc=args.approved_at_utc,
+                )
+            else:
+                result = seal_preacquisition_gate(
+                    args.repository_root,
+                    args.dataset_root,
+                    args.gate_id,
+                    approved_by=args.approved_by,
+                    approved_at_utc=args.approved_at_utc,
+                )
         elif args.command == "source-panel-status":
             result = build_source_panel_status(
                 args.repository_root,
