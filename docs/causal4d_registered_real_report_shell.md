@@ -10,10 +10,14 @@ opened**. The shell is a derived operator artifact. It is not evidence, it does
 not increment the 36-execution registry, and it cannot approve or interpret a
 scientific result.
 
+The supported entry point is the stable, non-claim-bearing
+`causal4d evidence real-report-shell` route in the authoritative single-executable
+command catalog.
+
 ## Render the shell
 
 ```bash
-python -m causal4d.registered_real_report_shell render \
+causal4d evidence real-report-shell render \
   /data/causal4d-sloth-multi-action-v1/registered-analysis.json \
   --output-json \
   /data/causal4d-sloth-multi-action-v1/operator/real-report-shell.json \
@@ -37,14 +41,14 @@ Standalone validation checks the schema, content identity, safety boundary, and
 that every table, figure, and result narrative remains empty or unselected:
 
 ```bash
-python -m causal4d.registered_real_report_shell validate \
+causal4d evidence real-report-shell validate \
   /data/causal4d-sloth-multi-action-v1/operator/real-report-shell.json
 ```
 
 For acquisition use, always bind the shell back to the exact registered analysis:
 
 ```bash
-python -m causal4d.registered_real_report_shell validate \
+causal4d evidence real-report-shell validate \
   /data/causal4d-sloth-multi-action-v1/operator/real-report-shell.json \
   --analysis-manifest \
   /data/causal4d-sloth-multi-action-v1/registered-analysis.json
