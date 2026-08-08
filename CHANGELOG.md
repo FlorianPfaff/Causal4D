@@ -4,6 +4,13 @@
 
 ### Added
 
+- Add source-only task-projected functional-support certification over frozen
+  linear readouts, including posterior-mixture covariance, optional
+  component-specific low-rank uncertainty modes, exact Gaussian-mixture
+  intervals, and content-addressed source provenance.
+- Add the versioned prospective V2 deployment-decision profile, fixing the
+  required gate inventory, producer, stage, and exact baseline fallback without
+  admitting the separate target-opening promotion experiment.
 - Add a strict non-pickled physical evaluation target with canonical float32
   observation identities, target/context validation, and atomic exactly-once
   publication.
