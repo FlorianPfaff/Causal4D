@@ -155,8 +155,7 @@ def _prepare_case(tmp_path: Path, monkeypatch) -> SimpleNamespace:
     bpt_wheel = _write_wheel(wheelhouse, "bayesian-phystwin", "0.4.0")
     dependency_report = tmp_path / "resolved-dependencies.txt"
     dependency_report.write_text(
-        "causal4d==0.5.0\nbayesian-phystwin==0.4.0\n"
-        "numpy==2.2.0\nscipy==1.15.0\n",
+        "causal4d==0.5.0\nbayesian-phystwin==0.4.0\nnumpy==2.2.0\nscipy==1.15.0\n",
         encoding="utf-8",
     )
     prerequisites = {
@@ -259,9 +258,7 @@ def test_stage_capsule_populates_unapproved_hash_verified_gate(
         assert len(payload) == descriptor["bytes"]
 
     capsule = json.loads(
-        (case.dataset / environment.CAPSULE_MANIFEST_PATH).read_text(
-            encoding="utf-8"
-        )
+        (case.dataset / environment.CAPSULE_MANIFEST_PATH).read_text(encoding="utf-8")
     )
     assert capsule["capsule_id"] == result["capsule_id"]
     assert capsule["target_outcomes_used"] is False
@@ -459,21 +456,21 @@ def test_cli_uses_capsule_aware_software_gate_seal(monkeypatch, capsys) -> None:
         "approved_by": "reviewer",
         "approved_at_utc": "2026-08-08T02:10:00+00:00",
     }
-    assert json.loads(capsys.readouterr().out)[
-        "capsule_validated_before_seal"
-    ] is True
+    assert json.loads(capsys.readouterr().out)["capsule_validated_before_seal"] is True
 
 
-def test_acquisition_staging_script_builds_clean_wheels_and_freezes_environment() -> None:
+def test_acquisition_staging_script_builds_clean_wheels_and_freezes_environment() -> (
+    None
+):
     text = SCRIPT.read_text(encoding="utf-8")
 
     subprocess.run(["bash", "-n", str(SCRIPT)], check=True)
-    assert text.count("git -C \"$checkout\" status --porcelain=v1") == 1
-    assert text.count("git -C \"$causal4d_root\" archive") == 1
-    assert text.count("git -C \"$bayesian_phystwin_root\" archive") == 1
+    assert text.count('git -C "$checkout" status --porcelain=v1') == 1
+    assert text.count('git -C "$causal4d_root" archive') == 1
+    assert text.count('git -C "$bayesian_phystwin_root" archive') == 1
     assert text.count("-m build --wheel") == 2
     assert "python -m pip install -e" not in text
     assert "-m pip freeze --all" in text
     assert "protocol readiness software-environment-stage" in text
     assert "software_environment_locked --approved-by" in text
-    assert "rm -rf \"$deployment_venv\"" in text
+    assert 'rm -rf "$deployment_venv"' in text
