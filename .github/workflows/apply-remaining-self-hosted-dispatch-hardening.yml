@@ -132,4 +132,5 @@ jobs:
           name: remaining-self-hosted-final-source
           path: ${{ runner.temp }}/remaining-self-hosted-final
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 1
