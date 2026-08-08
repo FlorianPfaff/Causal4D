@@ -7,6 +7,7 @@ import json
 from collections.abc import Sequence
 
 from causal4d import preacquisition_operator_flow as _operator_flow
+from causal4d.acquisition_environment import stage_software_environment_capsule
 from causal4d.operator_registry import (
     scaffold_operator_registry,
     seal_operator_registry,
@@ -77,6 +78,29 @@ def build_parser() -> argparse.ArgumentParser:
     registry_seal.add_argument("source_json")
     registry_seal.add_argument("--sealed-by", required=True)
     registry_seal.add_argument("--sealed-at-utc")
+
+    software_environment = subparsers.add_parser(
+        "software-environment-stage",
+        help=(
+            "stage exact wheels and runtime evidence into the unapproved software gate"
+        ),
+    )
+    software_environment.add_argument("repository_root")
+    software_environment.add_argument("bayesian_phystwin_root")
+    software_environment.add_argument("dataset_root")
+    software_environment.add_argument("causal4d_wheel")
+    software_environment.add_argument("bayesian_phystwin_wheel")
+    software_environment.add_argument("dependency_report")
+    software_environment.add_argument("--observation-producer-name", required=True)
+    software_environment.add_argument("--observation-producer-version", required=True)
+    software_environment.add_argument("--observation-artifact-contract", required=True)
+    software_environment.add_argument(
+        "--execution-backend",
+        required=True,
+        choices=("numpy_cpu", "warp_cpu", "cuda"),
+    )
+    software_environment.add_argument("--container-image-digest")
+    software_environment.add_argument("--completed-at-utc")
 
     seal = subparsers.add_parser(
         "seal-gate",
@@ -192,6 +216,21 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.source_json,
                 sealed_by=args.sealed_by,
                 sealed_at_utc=args.sealed_at_utc,
+            )
+        elif args.command == "software-environment-stage":
+            result = stage_software_environment_capsule(
+                args.repository_root,
+                args.bayesian_phystwin_root,
+                args.dataset_root,
+                args.causal4d_wheel,
+                args.bayesian_phystwin_wheel,
+                args.dependency_report,
+                observation_producer_name=args.observation_producer_name,
+                observation_producer_version=args.observation_producer_version,
+                observation_artifact_contract=args.observation_artifact_contract,
+                execution_backend=args.execution_backend,
+                container_image_digest=args.container_image_digest,
+                completed_at_utc=args.completed_at_utc,
             )
         elif args.command == "seal-gate":
             result = seal_preacquisition_gate(
