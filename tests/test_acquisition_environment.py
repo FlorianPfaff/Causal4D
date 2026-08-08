@@ -9,6 +9,7 @@ from zipfile import ZipFile
 import pytest
 
 from causal4d import acquisition_environment as environment
+from causal4d import acquisition_environment_sealing as sealing
 from causal4d.cli import preacquisition_readiness as readiness_cli
 from causal4d.preacquisition_readiness_contracts import (
     GATE_PATHS,
@@ -180,22 +181,19 @@ def _prepare_case(tmp_path: Path, monkeypatch) -> dict[str, object]:
         encoding="utf-8",
     )
     prerequisites = _prerequisites(candidate_sha256)
+    real_status = {
+        "manifest_executions": 0,
+        "acquired_executions": 0,
+        "validated_executions": 0,
+        "prerequisites": prerequisites,
+    }
 
-    monkeypatch.setattr(
-        environment,
-        "load_registered_preacquisition_chain",
-        lambda _root: (protocol, v2, v3, v4),
-    )
-    monkeypatch.setattr(
-        environment,
-        "build_real_evidence_status",
-        lambda *_args, **_kwargs: {
-            "manifest_executions": 0,
-            "acquired_executions": 0,
-            "validated_executions": 0,
-            "prerequisites": prerequisites,
-        },
-    )
+    chain = lambda _root: (protocol, v2, v3, v4)
+    status = lambda *_args, **_kwargs: real_status
+    monkeypatch.setattr(environment, "load_registered_preacquisition_chain", chain)
+    monkeypatch.setattr(environment, "build_real_evidence_status", status)
+    monkeypatch.setattr(sealing, "load_registered_preacquisition_chain", chain)
+    monkeypatch.setattr(sealing, "build_real_evidence_status", status)
     monkeypatch.setattr(
         environment,
         "_inspect_git_checkout",
@@ -270,6 +268,14 @@ def test_stage_capsule_populates_unapproved_hash_verified_gate(
     assert capsule["target_outcomes_used"] is False
     assert capsule["confirmatory_collection_started"] is False
 
+    validation = sealing.validate_staged_software_environment_capsule(
+        case["repository"],
+        case["dataset"],
+    )
+    assert validation["valid"] is True
+    assert validation["capsule_id"] == result["capsule_id"]
+    assert validation["evidence_count"] == 6
+
 
 def test_stage_capsule_refuses_to_replace_completed_operator_staging(
     tmp_path: Path,
@@ -297,6 +303,74 @@ def test_stage_capsule_rejects_installed_wheel_version_drift_before_publication(
         _stage(case)
 
     assert not (Path(case["dataset"]) / environment.CAPSULE_ROOT).exists()
+
+
+def test_sealing_rejects_semantically_readdressed_target_use(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    case = _prepare_case(tmp_path, monkeypatch)
+    _stage(case)
+    dataset = Path(case["dataset"])
+    capsule_path = dataset / environment.CAPSULE_MANIFEST_PATH
+    capsule = json.loads(capsule_path.read_text(encoding="utf-8"))
+    capsule["target_outcomes_used"] = True
+    capsule["capsule_id"] = _canonical_sha256(capsule, omitted="capsule_id")
+    payload = (
+        json.dumps(capsule, indent=2, sort_keys=True, allow_nan=False) + "\n"
+    ).encode("utf-8")
+    capsule_path.write_bytes(payload)
+
+    gate_path = Path(case["gate_path"])
+    gate = json.loads(gate_path.read_text(encoding="utf-8"))
+    descriptor = next(
+        item
+        for item in gate["evidence"]
+        if item["path"] == environment.CAPSULE_MANIFEST_PATH.as_posix()
+    )
+    descriptor["sha256"] = hashlib.sha256(payload).hexdigest()
+    descriptor["bytes"] = len(payload)
+    gate_path.write_text(json.dumps(gate), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="target outcomes entered the capsule"):
+        sealing.validate_staged_software_environment_capsule(
+            case["repository"],
+            case["dataset"],
+        )
+
+
+def test_independent_seal_validates_capsule_before_registered_gate_seal(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    case = _prepare_case(tmp_path, monkeypatch)
+    staged = _stage(case)
+    received: dict[str, object] = {}
+
+    def seal(*arguments, **keywords):
+        received["arguments"] = arguments
+        received["keywords"] = keywords
+        return {"valid": True, "passed": True, "artifact_sha256": "e" * 64}
+
+    monkeypatch.setattr(sealing, "seal_registered_preacquisition_gate", seal)
+    result = sealing.seal_staged_software_environment_capsule(
+        case["repository"],
+        case["dataset"],
+        approved_by="independent-verifier",
+        approved_at_utc="2026-08-08T01:15:00+00:00",
+    )
+
+    assert received["arguments"] == (
+        case["repository"],
+        case["dataset"],
+        environment.SOFTWARE_GATE_ID,
+    )
+    assert received["keywords"] == {
+        "approved_by": "independent-verifier",
+        "approved_at_utc": "2026-08-08T01:15:00+00:00",
+    }
+    assert result["capsule_validated_before_seal"] is True
+    assert result["capsule_id"] == staged["capsule_id"]
 
 
 def test_cli_routes_software_environment_stage(monkeypatch, capsys) -> None:
@@ -350,6 +424,47 @@ def test_cli_routes_software_environment_stage(monkeypatch, capsys) -> None:
         "completed_at_utc": "2026-08-08T02:00:00+00:00",
     }
     assert json.loads(capsys.readouterr().out)["ready_to_seal"] is True
+
+
+def test_cli_uses_capsule_aware_software_gate_seal(monkeypatch, capsys) -> None:
+    received: dict[str, object] = {}
+
+    def seal(*arguments, **keywords):
+        received["arguments"] = arguments
+        received["keywords"] = keywords
+        return {
+            "valid": True,
+            "passed": True,
+            "capsule_validated_before_seal": True,
+        }
+
+    monkeypatch.setattr(
+        readiness_cli,
+        "seal_staged_software_environment_capsule",
+        seal,
+    )
+    result = readiness_cli.main(
+        [
+            "seal-gate",
+            "/c4",
+            "/data",
+            environment.SOFTWARE_GATE_ID,
+            "--approved-by",
+            "reviewer",
+            "--approved-at-utc",
+            "2026-08-08T02:10:00+00:00",
+        ]
+    )
+
+    assert result == 0
+    assert received["arguments"] == ("/c4", "/data")
+    assert received["keywords"] == {
+        "approved_by": "reviewer",
+        "approved_at_utc": "2026-08-08T02:10:00+00:00",
+    }
+    assert json.loads(capsys.readouterr().out)[
+        "capsule_validated_before_seal"
+    ] is True
 
 
 def test_acquisition_staging_script_builds_clean_wheels_and_freezes_environment() -> None:
