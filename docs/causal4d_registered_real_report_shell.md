@@ -10,6 +10,10 @@ opened**. The shell is a derived operator artifact. It is not evidence, it does
 not increment the 36-execution registry, and it cannot approve or interpret a
 scientific result.
 
+The supported entry point is the stable, non-claim-bearing
+`causal4d evidence real-report-shell` route in the authoritative single-executable
+command catalog.
+
 ## Render the shell
 
 ```bash
