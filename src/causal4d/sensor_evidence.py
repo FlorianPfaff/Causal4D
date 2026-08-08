@@ -6,17 +6,42 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, BinaryIO, Mapping
 
 import numpy as np
 
+from causal4d.artifact_io import (
+    ArtifactValidationError,
+    load_npz_bytes,
+    load_strict_json_object,
+    read_regular_file,
+)
+from causal4d.atomic_io import atomic_write_binary
+from causal4d.contracts import array_sha256
 from causal4d.immutable_array import readonly_array
 from causal4d.immutable_json import plain_json, validated_json_mapping
 
-from causal4d.contracts import array_sha256
-
 
 INDEPENDENT_SENSOR_SCHEMA_VERSION = 1
+
+_ACTUATOR_ARCHIVE_ARRAYS = frozenset(
+    {
+        "descriptor_json",
+        "sample_times_s",
+        "positions_m",
+        "variance_m2",
+        "valid_mask",
+    }
+)
+_CONTACT_WRENCH_ARCHIVE_ARRAYS = frozenset(
+    {
+        "descriptor_json",
+        "sample_times_s",
+        "wrench",
+        "variance",
+        "valid_mask",
+    }
+)
 
 
 def _readonly(values: np.ndarray, *, dtype: type | None = float) -> np.ndarray:
@@ -268,12 +293,9 @@ class ContactWrenchEvidence:
         )
 
 
-def save_independent_sensor_evidence(
-    path: str | Path,
+def _sensor_archive_payload(
     evidence: ActuatorEvidence | ContactWrenchEvidence,
-) -> None:
-    """Serialize one evidence artifact as a non-pickled checksummed NPZ."""
-
+) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
     if isinstance(evidence, ActuatorEvidence):
         descriptor = {
             "schema_version": INDEPENDENT_SENSOR_SCHEMA_VERSION,
@@ -307,89 +329,159 @@ def save_independent_sensor_evidence(
         }
     else:
         raise TypeError("unsupported independent-sensor evidence type")
+    return descriptor, arrays
+
+
+def save_independent_sensor_evidence(
+    path: str | Path,
+    evidence: ActuatorEvidence | ContactWrenchEvidence,
+    *,
+    overwrite: bool = False,
+) -> None:
+    """Publish one checksummed NPZ atomically and exactly once by default."""
+
+    if type(overwrite) is not bool:
+        raise TypeError("overwrite must be an exact boolean")
+    descriptor, arrays = _sensor_archive_payload(evidence)
     encoded = json.dumps(
         descriptor,
         sort_keys=True,
         separators=(",", ":"),
         allow_nan=False,
     ).encode("utf-8")
-    output = Path(path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("wb") as handle:
+
+    def write_archive(handle: BinaryIO) -> None:
         np.savez_compressed(
             handle,
             descriptor_json=np.frombuffer(encoded, dtype=np.uint8),
             **arrays,
         )
 
+    def validate_archive(candidate: Path) -> None:
+        restored = load_independent_sensor_evidence(candidate)
+        if type(restored) is not type(evidence):
+            raise ArtifactValidationError(
+                "published independent-sensor evidence kind changed"
+            )
+        if restored.artifact_id != evidence.artifact_id:
+            raise ArtifactValidationError(
+                "published independent-sensor evidence identity changed"
+            )
+
+    atomic_write_binary(
+        path,
+        write_archive,
+        overwrite=overwrite,
+        validate=validate_archive,
+    )
+
 
 def _descriptor_identity(descriptor: Mapping[str, Any]) -> dict[str, str]:
-    return {
-        "protocol_id": str(descriptor["protocol_id"]),
-        "case_id": str(descriptor["case_id"]),
-        "observed_action_id": str(descriptor["observed_action_id"]),
-        "stream_id": str(descriptor["stream_id"]),
-        "clock_id": str(descriptor["clock_id"]),
-        "provenance": str(descriptor["provenance"]),
-    }
+    identity: dict[str, str] = {}
+    for field_name in (
+        "protocol_id",
+        "case_id",
+        "observed_action_id",
+        "stream_id",
+        "clock_id",
+        "provenance",
+    ):
+        value = descriptor.get(field_name)
+        if type(value) is not str or not value:
+            raise ArtifactValidationError(
+                f"independent-sensor {field_name} must be a nonempty string"
+            )
+        identity[field_name] = value
+    return identity
+
+
+def _load_sensor_archive_arrays(
+    payload: bytes,
+) -> tuple[dict[str, np.ndarray], str]:
+    failures: list[ArtifactValidationError] = []
+    for kind, expected_arrays in (
+        ("ActuatorEvidence", _ACTUATOR_ARCHIVE_ARRAYS),
+        ("ContactWrenchEvidence", _CONTACT_WRENCH_ARCHIVE_ARRAYS),
+    ):
+        try:
+            return (
+                load_npz_bytes(
+                    payload,
+                    name="independent-sensor evidence",
+                    expected_arrays=expected_arrays,
+                ),
+                kind,
+            )
+        except ArtifactValidationError as error:
+            failures.append(error)
+    raise ArtifactValidationError(
+        "independent-sensor evidence does not match a supported closed array inventory"
+    ) from failures[-1]
 
 
 def load_independent_sensor_evidence(
     path: str | Path,
 ) -> ActuatorEvidence | ContactWrenchEvidence:
-    """Load and verify a serialized independent-sensor evidence artifact."""
+    """Load exact ordinary-file bytes and verify the closed NPZ contract."""
 
-    with np.load(Path(path), allow_pickle=False) as archive:
-        if "descriptor_json" not in archive.files:
-            raise ValueError("sensor evidence archive is missing descriptor_json")
-        descriptor = json.loads(
-            np.asarray(archive["descriptor_json"], dtype=np.uint8)
-            .tobytes()
-            .decode("utf-8")
+    snapshot = read_regular_file(path, name="independent-sensor evidence")
+    arrays, inventory_kind = _load_sensor_archive_arrays(snapshot.payload)
+    descriptor_array = arrays["descriptor_json"]
+    if descriptor_array.dtype != np.dtype(np.uint8) or descriptor_array.ndim != 1:
+        raise ArtifactValidationError(
+            "independent-sensor descriptor_json must be a uint8 vector"
         )
-        if descriptor.get("schema_version") != INDEPENDENT_SENSOR_SCHEMA_VERSION:
-            raise ValueError("unsupported independent-sensor schema version")
-        kind = descriptor.get("artifact_kind")
-        identity = _descriptor_identity(descriptor)
-        if kind == "ActuatorEvidence":
-            required = {
-                "sample_times_s",
-                "positions_m",
-                "variance_m2",
-                "valid_mask",
-            }
-            if not required.issubset(archive.files):
-                raise ValueError("actuator evidence archive is incomplete")
-            evidence: ActuatorEvidence | ContactWrenchEvidence = ActuatorEvidence(
-                **identity,
-                sample_times_s=archive["sample_times_s"],
-                positions_m=archive["positions_m"],
-                variance_m2=archive["variance_m2"],
-                evidence_frame_stop=int(descriptor["evidence_frame_stop"]),
-                valid_mask=archive["valid_mask"],
-                metadata=descriptor.get("metadata", {}),
+    descriptor = load_strict_json_object(
+        descriptor_array.tobytes(),
+        name="independent-sensor descriptor",
+    )
+    schema_version = descriptor.get("schema_version")
+    if (
+        type(schema_version) is not int
+        or schema_version != INDEPENDENT_SENSOR_SCHEMA_VERSION
+    ):
+        raise ValueError("unsupported independent-sensor schema version")
+    kind = descriptor.get("artifact_kind")
+    if kind != inventory_kind:
+        raise ArtifactValidationError(
+            "independent-sensor descriptor kind disagrees with its array inventory"
+        )
+    identity = _descriptor_identity(descriptor)
+    evidence_frame_stop = descriptor.get("evidence_frame_stop")
+    if type(evidence_frame_stop) is not int:
+        raise ArtifactValidationError(
+            "independent-sensor evidence_frame_stop must be an integer"
+        )
+    if kind == "ActuatorEvidence":
+        evidence: ActuatorEvidence | ContactWrenchEvidence = ActuatorEvidence(
+            **identity,
+            sample_times_s=arrays["sample_times_s"],
+            positions_m=arrays["positions_m"],
+            variance_m2=arrays["variance_m2"],
+            evidence_frame_stop=evidence_frame_stop,
+            valid_mask=arrays["valid_mask"],
+            metadata=descriptor.get("metadata", {}),
+        )
+    else:
+        quantity_names = descriptor.get("quantity_names")
+        if (
+            type(quantity_names) is not list
+            or not quantity_names
+            or any(type(name) is not str or not name for name in quantity_names)
+        ):
+            raise ArtifactValidationError(
+                "independent-sensor quantity_names must be nonempty strings"
             )
-        elif kind == "ContactWrenchEvidence":
-            required = {
-                "sample_times_s",
-                "wrench",
-                "variance",
-                "valid_mask",
-            }
-            if not required.issubset(archive.files):
-                raise ValueError("contact-wrench evidence archive is incomplete")
-            evidence = ContactWrenchEvidence(
-                **identity,
-                sample_times_s=archive["sample_times_s"],
-                wrench=archive["wrench"],
-                variance=archive["variance"],
-                quantity_names=tuple(map(str, descriptor["quantity_names"])),
-                evidence_frame_stop=int(descriptor["evidence_frame_stop"]),
-                valid_mask=archive["valid_mask"],
-                metadata=descriptor.get("metadata", {}),
-            )
-        else:
-            raise ValueError(f"unsupported sensor evidence kind: {kind!r}")
+        evidence = ContactWrenchEvidence(
+            **identity,
+            sample_times_s=arrays["sample_times_s"],
+            wrench=arrays["wrench"],
+            variance=arrays["variance"],
+            quantity_names=tuple(quantity_names),
+            evidence_frame_stop=evidence_frame_stop,
+            valid_mask=arrays["valid_mask"],
+            metadata=descriptor.get("metadata", {}),
+        )
     if evidence.artifact_id != descriptor.get("artifact_id"):
         raise ValueError("independent-sensor evidence checksum mismatch")
     return evidence
