@@ -1,9 +1,10 @@
 name: Apply report-shell command-registry integration
 
 on:
-  push:
-    branches:
-      - agent/register-real-report-shell-route
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/agent-register-real-report-shell-route.yml"
 
 permissions:
   contents: write
@@ -14,24 +15,29 @@ concurrency:
 
 jobs:
   apply:
-    if: github.ref == 'refs/heads/agent/register-real-report-shell-route'
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/register-real-report-shell-route'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Check out exact branch revision
+      - name: Check out exact pull-request head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: true
           clean: true
 
-      - name: Verify exact revision and clean checkout
+      - name: Verify exact revision and authorized branch
         shell: bash
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
-          test "${GITHUB_REF}" = "refs/heads/agent/register-real-report-shell-route"
-          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "${EXPECTED_HEAD_REF}" = "agent/register-real-report-shell-route"
+          test "$(git rev-parse HEAD)" = "${EXPECTED_HEAD_SHA}"
           test -z "$(git status --porcelain=v1)"
 
       - name: Integrate the report shell into the single executable
