@@ -66,6 +66,10 @@ evidence. Source-panel executions remain source-only and cannot increment the
 
 ### Fixed
 
+- Make independent actuator and contact-wrench evidence publication atomic,
+  validate the exact temporary archive before publication, refuse replacement by
+  default, and reject symlinked inputs, duplicate members, extra arrays, or
+  non-strict descriptor JSON during loading.
 - Include the runnable MolmoMotion bridge helpers in source distributions and
   execute their end-to-end regression from the extracted archive, preventing a
   published sdist from retaining tests and documentation for files it omits.
