@@ -116,4 +116,5 @@ jobs:
           name: contact-diagnostic-final-source
           path: ${{ runner.temp }}/contact-diagnostic-final
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 1
