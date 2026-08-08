@@ -12,7 +12,7 @@ from causal4d.acquisition_flight_recorder import (
     HealthThresholds,
     append_journal_event,
     build_acquisition_doctor_report,
-    evaluate_health_snapshot,
+    evaluate_health_snapshot_file,
     seal_acquisition_journal,
     validate_acquisition_journal,
     validate_acquisition_journal_seal,
@@ -93,7 +93,7 @@ def _add_journal(subparsers: Any) -> None:
 def _add_snapshot(subparsers: Any) -> None:
     snapshot = subparsers.add_parser(
         "snapshot",
-        help="evaluate one live collection-health snapshot",
+        help="evaluate one exact-byte live collection-health snapshot",
     )
     snapshot.add_argument("snapshot_json", type=Path)
     snapshot.add_argument("--maximum-heartbeat-age-s", type=float, default=2.0)
@@ -101,6 +101,10 @@ def _add_snapshot(subparsers: Any) -> None:
     snapshot.add_argument("--maximum-dropped-frames", type=int, default=0)
     snapshot.add_argument("--minimum-free-gib", type=_gib, default=_gib(20.0))
     snapshot.add_argument("--minimum-write-mib-s", type=float, default=25.0)
+    snapshot.add_argument("--maximum-snapshot-age-s", type=float, default=5.0)
+    snapshot.add_argument("--maximum-future-skew-s", type=float, default=1.0)
+    snapshot.add_argument("--output-json", type=Path)
+    snapshot.add_argument("--overwrite", action="store_true")
     snapshot.add_argument("--require-healthy", action="store_true")
 
 
@@ -182,17 +186,24 @@ def _journal(arguments: argparse.Namespace) -> int:
 
 
 def _snapshot(arguments: argparse.Namespace) -> int:
-    snapshot = _json_object(arguments.snapshot_json, name="health snapshot")
-    result = evaluate_health_snapshot(
-        snapshot,
+    result = evaluate_health_snapshot_file(
+        arguments.snapshot_json,
         thresholds=HealthThresholds(
             maximum_heartbeat_age_s=arguments.maximum_heartbeat_age_s,
             maximum_clock_offset_ms=arguments.maximum_clock_offset_ms,
             maximum_dropped_frames=arguments.maximum_dropped_frames,
             minimum_free_bytes=arguments.minimum_free_gib,
             minimum_write_mib_s=arguments.minimum_write_mib_s,
+            maximum_snapshot_age_s=arguments.maximum_snapshot_age_s,
+            maximum_future_skew_s=arguments.maximum_future_skew_s,
         ),
     )
+    if arguments.output_json is not None:
+        atomic_write_json(
+            arguments.output_json,
+            result,
+            overwrite=arguments.overwrite,
+        )
     print(json.dumps(result, indent=2, sort_keys=True))
     if arguments.require_healthy and not result["passed"]:
         return 3
