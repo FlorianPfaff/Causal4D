@@ -22,6 +22,36 @@ def _fsync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
+def _publish_temporary(
+    temporary: Path,
+    target: Path,
+    *,
+    overwrite: bool,
+) -> None:
+    """Publish one prepared file and roll back failed no-overwrite durability."""
+
+    linked_without_overwrite = False
+    if overwrite:
+        os.replace(temporary, target)
+    else:
+        os.link(temporary, target)
+        temporary.unlink()
+        linked_without_overwrite = True
+    try:
+        _fsync_directory(target.parent)
+    except BaseException:
+        if linked_without_overwrite:
+            # The caller owns this newly linked destination. A failed durability
+            # step must not report failure while leaving a visible exactly-once
+            # artifact that a higher-level transaction may treat as complete.
+            target.unlink(missing_ok=True)
+            try:
+                _fsync_directory(target.parent)
+            except OSError:
+                pass
+        raise
+
+
 def atomic_write_binary(
     path: str | Path,
     writer: Callable[[BinaryIO], None],
@@ -46,12 +76,11 @@ def atomic_write_binary(
             os.fsync(handle.fileno())
         if validate is not None:
             validate(temporary)
-        if overwrite:
-            os.replace(temporary, target)
-        else:
-            os.link(temporary, target)
-            temporary.unlink()
-        _fsync_directory(target.parent)
+        _publish_temporary(
+            temporary,
+            target,
+            overwrite=overwrite,
+        )
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -82,12 +111,11 @@ def atomic_write_text(
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
-        if overwrite:
-            os.replace(temporary, target)
-        else:
-            os.link(temporary, target)
-            temporary.unlink()
-        _fsync_directory(target.parent)
+        _publish_temporary(
+            temporary,
+            target,
+            overwrite=overwrite,
+        )
     finally:
         temporary.unlink(missing_ok=True)
 

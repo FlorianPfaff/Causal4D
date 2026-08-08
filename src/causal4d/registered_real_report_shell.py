@@ -897,6 +897,38 @@ def render_registered_real_report_shell_markdown(
     return "\n".join(lines)
 
 
+def validate_registered_real_report_shell_markdown(
+    payload: Mapping[str, Any],
+    markdown: str | bytes,
+) -> str:
+    """Require Markdown to be the exact deterministic rendering of ``payload``.
+
+    The JSON shell is the authoritative completion marker.  This check binds a
+    separately stored Markdown rendering back to those exact validated bytes so
+    a stale, manually edited, or partially replaced document cannot be paired
+    with a valid shell.
+    """
+
+    shell = validate_registered_real_report_shell(payload)
+    if isinstance(markdown, bytes):
+        try:
+            text = markdown.decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise ValueError(
+                "registered real report shell Markdown must be UTF-8"
+            ) from error
+    elif type(markdown) is str:
+        text = markdown
+    else:
+        raise ValueError("registered real report shell Markdown must be text")
+    expected = render_registered_real_report_shell_markdown(shell)
+    _require(
+        text == expected,
+        "registered real report shell Markdown does not match the shell",
+    )
+    return text
+
+
 def _load_shell(path: str | Path) -> tuple[dict[str, Any], str, int]:
     from causal4d.artifact_io import load_strict_json_object, read_regular_file
 
@@ -955,8 +987,21 @@ def _render_command(arguments: Sequence[str]) -> int:
         analysis_manifest_byte_count=byte_count,
     )
     markdown = render_registered_real_report_shell_markdown(shell)
-    atomic_write_json(json_path, shell, overwrite=parsed.overwrite)
+    validate_registered_real_report_shell_markdown(shell, markdown)
+
+    # Publish the human-readable derivative first and the validated JSON shell
+    # last.  The JSON file is the completion marker: after an interruption there
+    # can be an orphan Markdown draft, but never a new authoritative shell that
+    # points at a missing Markdown rendering.  For the default no-overwrite path,
+    # remove that orphan when the second publication raises in-process.
     atomic_write_text(markdown_path, markdown, overwrite=parsed.overwrite)
+    try:
+        atomic_write_json(json_path, shell, overwrite=parsed.overwrite)
+    except BaseException:
+        if not parsed.overwrite:
+            markdown_path.unlink(missing_ok=True)
+        raise
+    markdown_payload = markdown.encode("utf-8")
     print(
         json.dumps(
             {
@@ -964,6 +1009,8 @@ def _render_command(arguments: Sequence[str]) -> int:
                 "shell_id": shell["shell_id"],
                 "output_json": str(json_path.resolve()),
                 "output_markdown": str(markdown_path.resolve()),
+                "markdown_sha256": hashlib.sha256(markdown_payload).hexdigest(),
+                "markdown_bytes": len(markdown_payload),
                 "target_outcomes_loaded": False,
                 "confirmatory_execution_evidence_count": 0,
             },
@@ -980,8 +1027,24 @@ def _validate_command(arguments: Sequence[str]) -> int:
     )
     parser.add_argument("report_shell")
     parser.add_argument("--analysis-manifest")
+    parser.add_argument("--markdown")
     parsed = parser.parse_args(arguments)
     shell, sha256, byte_count = _load_shell(parsed.report_shell)
+    markdown_sha256 = None
+    markdown_byte_count = None
+    if parsed.markdown:
+        from causal4d.artifact_io import read_regular_file
+
+        markdown_snapshot = read_regular_file(
+            parsed.markdown,
+            name="registered real report shell Markdown",
+        )
+        validate_registered_real_report_shell_markdown(
+            shell,
+            markdown_snapshot.payload,
+        )
+        markdown_sha256 = markdown_snapshot.sha256
+        markdown_byte_count = markdown_snapshot.byte_count
     if parsed.analysis_manifest:
         from causal4d.registered_real_analysis import (
             load_registered_real_analysis_manifest,
@@ -1003,6 +1066,8 @@ def _validate_command(arguments: Sequence[str]) -> int:
                 "shell_id": shell["shell_id"],
                 "sha256": sha256,
                 "bytes": byte_count,
+                "markdown_sha256": markdown_sha256,
+                "markdown_bytes": markdown_byte_count,
                 "target_outcomes_loaded": False,
                 "confirmatory_execution_evidence_count": 0,
             },
@@ -1035,6 +1100,7 @@ __all__ = [
     "report_shell_id_for_payload",
     "validate_registered_real_report_shell",
     "validate_registered_real_report_shell_against_analysis",
+    "validate_registered_real_report_shell_markdown",
 ]
 
 
