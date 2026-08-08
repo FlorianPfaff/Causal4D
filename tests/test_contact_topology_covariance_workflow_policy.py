@@ -7,22 +7,52 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "contact-topology-covariance.yml"
 
 
-def test_topology_covariance_workflow_is_read_only_and_reproduced() -> None:
+def _evaluate_job(text: str) -> str:
+    return text.split("  evaluate:", maxsplit=1)[1]
+
+
+def test_topology_covariance_workflow_is_read_only_manual_and_dual_lane() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
+    preamble = text.split("\njobs:\n", maxsplit=1)[0]
+    job = _evaluate_job(text)
 
     assert "permissions:\n  contents: read\n" in text
     assert "contents: write" not in text
     assert "git push" not in text
     assert "persist-credentials: false" in text
-    assert "lane: hosted" in text
-    assert "runs_on: '\"ubuntu-latest\"'" in text
-    assert "lane: workstation2" in text
-    assert 'runs_on: \'["self-hosted","Linux","X64","nvidia-smi"]\'' in text
-    assert "cache: pip" in text
-    assert "cache-dependency-path: pyproject.toml" in text
-    assert "github.event.pull_request.head.repo.full_name == github.repository" in text
-    assert "workflow_dispatch:" in text
-    assert "  push:" not in text
+    assert "workflow_dispatch:" in preamble
+    assert "\n  pull_request:" not in preamble
+    assert "\n  push:" not in preamble
+    assert "github.event.pull_request" not in job
+    assert "lane: hosted" in job
+    assert "runs_on: '\"ubuntu-latest\"'" in job
+    assert "lane: workstation2" in job
+    assert 'runs_on: \'["self-hosted","Linux","X64","nvidia-smi"]\'' in job
+    assert "cache: pip" in job
+    assert "cache-dependency-path: pyproject.toml" in job
+
+
+def test_topology_covariance_dual_lane_execution_is_main_only() -> None:
+    job = _evaluate_job(WORKFLOW.read_text(encoding="utf-8"))
+
+    assert "github.event_name == 'workflow_dispatch'" in job
+    assert "github.ref == 'refs/heads/main'" in job
+    guard = job.index("if: >-")
+    strategy = job.index("strategy:")
+    runner = job.index("runs-on: ${{ fromJSON(matrix.runs_on) }}")
+    assert guard < strategy < runner
+
+
+def test_topology_covariance_checks_out_and_verifies_exact_main_revision() -> None:
+    job = _evaluate_job(WORKFLOW.read_text(encoding="utf-8"))
+
+    assert "ref: ${{ github.sha }}" in job
+    assert 'test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"' in job
+    assert 'test -z "$(git status --porcelain=v1)"' in job
+    checkout = job.index("- name: Check out exact reviewed Causal4D revision")
+    verify = job.index("- name: Verify reviewed main revision")
+    install = job.index("- name: Install diagnostic environment")
+    assert checkout < verify < install
 
 
 def test_topology_covariance_workflow_locks_panels_grid_and_runtime() -> None:
@@ -65,3 +95,10 @@ def test_topology_covariance_workflow_verifies_frozen_source_before_target() -> 
     assert text.index("sha256sum -c") < text.index(
         "Run fresh target topology-conditioned comparison"
     )
+
+
+def test_topology_covariance_uses_non_editable_distribution() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    assert 'python -m pip install ".[dev]"' in text
+    assert "python -m pip install -e" not in text
