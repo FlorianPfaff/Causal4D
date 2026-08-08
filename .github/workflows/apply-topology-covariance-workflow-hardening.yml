@@ -10,7 +10,7 @@ on:
       - "scripts/ci/apply_topology_covariance_workflow_hardening.py"
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: read
 
 concurrency:
@@ -34,7 +34,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
           clean: true
 
       - name: Verify and apply reviewed transformation
@@ -92,11 +92,31 @@ jobs:
           fi
           test "$(git diff --name-only aba7e0ff1e5705fb7d5979cd5186404fcfb1526f -- | wc -l)" -eq 2
 
-      - name: Publish validated ordinary source
+      - name: Stage validated ordinary source artifact
+        shell: bash
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git diff --cached --check
-          git commit -m 'Harden topology covariance reproduction'
-          git push origin HEAD:chore/harden-topology-covariance-reproduction
+          set -euo pipefail
+          artifact="${RUNNER_TEMP}/topology-covariance-final"
+          mkdir -p \
+            "${artifact}/.github/workflows" \
+            "${artifact}/tests"
+          cp .github/workflows/contact-topology-covariance.yml \
+            "${artifact}/.github/workflows/contact-topology-covariance.yml"
+          cp tests/test_contact_topology_covariance_workflow_policy.py \
+            "${artifact}/tests/test_contact_topology_covariance_workflow_policy.py"
+          (
+            cd "${artifact}"
+            sha256sum \
+              .github/workflows/contact-topology-covariance.yml \
+              tests/test_contact_topology_covariance_workflow_policy.py \
+              > SHA256SUMS
+          )
+          printf 'source_head=%s\n' "${GITHUB_SHA}" > "${artifact}/SOURCE"
+
+      - name: Upload validated ordinary source artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
+        with:
+          name: topology-covariance-final-source
+          path: ${{ runner.temp }}/topology-covariance-final
+          if-no-files-found: error
+          retention-days: 1
