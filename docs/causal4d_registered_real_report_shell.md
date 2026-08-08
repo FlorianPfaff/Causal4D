@@ -32,8 +32,10 @@ binds the exact analysis bytes and software revisions, and writes:
 - a Markdown dry rendering with visibly empty result cells.
 
 Both destinations are checked before publication. Existing outputs are rejected
-unless `--overwrite` is supplied, so a stale JSON file cannot be silently paired
-with a newly rendered Markdown file.
+unless `--overwrite` is supplied. The Markdown derivative is published first
+and the validated JSON shell is published last as the completion marker. On the
+default no-overwrite path, an in-process JSON publication failure removes the
+new Markdown draft instead of leaving a misleading half-published pair.
 
 ## Validate the shell against its source
 
@@ -45,18 +47,24 @@ causal4d evidence real-report-shell validate \
   /data/causal4d-sloth-multi-action-v1/operator/real-report-shell.json
 ```
 
-For acquisition use, always bind the shell back to the exact registered analysis:
+For acquisition use, bind the shell back to both the exact registered analysis
+and the separately stored Markdown rendering:
 
 ```bash
 causal4d evidence real-report-shell validate \
   /data/causal4d-sloth-multi-action-v1/operator/real-report-shell.json \
   --analysis-manifest \
-  /data/causal4d-sloth-multi-action-v1/registered-analysis.json
+  /data/causal4d-sloth-multi-action-v1/registered-analysis.json \
+  --markdown \
+  /data/causal4d-sloth-multi-action-v1/operator/real-report-shell.md
 ```
 
-The second form rebuilds the expected shell from the validated source bytes and
-requires exact equality. Readdressing both an embedded contract and its shell ID
-therefore cannot substitute a different analysis manifest.
+This form rebuilds the expected shell from the validated source bytes, requires
+exact shell equality, regenerates the deterministic Markdown, and compares its
+exact UTF-8 bytes. Readdressing an embedded contract and its shell ID therefore
+cannot substitute either a different analysis manifest or a stale/manually
+edited report rendering. The validation summary reports the Markdown SHA-256 and
+byte count for archiving.
 
 ## What is rendered
 

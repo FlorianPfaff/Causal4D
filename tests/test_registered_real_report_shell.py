@@ -22,6 +22,7 @@ from causal4d.registered_real_report_shell import (
     report_shell_id_for_payload,
     validate_registered_real_report_shell,
     validate_registered_real_report_shell_against_analysis,
+    validate_registered_real_report_shell_markdown,
 )
 
 
@@ -152,6 +153,20 @@ def test_markdown_renders_every_registered_path_without_results() -> None:
     assert "Diagnostic intervention-oracle gap attribution" in markdown
     assert shell["shell_id"] in markdown
     assert "not populated" in markdown
+    assert validate_registered_real_report_shell_markdown(shell, markdown) == markdown
+
+
+def test_markdown_validation_rejects_stale_edits_and_non_utf8_bytes() -> None:
+    shell = _shell()
+    markdown = render_registered_real_report_shell_markdown(shell)
+
+    with pytest.raises(ValueError, match="does not match"):
+        validate_registered_real_report_shell_markdown(
+            shell,
+            markdown.replace("not populated", "selected result", 1),
+        )
+    with pytest.raises(ValueError, match="must be UTF-8"):
+        validate_registered_real_report_shell_markdown(shell, b"\xff")
 
 
 def test_shell_rejects_target_values_and_selected_result_narratives() -> None:
@@ -236,6 +251,8 @@ def test_cli_renders_validates_and_refuses_partial_overwrite(
                 str(shell_path),
                 "--analysis-manifest",
                 str(analysis_path),
+                "--markdown",
+                str(markdown_path),
             ]
         )
         == 0
@@ -253,3 +270,74 @@ def test_cli_renders_validates_and_refuses_partial_overwrite(
             ]
         )
     assert not (tmp_path / "other.md").exists()
+
+
+def test_cli_rejects_a_stale_markdown_pair(tmp_path: Path) -> None:
+    analysis = _analysis()
+    analysis_path = tmp_path / "registered-analysis.json"
+    analysis_path.write_bytes(_analysis_bytes(analysis))
+    shell_path = tmp_path / "report-shell.json"
+    markdown_path = tmp_path / "report-shell.md"
+    assert (
+        main(
+            [
+                "render",
+                str(analysis_path),
+                "--output-json",
+                str(shell_path),
+                "--output-markdown",
+                str(markdown_path),
+            ]
+        )
+        == 0
+    )
+    markdown_path.write_text(
+        markdown_path.read_text(encoding="utf-8").replace(
+            "not populated",
+            "manually selected",
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="does not match"):
+        main(
+            [
+                "validate",
+                str(shell_path),
+                "--markdown",
+                str(markdown_path),
+            ]
+        )
+
+
+def test_render_removes_orphan_markdown_when_json_publication_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    analysis = _analysis()
+    analysis_path = tmp_path / "registered-analysis.json"
+    analysis_path.write_bytes(_analysis_bytes(analysis))
+    shell_path = tmp_path / "report-shell.json"
+    markdown_path = tmp_path / "report-shell.md"
+
+    def fail_json_publication(*args: object, **kwargs: object) -> None:
+        raise OSError("simulated JSON publication failure")
+
+    monkeypatch.setattr(
+        "causal4d.atomic_io.atomic_write_json",
+        fail_json_publication,
+    )
+    with pytest.raises(OSError, match="simulated JSON publication failure"):
+        main(
+            [
+                "render",
+                str(analysis_path),
+                "--output-json",
+                str(shell_path),
+                "--output-markdown",
+                str(markdown_path),
+            ]
+        )
+    assert not shell_path.exists()
+    assert not markdown_path.exists()
