@@ -68,6 +68,29 @@ evidence is the same-object multi-action real protocol, including either
 successful held-out calibration or a well-powered cross-action bound on its
 failure, not another architecture component.
 
+## Physical-acquisition candidate
+
+The source panel and 36-execution milestone use the machine-readable candidate
+in `configs/causal4d/sloth_acquisition_candidate_v1.json`. It selects the
+six-frame Causal4D realized-intervention posterior over BayesianPhysTwin commit
+`573ecd9b09a8145b680738c5e5f36415feefbfe3`, with graph persistence retained as
+the unresolved discrepancy fallback and MolmoMotion fixed at `beta=0`. The exact
+clean Causal4D revision is bound later by `method_freeze.json`, after the source
+panel and operational gates pass.
+
+Prob4D is **unused** in this primary physical acquisition. The installed-wheel
+compatibility path remains a software contract, but it is not method admission:
+the Prob4D observation path has not passed an independent source competence and
+transfer gate for this protocol. Prob4D may not supply source fitting,
+calibration, target observations, method selection, or a rescue analysis for the
+36-execution claim.
+
+The selected primary comparison remains nominal PhysTwin, BayesianPhysTwin with
+the nominal realized intervention, Causal4D with inferred realized intervention,
+and the intervention oracle as a diagnostic only. A source-panel mechanism can
+replace graph persistence only by passing the already registered cross-fitted
+promotion gate; this candidate record does not pre-promote one.
+
 ## Next scientific milestone and method freeze
 
 The primary method is frozen for the 36-execution confirmatory milestone. Until

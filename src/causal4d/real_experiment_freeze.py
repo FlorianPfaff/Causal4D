@@ -17,6 +17,7 @@ SCHEMA_VERSION = 2
 MILESTONE_ID = "causal4d-same-object-real-v1"
 BPT_PIN_PATH = "requirements/ci/bayesian-phystwin-provider-v1.sha"
 PROTOCOL_PATH = "configs/causal4d/sloth_multi_action_v1.json"
+ACQUISITION_CANDIDATE_PATH = "configs/causal4d/sloth_acquisition_candidate_v1.json"
 PREACQUISITION_PATH = "configs/causal4d/sloth_preacquisition_v4.json"
 PREACQUISITION_PLAN_ID = "causal4d-sloth-preacquisition-v4"
 MECHANISM_GATE_EVIDENCE_PATH = (
@@ -24,6 +25,7 @@ MECHANISM_GATE_EVIDENCE_PATH = (
 )
 REQUIRED_LOCKED_PATHS = (
     PROTOCOL_PATH,
+    ACQUISITION_CANDIDATE_PATH,
     "configs/causal4d/sloth_multi_action_v1_schedule.csv",
     PREACQUISITION_PATH,
     MECHANISM_GATE_EVIDENCE_PATH,
@@ -215,6 +217,81 @@ def _preacquisition_contract(
     }
 
 
+def _acquisition_candidate_contract(
+    repository_root: Path,
+    *,
+    protocol_design_sha256: str,
+    bayesian_phystwin_commit_sha: str,
+) -> dict[str, Any]:
+    candidate = _read_json_object(
+        repository_root / ACQUISITION_CANDIDATE_PATH,
+        name="acquisition candidate",
+    )
+    _require(candidate.get("schema_version") == 1, "unsupported candidate schema")
+    _require(
+        candidate.get("candidate_id") == "causal4d-sloth-primary-acquisition-v1",
+        "wrong acquisition candidate",
+    )
+    _require(
+        candidate.get("status") == "selected_before_source_panel",
+        "acquisition candidate was not selected before the source panel",
+    )
+    candidate_sha256 = candidate.get("candidate_sha256")
+    _require(
+        isinstance(candidate_sha256, str) and bool(_SHA64.fullmatch(candidate_sha256)),
+        "acquisition candidate SHA-256 is missing",
+    )
+    _require(
+        candidate_sha256
+        == _canonical_payload_sha256(candidate, omitted_field="candidate_sha256"),
+        "acquisition candidate SHA-256 does not match its contents",
+    )
+    _require(
+        candidate.get("protocol_design_sha256") == protocol_design_sha256,
+        "acquisition candidate binds a different protocol",
+    )
+    physical_model = candidate.get("physical_model", {})
+    _require(
+        physical_model.get("bayesian_phystwin_commit_sha")
+        == bayesian_phystwin_commit_sha,
+        "acquisition candidate binds a different BayesianPhysTwin commit",
+    )
+    information_boundary = candidate.get("information_boundary", {})
+    _require(
+        information_boundary.get("allowed_post_intervention_prefix_frames") == 6,
+        "acquisition candidate changed the six-frame information boundary",
+    )
+    _require(
+        information_boundary.get("source_or_target_outcomes_used_for_selection")
+        is False
+        and information_boundary.get("confirmation_outcomes_used") is False
+        and information_boundary.get(
+            "target_outcomes_may_select_method_or_hyperparameters"
+        )
+        is False,
+        "acquisition candidate violates the outcome boundary",
+    )
+    prob4d = candidate.get("observation_path", {}).get("prob4d", {})
+    _require(
+        prob4d.get("used") is False
+        and prob4d.get("package_compatibility_is_not_method_admission") is True,
+        "Prob4D must remain unused in the primary physical acquisition",
+    )
+    _require(
+        candidate.get("semantic_path", {}).get("molmomotion_beta") == 0,
+        "primary physical acquisition requires MolmoMotion beta=0",
+    )
+    return {
+        "path": ACQUISITION_CANDIDATE_PATH,
+        "candidate_id": candidate["candidate_id"],
+        "candidate_sha256": candidate_sha256,
+        "bayesian_phystwin_commit_sha": bayesian_phystwin_commit_sha,
+        "prob4d_used": False,
+        "molmomotion_beta": 0,
+        "allowed_post_intervention_prefix_frames": 6,
+    }
+
+
 def _analysis_contract() -> dict[str, Any]:
     return {
         "entrypoints": list(REQUIRED_ANALYSIS_ENTRYPOINTS),
@@ -323,11 +400,17 @@ def build_method_freeze_manifest(
         isinstance(design_sha256, str) and bool(_SHA64.fullmatch(design_sha256)),
         "protocol design SHA-256 is missing",
     )
+    assert isinstance(design_sha256, str)
     preacquisition = _preacquisition_contract(
         root,
         protocol_design_sha256=design_sha256,
     )
     bpt_commit = _read_bayesian_phystwin_pin(root / BPT_PIN_PATH)
+    acquisition_candidate = _acquisition_candidate_contract(
+        root,
+        protocol_design_sha256=design_sha256,
+        bayesian_phystwin_commit_sha=bpt_commit,
+    )
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -342,6 +425,7 @@ def build_method_freeze_manifest(
             "dirty_worktree": False,
         },
         "bayesian_phystwin": {"commit_sha": bpt_commit},
+        "acquisition_candidate": acquisition_candidate,
         "protocol": {
             "path": PROTOCOL_PATH,
             "design_sha256": design_sha256,
@@ -429,9 +513,18 @@ def validate_method_freeze_manifest(
         root,
         protocol_design_sha256=str(protocol["design_sha256"]),
     )
+    checked_candidate = _acquisition_candidate_contract(
+        root,
+        protocol_design_sha256=str(protocol["design_sha256"]),
+        bayesian_phystwin_commit_sha=str(bpt_commit),
+    )
     _require(
         manifest.get("preacquisition") == checked_preacquisition,
         "pre-acquisition contract differs from the registered method freeze",
+    )
+    _require(
+        manifest.get("acquisition_candidate") == checked_candidate,
+        "acquisition candidate differs from the registered method freeze",
     )
 
     entries = manifest.get("locked_files", [])
@@ -484,6 +577,8 @@ def validate_method_freeze_manifest(
         "milestone_id": MILESTONE_ID,
         "causal4d_commit_sha": commit_sha,
         "bayesian_phystwin_commit_sha": bpt_commit,
+        "acquisition_candidate_sha256": checked_candidate["candidate_sha256"],
+        "prob4d_used": checked_candidate["prob4d_used"],
         "protocol_design_sha256": protocol["design_sha256"],
         "preacquisition_amendment_sha256": checked_preacquisition["amendment_sha256"],
         "mechanism_gate_control_sha256": checked_preacquisition[
