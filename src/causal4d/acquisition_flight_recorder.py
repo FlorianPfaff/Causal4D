@@ -9,6 +9,7 @@ from causal4d.acquisition_health import (
     HEALTH_SNAPSHOT_KIND,
     HealthThresholds,
     evaluate_health_snapshot,
+    evaluate_health_snapshot_file,
 )
 from causal4d.acquisition_journal import (
     JOURNAL_EVENT_KIND,
@@ -34,6 +35,7 @@ __all__ = [
     "build_acquisition_doctor_report",
     "build_journal_event",
     "evaluate_health_snapshot",
+    "evaluate_health_snapshot_file",
     "journal_seal_path",
     "seal_acquisition_journal",
     "validate_acquisition_journal",
