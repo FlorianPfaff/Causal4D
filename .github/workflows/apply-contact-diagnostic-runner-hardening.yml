@@ -1,14 +1,16 @@
 name: Publish validated contact-diagnostic hardening source
 
 on:
-  push:
-    branches: [chore/harden-contact-diagnostic-runner]
+  pull_request:
+    branches: [main]
+    types: [synchronize, reopened]
     paths:
       - ".github/workflows/apply-contact-diagnostic-runner-hardening.yml"
       - "scripts/ci/apply_contact_diagnostic_runner_hardening.py"
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: publish-contact-diagnostic-hardening-source
@@ -18,14 +20,18 @@ jobs:
   apply-and-validate:
     if: >-
       github.repository == 'IPS-Stuttgart/Causal4D' &&
-      github.ref == 'refs/heads/chore/harden-contact-diagnostic-runner'
+      github.event.pull_request.number == 240 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref ==
+        'chore/harden-contact-diagnostic-runner' &&
+      github.event.pull_request.user.login == 'FlorianPfaff'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - name: Check out exact branch head
+      - name: Check out exact PR head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
           clean: true
@@ -34,7 +40,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
           printf '%s  %s\n' \
             '4f0a82330e8c900fa0129c02b0617bef8517b51a42ca20f8293485b18ae1c3c0' \
             'scripts/ci/apply_contact_diagnostic_runner_hardening.py' \
@@ -101,8 +107,6 @@ jobs:
           cp .github/workflows/contact-posterior-diagnostics.yml \
             "${artifact}/.github/workflows/contact-posterior-diagnostics.yml"
           cp tests/test_contact_posterior_workflow_policy.py \
-            "${artifact}/tests/test_contact-posterior-workflow-policy.py"
-          mv "${artifact}/tests/test_contact-posterior-workflow-policy.py" \
             "${artifact}/tests/test_contact_posterior_workflow_policy.py"
           (
             cd "${artifact}"
@@ -111,7 +115,7 @@ jobs:
               tests/test_contact_posterior_workflow_policy.py \
               > SHA256SUMS
           )
-          printf 'source_head=%s\n' "${GITHUB_SHA}" > "${artifact}/SOURCE"
+          printf 'source_head=%s\n' "${{ github.event.pull_request.head.sha }}" > "${artifact}/SOURCE"
 
       - name: Upload validated ordinary source artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
