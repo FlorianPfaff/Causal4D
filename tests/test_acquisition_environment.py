@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+from types import SimpleNamespace
 from zipfile import ZipFile
 
 import pytest
@@ -94,67 +95,45 @@ def _write_candidate(repository: Path) -> str:
     return str(candidate["candidate_sha256"])
 
 
-def _prerequisites(candidate_sha256: str) -> dict[str, dict[str, object]]:
-    return {
-        "method_freeze": {
-            "valid": True,
-            "sha256": "c" * 64,
-            "causal4d_commit_sha": "1" * 40,
-            "bayesian_phystwin_commit_sha": "2" * 40,
-            "acquisition_candidate_sha256": candidate_sha256,
-            "frozen_at_utc": "2026-08-08T01:00:00+00:00",
+def _runtime(causal4d_version: str = "0.5.0") -> tuple[dict, dict, dict]:
+    return (
+        {
+            "version": "3.12.4",
+            "implementation": "CPython",
+            "platform": "Linux-test",
         },
-        "method_freeze_validation": {
-            "valid": True,
-            "sha256": "d" * 64,
-            "verified_at_utc": "2026-08-08T01:05:00+00:00",
+        {
+            "execution_backend": "numpy_cpu",
+            "containerized": False,
+            "container_image_digest": None,
+            "numpy_version": "2.2.0",
+            "scipy_version": "1.15.0",
+            "torch_version": None,
+            "warp_version": None,
+            "opencv_version": None,
+            "cuda_runtime_version": None,
+            "cuda_driver_version": None,
         },
-    }
-
-
-def _fake_runtime(*, causal4d_version: str = "0.5.0"):
-    def capture(**_kwargs):
-        return (
-            {
-                "version": "3.12.4",
-                "implementation": "CPython",
-                "platform": "Linux-test",
+        {
+            "causal4d": {
+                "version": causal4d_version,
+                "origin_relative_to_python_prefix": (
+                    "lib/python3.12/site-packages/causal4d/__init__.py"
+                ),
+                "source_checkout_resolved": False,
             },
-            {
-                "execution_backend": "numpy_cpu",
-                "containerized": False,
-                "container_image_digest": None,
-                "numpy_version": "2.2.0",
-                "scipy_version": "1.15.0",
-                "torch_version": None,
-                "warp_version": None,
-                "opencv_version": None,
-                "cuda_runtime_version": None,
-                "cuda_driver_version": None,
+            "bayesian_phystwin": {
+                "version": "0.4.0",
+                "origin_relative_to_python_prefix": (
+                    "lib/python3.12/site-packages/bayesian_phystwin/__init__.py"
+                ),
+                "source_checkout_resolved": False,
             },
-            {
-                "causal4d": {
-                    "version": causal4d_version,
-                    "origin_relative_to_python_prefix": (
-                        "lib/python3.12/site-packages/causal4d/__init__.py"
-                    ),
-                    "source_checkout_resolved": False,
-                },
-                "bayesian_phystwin": {
-                    "version": "0.4.0",
-                    "origin_relative_to_python_prefix": (
-                        "lib/python3.12/site-packages/"
-                        "bayesian_phystwin/__init__.py"
-                    ),
-                    "source_checkout_resolved": False,
-                },
-            },
-        )
-
-    return capture
+        },
+    )
 
 
-def _prepare_case(tmp_path: Path, monkeypatch) -> dict[str, object]:
+def _prepare_case(tmp_path: Path, monkeypatch) -> SimpleNamespace:
     repository = tmp_path / "causal4d"
     bpt_repository = tmp_path / "bayesianphystwin"
     dataset = tmp_path / "dataset"
@@ -180,7 +159,21 @@ def _prepare_case(tmp_path: Path, monkeypatch) -> dict[str, object]:
         "numpy==2.2.0\nscipy==1.15.0\n",
         encoding="utf-8",
     )
-    prerequisites = _prerequisites(candidate_sha256)
+    prerequisites = {
+        "method_freeze": {
+            "valid": True,
+            "sha256": "c" * 64,
+            "causal4d_commit_sha": "1" * 40,
+            "bayesian_phystwin_commit_sha": "2" * 40,
+            "acquisition_candidate_sha256": candidate_sha256,
+            "frozen_at_utc": "2026-08-08T01:00:00+00:00",
+        },
+        "method_freeze_validation": {
+            "valid": True,
+            "sha256": "d" * 64,
+            "verified_at_utc": "2026-08-08T01:05:00+00:00",
+        },
+    }
     real_status = {
         "manifest_executions": 0,
         "acquired_executions": 0,
@@ -188,8 +181,12 @@ def _prepare_case(tmp_path: Path, monkeypatch) -> dict[str, object]:
         "prerequisites": prerequisites,
     }
 
-    chain = lambda _root: (protocol, v2, v3, v4)
-    status = lambda *_args, **_kwargs: real_status
+    def chain(_root):
+        return protocol, v2, v3, v4
+
+    def status(*_arguments, **_keywords):
+        return real_status
+
     monkeypatch.setattr(environment, "load_registered_preacquisition_chain", chain)
     monkeypatch.setattr(environment, "build_real_evidence_status", status)
     monkeypatch.setattr(sealing, "load_registered_preacquisition_chain", chain)
@@ -203,26 +200,30 @@ def _prepare_case(tmp_path: Path, monkeypatch) -> dict[str, object]:
             "clean": True,
         },
     )
-    monkeypatch.setattr(environment, "_capture_runtime_environment", _fake_runtime())
-    return {
-        "repository": repository,
-        "bpt_repository": bpt_repository,
-        "dataset": dataset,
-        "causal4d_wheel": causal4d_wheel,
-        "bpt_wheel": bpt_wheel,
-        "dependency_report": dependency_report,
-        "gate_path": gate_path,
-    }
+    monkeypatch.setattr(
+        environment,
+        "_capture_runtime_environment",
+        lambda **_keywords: _runtime(),
+    )
+    return SimpleNamespace(
+        repository=repository,
+        bpt_repository=bpt_repository,
+        dataset=dataset,
+        causal4d_wheel=causal4d_wheel,
+        bpt_wheel=bpt_wheel,
+        dependency_report=dependency_report,
+        gate_path=gate_path,
+    )
 
 
-def _stage(case: dict[str, object]) -> dict[str, object]:
+def _stage(case: SimpleNamespace) -> dict[str, object]:
     return environment.stage_software_environment_capsule(
-        case["repository"],
-        case["bpt_repository"],
-        case["dataset"],
-        case["causal4d_wheel"],
-        case["bpt_wheel"],
-        case["dependency_report"],
+        case.repository,
+        case.bpt_repository,
+        case.dataset,
+        case.causal4d_wheel,
+        case.bpt_wheel,
+        case.dependency_report,
         observation_producer_name="registered-rgbd-tracker",
         observation_producer_version="1.0",
         observation_artifact_contract="causal4d.observation-prefix-v1",
@@ -236,13 +237,12 @@ def test_stage_capsule_populates_unapproved_hash_verified_gate(
     monkeypatch,
 ) -> None:
     case = _prepare_case(tmp_path, monkeypatch)
-
     result = _stage(case)
 
     assert result["valid"] is True
     assert result["ready_to_seal"] is True
     assert result["confirmatory_collection_started"] is False
-    gate = json.loads(Path(case["gate_path"]).read_text(encoding="utf-8"))
+    gate = json.loads(case.gate_path.read_text(encoding="utf-8"))
     assert gate["status"] == "template"
     assert gate["approval"]["approved"] is False
     assert gate["artifact_sha256"] is None
@@ -253,14 +253,13 @@ def test_stage_capsule_populates_unapproved_hash_verified_gate(
     assert gate["checks"]["runtime_environment"]["execution_backend"] == "numpy_cpu"
     assert len(gate["evidence"]) == 6
     for descriptor in gate["evidence"]:
-        path = Path(case["dataset"]) / descriptor["path"]
-        assert path.is_file()
+        path = case.dataset / descriptor["path"]
         payload = path.read_bytes()
         assert hashlib.sha256(payload).hexdigest() == descriptor["sha256"]
         assert len(payload) == descriptor["bytes"]
 
     capsule = json.loads(
-        (Path(case["dataset"]) / environment.CAPSULE_MANIFEST_PATH).read_text(
+        (case.dataset / environment.CAPSULE_MANIFEST_PATH).read_text(
             encoding="utf-8"
         )
     )
@@ -269,8 +268,8 @@ def test_stage_capsule_populates_unapproved_hash_verified_gate(
     assert capsule["confirmatory_collection_started"] is False
 
     validation = sealing.validate_staged_software_environment_capsule(
-        case["repository"],
-        case["dataset"],
+        case.repository,
+        case.dataset,
     )
     assert validation["valid"] is True
     assert validation["capsule_id"] == result["capsule_id"]
@@ -296,13 +295,13 @@ def test_stage_capsule_rejects_installed_wheel_version_drift_before_publication(
     monkeypatch.setattr(
         environment,
         "_capture_runtime_environment",
-        _fake_runtime(causal4d_version="0.5.1"),
+        lambda **_keywords: _runtime("0.5.1"),
     )
 
     with pytest.raises(ValueError, match="installed Causal4D version differs"):
         _stage(case)
 
-    assert not (Path(case["dataset"]) / environment.CAPSULE_ROOT).exists()
+    assert not (case.dataset / environment.CAPSULE_ROOT).exists()
 
 
 def test_sealing_rejects_semantically_readdressed_target_use(
@@ -311,8 +310,7 @@ def test_sealing_rejects_semantically_readdressed_target_use(
 ) -> None:
     case = _prepare_case(tmp_path, monkeypatch)
     _stage(case)
-    dataset = Path(case["dataset"])
-    capsule_path = dataset / environment.CAPSULE_MANIFEST_PATH
+    capsule_path = case.dataset / environment.CAPSULE_MANIFEST_PATH
     capsule = json.loads(capsule_path.read_text(encoding="utf-8"))
     capsule["target_outcomes_used"] = True
     capsule["capsule_id"] = _canonical_sha256(capsule, omitted="capsule_id")
@@ -321,8 +319,7 @@ def test_sealing_rejects_semantically_readdressed_target_use(
     ).encode("utf-8")
     capsule_path.write_bytes(payload)
 
-    gate_path = Path(case["gate_path"])
-    gate = json.loads(gate_path.read_text(encoding="utf-8"))
+    gate = json.loads(case.gate_path.read_text(encoding="utf-8"))
     descriptor = next(
         item
         for item in gate["evidence"]
@@ -330,12 +327,12 @@ def test_sealing_rejects_semantically_readdressed_target_use(
     )
     descriptor["sha256"] = hashlib.sha256(payload).hexdigest()
     descriptor["bytes"] = len(payload)
-    gate_path.write_text(json.dumps(gate), encoding="utf-8")
+    case.gate_path.write_text(json.dumps(gate), encoding="utf-8")
 
     with pytest.raises(ValueError, match="target outcomes entered the capsule"):
         sealing.validate_staged_software_environment_capsule(
-            case["repository"],
-            case["dataset"],
+            case.repository,
+            case.dataset,
         )
 
 
@@ -354,15 +351,15 @@ def test_independent_seal_validates_capsule_before_registered_gate_seal(
 
     monkeypatch.setattr(sealing, "seal_registered_preacquisition_gate", seal)
     result = sealing.seal_staged_software_environment_capsule(
-        case["repository"],
-        case["dataset"],
+        case.repository,
+        case.dataset,
         approved_by="independent-verifier",
         approved_at_utc="2026-08-08T01:15:00+00:00",
     )
 
     assert received["arguments"] == (
-        case["repository"],
-        case["dataset"],
+        case.repository,
+        case.dataset,
         environment.SOFTWARE_GATE_ID,
     )
     assert received["keywords"] == {
