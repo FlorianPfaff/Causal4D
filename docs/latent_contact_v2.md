@@ -28,9 +28,12 @@ Student-t nominal/outlier mixture. The normalization term, including the
 log-determinant of the declared covariance, is retained. Consequently a component
 cannot improve its likelihood merely by reporting a larger covariance.
 
-Endpoint frame zero may appear only in a zero-sum contrast. The standard dense
-builder therefore includes the endpoint-to-first-response increment while still
-forbidding direct reuse of the endpoint as new O-plus evidence.
+Endpoint frame zero may appear only in a translation-neutral contrast whose
+coefficients sum to zero **separately for every Cartesian coordinate**. The
+standard dense builder therefore includes endpoint-to-first-response increments
+while forbidding direct reuse of the endpoint as new O-plus evidence. Global
+cross-coordinate cancellation, such as `+x_0-y_1`, is invalid because an ordinary
+translation changes the resulting scalar.
 
 The convenience constructor supports:
 
