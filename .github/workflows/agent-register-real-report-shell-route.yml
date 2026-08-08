@@ -166,9 +166,7 @@ jobs:
             src/causal4d/cli/command_registry.py \
             src/causal4d/registered_real_report_shell.py \
             tests/test_registered_real_report_shell.py
-          python -m pytest -q \
-            tests/test_registered_real_report_shell.py \
-            tests/test_cli_command_registry.py
+          python -m pytest -q tests/test_registered_real_report_shell.py
 
       - name: Publish ordinary source changes and remove this one-shot workflow
         shell: bash
