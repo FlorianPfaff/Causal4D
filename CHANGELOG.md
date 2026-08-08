@@ -66,6 +66,12 @@ evidence. Source-panel executions remain source-only and cannot increment the
 
 ### Fixed
 
+- Include the runnable MolmoMotion bridge helpers in source distributions and
+  execute their end-to-end regression from the extracted archive, preventing a
+  published sdist from retaining tests and documentation for files it omits.
+- Remove the completed issue-233 reviewed-publisher workflow and extend the
+  mergeable-head policy to reject both temporary and `publish-reviewed-*`
+  one-shot workflows after their bounded purpose is complete.
 - Remove direct pickle loading from the stable claim-bearing physical evaluator,
   bind results to posterior, query, physical-target, and held-out-suffix IDs, and
   publish result JSON atomically with no-overwrite behavior by default.
