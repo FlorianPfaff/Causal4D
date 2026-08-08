@@ -137,8 +137,12 @@ def _validate_capsule_header(
         field="capsule_id",
         name="acquisition environment capsule",
     )
-    _require(capsule["generated_at_utc"] == completed_at, "capsule time differs from gate")
-    _require(capsule["protocol_id"] == protocol["protocol_id"], "capsule protocol changed")
+    _require(
+        capsule["generated_at_utc"] == completed_at, "capsule time differs from gate"
+    )
+    _require(
+        capsule["protocol_id"] == protocol["protocol_id"], "capsule protocol changed"
+    )
     _require(
         capsule["protocol_design_sha256"] == protocol["design_sha256"],
         "capsule protocol digest changed",
@@ -252,7 +256,9 @@ def validate_staged_software_environment_capsule(
         capsule["prob4d"] == checks.get("prob4d"),
         "capsule Prob4D declaration differs",
     )
-    _require(capsule["python"] == checks.get("python"), "capsule Python runtime differs")
+    _require(
+        capsule["python"] == checks.get("python"), "capsule Python runtime differs"
+    )
     _require(
         capsule["runtime_environment"] == checks.get("runtime_environment"),
         "capsule numerical runtime differs from the gate",
@@ -298,9 +304,15 @@ def validate_staged_software_environment_capsule(
         field="runtime_id",
         name="acquisition runtime report",
     )
-    _require(runtime.get("target_outcomes_used") is False, "runtime report used targets")
-    _require(runtime.get("generated_at_utc") == completed_at, "runtime report time changed")
-    _require(runtime.get("python") == capsule["python"], "runtime Python record changed")
+    _require(
+        runtime.get("target_outcomes_used") is False, "runtime report used targets"
+    )
+    _require(
+        runtime.get("generated_at_utc") == completed_at, "runtime report time changed"
+    )
+    _require(
+        runtime.get("python") == capsule["python"], "runtime Python record changed"
+    )
     expected_runtime = dict(capsule["runtime_environment"])
     expected_runtime.pop("resolved_dependency_report", None)
     _require(
