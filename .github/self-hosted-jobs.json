@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "authorization_models": {
+    "main-only": {
+      "description": "Manual dispatch from refs/heads/main before runner allocation, exact GITHUB_SHA checkout, clean-tree verification, read-only token, and no secrets."
+    }
+  },
+  "jobs": [
+    {
+      "workflow": "contact-posterior-concentration.yml",
+      "job": "evaluate",
+      "authorization_model": "main-only",
+      "runner_labels": [
+        "self-hosted",
+        "Linux",
+        "X64",
+        "nvidia-smi"
+      ],
+      "purpose": "Fresh-seed source-only concentration diagnostic",
+      "dataset_access": "none",
+      "secrets_allowed": false
+    },
+    {
+      "workflow": "contact-posterior-diagnostics.yml",
+      "job": "diagnose",
+      "authorization_model": "main-only",
+      "runner_labels": [
+        "self-hosted",
+        "Linux",
+        "X64",
+        "nvidia-smi"
+      ],
+      "purpose": "Independent-seed controlled contact-posterior diagnostics",
+      "dataset_access": "none",
+      "secrets_allowed": false
+    },
+    {
+      "workflow": "contact-topology-covariance.yml",
+      "job": "evaluate",
+      "authorization_model": "main-only",
+      "runner_labels": [
+        "self-hosted",
+        "Linux",
+        "X64",
+        "nvidia-smi"
+      ],
+      "purpose": "Sealed dual-lane topology-covariance reproduction",
+      "dataset_access": "none",
+      "secrets_allowed": false
+    },
+    {
+      "workflow": "controlled-demo-video.yml",
+      "job": "render",
+      "authorization_model": "main-only",
+      "runner_labels": [
+        "self-hosted",
+        "Linux",
+        "X64",
+        "collaborator-demo"
+      ],
+      "purpose": "Controlled collaborator presentation bundle",
+      "dataset_access": "none",
+      "secrets_allowed": false
+    },
+    {
+      "workflow": "deform360-contact-support.yml",
+      "job": "source-diagnostic",
+      "authorization_model": "main-only",
+      "runner_labels": [
+        "self-hosted",
+        "Linux",
+        "X64",
+        "nvidia-smi"
+      ],
+      "purpose": "Locked Deform360 source contact/support diagnostic",
+      "dataset_access": "approved-source-only-deform360",
+      "secrets_allowed": false
+    },
+    {
+      "workflow": "deform360-filament-support.yml",
+      "job": "source-diagnostic",
+      "authorization_model": "main-only",
+      "runner_labels": [
+        "self-hosted",
+        "Linux",
+        "X64",
+        "nvidia-smi"
+      ],
+      "purpose": "Locked Deform360 source filament-support diagnostic",
+      "dataset_access": "approved-source-only-deform360",
+      "secrets_allowed": false
+    },
+    {
+      "workflow": "deform360-prefix-kinematics.yml",
+      "job": "source-diagnostic",
+      "authorization_model": "main-only",
+      "runner_labels": [
+        "self-hosted",
+        "Linux",
+        "X64",
+        "nvidia-smi"
+      ],
+      "purpose": "Locked Deform360 source prefix-kinematics diagnostic",
+      "dataset_access": "approved-source-only-deform360",
+      "secrets_allowed": false
+    },
+    {
+      "workflow": "deform360-reset-mechanics.yml",
+      "job": "source-diagnostic",
+      "authorization_model": "main-only",
+      "runner_labels": [
+        "self-hosted",
+        "Linux",
+        "X64",
+        "nvidia-smi"
+      ],
+      "purpose": "Locked Deform360 source reset-mechanics diagnostic",
+      "dataset_access": "approved-source-only-deform360",
+      "secrets_allowed": false
+    },
+    {
+      "workflow": "optional-integrations.yml",
+      "job": "gpu",
+      "authorization_model": "main-only",
+      "runner_labels": [
+        "self-hosted",
+        "Linux",
+        "X64",
+        "nvidia-smi"
+      ],
+      "purpose": "Optional CUDA/Warp integration smoke",
+      "dataset_access": "none",
+      "secrets_allowed": false
+    },
+    {
+      "workflow": "self-hosted-evaluation.yml",
+      "job": "evaluate",
+      "authorization_model": "main-only",
+      "runner_labels": [
+        "self-hosted",
+        "Linux",
+        "X64",
+        "nvidia-smi"
+      ],
+      "purpose": "Higher-powered controlled and GPU diagnostics",
+      "dataset_access": "none",
+      "secrets_allowed": false
+    },
+    {
+      "workflow": "workstation2-evaluation.yml",
+      "job": "evaluate",
+      "authorization_model": "main-only",
+      "runner_labels": [
+        "self-hosted",
+        "Linux",
+        "X64",
+        "nvidia-smi"
+      ],
+      "purpose": "CUDA qualification and controlled replication",
+      "dataset_access": "none",
+      "secrets_allowed": false
+    }
+  ],
+  "documentation": "docs/self_hosted_runner_security.md"
+}

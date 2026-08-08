@@ -5,14 +5,18 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/contact-posterior-concentration.yml"
+      - ".github/self-hosted-jobs.json"
       - "docs/contact_posterior_concentration.md"
+      - "docs/self_hosted_runner_security.md"
       - "scripts/ci/run_contact_concentration_diagnostic.py"
       - "src/causal4d/contact_concentration_diagnostic.py"
       - "tests/test_contact_concentration_diagnostic.py"
+      - "tests/test_contact_concentration_workflow_policy.py"
+      - "tests/test_self_hosted_workflow_policy.py"
   workflow_dispatch:
     inputs:
       runner:
-        description: Runner type
+        description: Runner type; self-hosted is admitted only from main
         required: true
         default: github-hosted
         type: choice
@@ -48,8 +52,17 @@ jobs:
   evaluate:
     name: Fresh-seed source-only concentration evaluation
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+      (
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      ) ||
+      (
+        github.event_name == 'workflow_dispatch' &&
+        (
+          inputs.runner != 'self-hosted' ||
+          github.ref == 'refs/heads/main'
+        )
+      )
     runs-on: >-
       ${{
         inputs.runner == 'self-hosted' &&
@@ -58,12 +71,24 @@ jobs:
       }}
     timeout-minutes: 240
     steps:
-      - name: Check out Causal4D
+      - name: Check out exact Causal4D revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          ref: ${{ github.sha }}
+          fetch-depth: 1
           persist-credentials: false
           clean: true
+
+      - name: Verify exact revision and self-hosted authorization
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test -z "$(git status --porcelain=v1)"
+          if [[ "${{ inputs.runner || 'github-hosted' }}" == "self-hosted" ]]; then
+            test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"
+            test "${GITHUB_REF}" = "refs/heads/main"
+          fi
 
       - name: Set up Python 3.12 with pip cache
         if: inputs.runner != 'self-hosted'
@@ -84,12 +109,33 @@ jobs:
         run: |
           set -euo pipefail
           python -m venv .contact-concentration-venv
-          .contact-concentration-venv/bin/python -m pip install --upgrade pip
-          .contact-concentration-venv/bin/python -m pip install -e ".[dev]"
+          mkdir -p outputs/contact-concentration/wheels
+          .contact-concentration-venv/bin/python -m pip install \
+            --upgrade pip "build>=1.2" "pytest>=8" "ruff>=0.15.22,<0.17"
+          .contact-concentration-venv/bin/python -m build --wheel \
+            --outdir outputs/contact-concentration/wheels .
+          wheel="$(
+            find outputs/contact-concentration/wheels -maxdepth 1 \
+              -name 'causal4d-*.whl' -print -quit
+          )"
+          test -n "${wheel}"
+          sha256sum "${wheel}" \
+            | tee outputs/contact-concentration/wheel-sha256.txt
+          .contact-concentration-venv/bin/python -m pip install "${wheel}"
           .contact-concentration-venv/bin/python -m pip check
-          mkdir -p outputs/contact-concentration
           .contact-concentration-venv/bin/python -m pip freeze --all \
             > outputs/contact-concentration/pip-freeze.txt
+          .contact-concentration-venv/bin/python - <<'PY'
+          from pathlib import Path
+
+          import causal4d
+
+          source_root = (Path.cwd() / "src").resolve()
+          origin = Path(causal4d.__file__).resolve()
+          if origin.is_relative_to(source_root):
+              raise SystemExit("Causal4D resolved from the source checkout")
+          print(origin)
+          PY
           {
             echo "runner_name=${RUNNER_NAME}"
             echo "runner_os=${RUNNER_OS}"
@@ -138,8 +184,8 @@ jobs:
             echo "### Contact-posterior concentration diagnostic"
             echo
             echo "- Runner: \`${RUNNER_NAME}\`"
+            echo "- Revision: \`${GITHUB_SHA}\`"
             echo "- Fresh seeds: \`${DIAGNOSTIC_SEEDS}\`"
-            echo "- Additional scales: \`${SOFTENING_LOGIT_SCALES}\`"
             if [[ -f outputs/contact-concentration/results/contact-concentration-diagnostic.json ]]; then
               .contact-concentration-venv/bin/python - <<'PY'
           import json
@@ -153,12 +199,8 @@ jobs:
           for row in result["comparison"]:
               world = row["world_condition"]
               brier = row["expanded_minus_registered_mean_brier"]
-              calibration = row[
-                  "expanded_minus_registered_calibration_error"
-              ]
-              trajectory = row[
-                  "expanded_minus_registered_trajectory_rmse_m"
-              ]
+              calibration = row["expanded_minus_registered_calibration_error"]
+              trajectory = row["expanded_minus_registered_trajectory_rmse_m"]
               print(
                   f"- {world}: ΔBrier={brier:.6g}, "
                   f"Δcalibration={calibration:.6g}, "
