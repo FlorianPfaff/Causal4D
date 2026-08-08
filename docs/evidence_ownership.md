@@ -73,6 +73,13 @@ otherwise uninformative, it preserves both the original factual artifact and the
 prior ledger exactly. When an update is informative, the returned factual
 artifact embeds the complete resulting ledger and its content identity.
 
+Every later strict update must supply that exact embedded ledger. Passing an
+older, truncated, or otherwise different ledger is rejected before likelihood
+evaluation, preventing a caller from rolling back ownership history and
+multiplying the same raw factor twice. A genuine sequential update remains
+supported by carrying forward the exact returned ledger and adding a distinct,
+independently owned factor.
+
 ## Cross-repository use
 
 For the intended `Prob4D -> BayesianPhysTwin -> Causal4D` path:

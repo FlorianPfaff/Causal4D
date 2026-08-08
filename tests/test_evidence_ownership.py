@@ -242,3 +242,90 @@ def test_uninformative_strict_sensor_factor_preserves_artifact_and_ledger() -> N
     assert not result.sensor_update_applied
     assert result.factual_intervention is factual
     assert result.evidence_ledger is prior
+
+
+def test_strict_sensor_update_rejects_ledger_rollback() -> None:
+    factual = _factual()
+    evidence = _actuator_evidence()
+    consumption = evidence_consumption_for_independent_sensor(
+        evidence,
+        source_repository="robot/acquisition",
+        source_revision="session-v1",
+        correlation_group_id="independent-actuator",
+    )
+    predictions = np.stack(
+        (evidence.positions_m, evidence.positions_m + 0.2),
+        axis=0,
+    )
+    first = strict_reweight_factual_intervention_with_independent_sensors(
+        factual,
+        prior_evidence_ledger=_empty_ledger(),
+        actuator_evidence=evidence,
+        actuator_consumption=consumption,
+        predicted_actuator_positions_m=predictions,
+    )
+
+    with pytest.raises(ValueError, match="differs from the ledger embedded"):
+        strict_reweight_factual_intervention_with_independent_sensors(
+            first.factual_intervention,
+            prior_evidence_ledger=_empty_ledger(),
+            actuator_evidence=evidence,
+            actuator_consumption=consumption,
+            predicted_actuator_positions_m=predictions,
+        )
+
+
+def test_strict_sensor_update_accepts_exact_embedded_ledger_chain() -> None:
+    factual = _factual()
+    first_evidence = _actuator_evidence()
+    first_consumption = evidence_consumption_for_independent_sensor(
+        first_evidence,
+        source_repository="robot/acquisition",
+        source_revision="session-v1",
+        correlation_group_id="independent-actuator",
+    )
+    first_predictions = np.stack(
+        (first_evidence.positions_m, first_evidence.positions_m + 0.2),
+        axis=0,
+    )
+    first = strict_reweight_factual_intervention_with_independent_sensors(
+        factual,
+        prior_evidence_ledger=_empty_ledger(),
+        actuator_evidence=first_evidence,
+        actuator_consumption=first_consumption,
+        predicted_actuator_positions_m=first_predictions,
+    )
+
+    second_evidence = replace(
+        first_evidence,
+        stream_id="measured_end_effector_backup",
+        provenance="independent backup robot encoder",
+        positions_m=first_evidence.positions_m + 0.05,
+    )
+    second_consumption = evidence_consumption_for_independent_sensor(
+        second_evidence,
+        source_repository="robot/acquisition",
+        source_revision="session-v1",
+        correlation_group_id="independent-actuator-backup",
+    )
+    second_predictions = np.stack(
+        (second_evidence.positions_m, second_evidence.positions_m + 0.1),
+        axis=0,
+    )
+    second = strict_reweight_factual_intervention_with_independent_sensors(
+        first.factual_intervention,
+        prior_evidence_ledger=first.evidence_ledger,
+        actuator_evidence=second_evidence,
+        actuator_consumption=second_consumption,
+        predicted_actuator_positions_m=second_predictions,
+    )
+
+    assert second.sensor_update_applied
+    assert {
+        entry.consumption_id for entry in second.evidence_ledger.entries
+    } == {
+        first_consumption.consumption_id,
+        second_consumption.consumption_id,
+    }
+    embedded = second.factual_intervention.metadata["consumed_evidence_ledger"]
+    assert embedded["artifact_id"] == second.evidence_ledger.artifact_id

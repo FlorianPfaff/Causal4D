@@ -483,6 +483,26 @@ def _validate_ledger_binding(
     if ledger.causal_frame_stop != factual.evidence_frame_stop:
         raise ValueError("evidence ledger and factual prefix stops differ")
 
+    embedded = factual.metadata.get("consumed_evidence_ledger")
+    if embedded is None:
+        return
+    if not isinstance(embedded, Mapping):
+        raise ValueError("factual intervention embeds an invalid evidence ledger")
+    try:
+        embedded_payload = plain_json(embedded)
+        if not isinstance(embedded_payload, dict):
+            raise ValueError("embedded ledger is not a JSON object")
+        embedded_ledger = ConsumedEvidenceLedgerV1.from_dict(embedded_payload)
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            "factual intervention embeds an invalid evidence ledger"
+        ) from error
+    if embedded_ledger.as_dict() != ledger.as_dict():
+        raise ValueError(
+            "supplied prior evidence ledger differs from the ledger embedded "
+            "in the factual intervention"
+        )
+
 
 def _validate_consumption_binding(
     consumption: EvidenceConsumptionV1 | None,

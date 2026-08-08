@@ -66,6 +66,9 @@ evidence. Source-panel executions remain source-only and cannot increment the
 
 ### Fixed
 
+- Bind every strict independent-sensor update to any consumed-evidence ledger
+  already embedded in its factual posterior, rejecting stale-ledger rollback and
+  duplicate factor multiplication while preserving valid sequential updates.
 - Make independent actuator and contact-wrench evidence publication atomic,
   validate the exact temporary archive before publication, refuse replacement by
   default, and reject symlinked inputs, duplicate members, extra arrays, or
