@@ -59,7 +59,7 @@ jobs:
           python -m pip install -e ".[dev]" matplotlib pillow imageio-ffmpeg
           python -m pip check
 
-      - name: Validate workflow policy and adjacent contracts
+      - name: Format and validate workflow policy and adjacent contracts
         run: |
           files=(
             scripts/ci/apply_remaining_self_hosted_dispatch_hardening.py
@@ -67,6 +67,7 @@ jobs:
             tests/test_contact_concentration_workflow_policy.py
             tests/test_controlled_demo_video_workflow_policy.py
           )
+          python -m ruff format "${files[@]}"
           python -m ruff check "${files[@]}"
           python -m ruff format --check "${files[@]}"
           python -W error::SyntaxWarning -m py_compile "${files[@]}"
