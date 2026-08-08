@@ -60,9 +60,7 @@ def _read_archive(path: Path) -> dict[str, np.ndarray]:
 
 def _descriptor(arrays: dict[str, np.ndarray]) -> dict[str, object]:
     return json.loads(
-        np.asarray(arrays["descriptor_json"], dtype=np.uint8)
-        .tobytes()
-        .decode("utf-8")
+        np.asarray(arrays["descriptor_json"], dtype=np.uint8).tobytes().decode("utf-8")
     )
 
 
