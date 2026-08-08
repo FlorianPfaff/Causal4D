@@ -10,7 +10,7 @@ on:
       - "scripts/ci/apply_contact_diagnostic_runner_hardening.py"
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: read
 
 concurrency:
@@ -34,7 +34,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
           clean: true
 
       - name: Verify and apply reviewed transformation
@@ -89,11 +89,31 @@ jobs:
           fi
           test "$(git diff --name-only 249d462983578b7935fa735f8631c2b161572103 -- | wc -l)" -eq 2
 
-      - name: Publish validated ordinary source
+      - name: Stage validated ordinary source artifact
+        shell: bash
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git diff --cached --check
-          git commit -m 'Harden contact-posterior runner authorization'
-          git push origin HEAD:chore/harden-contact-diagnostic-runner
+          set -euo pipefail
+          artifact="${RUNNER_TEMP}/contact-diagnostic-final"
+          mkdir -p \
+            "${artifact}/.github/workflows" \
+            "${artifact}/tests"
+          cp .github/workflows/contact-posterior-diagnostics.yml \
+            "${artifact}/.github/workflows/contact-posterior-diagnostics.yml"
+          cp tests/test_contact_posterior_workflow_policy.py \
+            "${artifact}/tests/test_contact_posterior_workflow_policy.py"
+          (
+            cd "${artifact}"
+            sha256sum \
+              .github/workflows/contact-posterior-diagnostics.yml \
+              tests/test_contact_posterior_workflow_policy.py \
+              > SHA256SUMS
+          )
+          printf 'source_head=%s\n' "${GITHUB_SHA}" > "${artifact}/SOURCE"
+
+      - name: Upload validated ordinary source artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
+        with:
+          name: contact-diagnostic-final-source
+          path: ${{ runner.temp }}/contact-diagnostic-final
+          if-no-files-found: error
+          retention-days: 1
