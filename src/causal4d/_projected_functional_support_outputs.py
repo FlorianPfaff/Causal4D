@@ -120,8 +120,7 @@ class ProjectedFunctionalSupportCertificateV1:
     def __post_init__(self) -> None:
         metrics = tuple(self.metrics)
         if not metrics or any(
-            type(metric) is not ProjectedFunctionalSupportMetricV1
-            for metric in metrics
+            type(metric) is not ProjectedFunctionalSupportMetricV1 for metric in metrics
         ):
             raise ValueError(
                 "metrics must contain ProjectedFunctionalSupportMetricV1 values"
@@ -177,9 +176,7 @@ class ProjectedFunctionalSupportCertificateV1:
         )
         if metric_keys != expected_keys:
             raise ValueError("metrics must follow the full action/projection product")
-        expected_reasons = tuple(
-            f"base:{reason}" for reason in base_reasons
-        ) + tuple(
+        expected_reasons = tuple(f"base:{reason}" for reason in base_reasons) + tuple(
             f"{metric.action_id}:{metric.projection_id}:{reason}"
             for metric in metrics
             for reason in metric.reasons

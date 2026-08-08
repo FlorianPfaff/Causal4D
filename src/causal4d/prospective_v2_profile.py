@@ -175,9 +175,7 @@ def _decision_index(
     dict[str, list[tuple[DecisionTraceStage, DecisionTraceDecision]]],
     list[str],
 ]:
-    index: dict[
-        str, list[tuple[DecisionTraceStage, DecisionTraceDecision]]
-    ] = {}
+    index: dict[str, list[tuple[DecisionTraceStage, DecisionTraceDecision]]] = {}
     duplicate_names: list[str] = []
     for stage in stages:
         for decision in stage.decisions:
@@ -216,9 +214,7 @@ def validate_prospective_v2_decision_trace_v1(
         observed_names.append(name)
         expected_stage, expected_producer = _EXPECTED_DECISION_LOCATION[name]
         if stage.stage_kind != expected_stage:
-            reasons.append(
-                f"required_decision_wrong_stage:{name}:{stage.stage_kind}"
-            )
+            reasons.append(f"required_decision_wrong_stage:{name}:{stage.stage_kind}")
         if decision.producer != expected_producer:
             reasons.append(
                 f"required_decision_wrong_producer:{name}:{decision.producer}"

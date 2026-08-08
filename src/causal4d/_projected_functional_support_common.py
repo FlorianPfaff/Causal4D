@@ -63,8 +63,7 @@ def validated_string_tuple(
         raise ValueError(f"{name} must be a sequence of strings")
     validator = require_sha256 if require_digest else require_nonempty_string
     result = tuple(
-        validator(value, name=f"{name}[{index}]")
-        for index, value in enumerate(values)
+        validator(value, name=f"{name}[{index}]") for index, value in enumerate(values)
     )
     if not result:
         raise ValueError(f"{name} must be nonempty")

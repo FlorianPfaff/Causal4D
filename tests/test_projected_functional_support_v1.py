@@ -135,8 +135,7 @@ def test_projection_detects_dependence_change_hidden_by_marginal_metrics() -> No
     assert metric.full_mean_m == pytest.approx(metric.reduced_mean_m)
     assert metric.projected_variance_relative_error > 0.9
     assert (
-        "rotated-dependence:sum-mode:"
-        "projected_variance_relative_error_exceeds_limit"
+        "rotated-dependence:sum-mode:projected_variance_relative_error_exceeds_limit"
     ) in certificate.reasons
 
 

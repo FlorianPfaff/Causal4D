@@ -305,8 +305,7 @@ def test_required_decision_must_appear_at_the_registered_stage() -> None:
     validation = validate_prospective_v2_decision_trace_v1(generic)
     assert not validation.accepted
     assert (
-        "required_decision_wrong_stage:functional_support:"
-        "causal4d_counterfactual"
+        "required_decision_wrong_stage:functional_support:causal4d_counterfactual"
     ) in validation.reasons
 
 

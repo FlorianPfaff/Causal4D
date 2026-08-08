@@ -208,9 +208,7 @@ def _coerce_action(
 
 
 def certify_projected_functional_support_v1(
-    actions: Sequence[
-        FunctionalSupportActionV1 | ProjectedFunctionalSupportActionV1
-    ],
+    actions: Sequence[FunctionalSupportActionV1 | ProjectedFunctionalSupportActionV1],
     projections: Sequence[FunctionalSupportProjectionV1],
     *,
     policy: ProjectedFunctionalSupportPolicyV1,
@@ -266,9 +264,7 @@ def certify_projected_functional_support_v1(
         for action in action_tuple
         for projection in projection_tuple
     )
-    reasons = tuple(
-        f"base:{reason}" for reason in base_certificate.reasons
-    ) + tuple(
+    reasons = tuple(f"base:{reason}" for reason in base_certificate.reasons) + tuple(
         f"{metric.action_id}:{metric.projection_id}:{reason}"
         for metric in metrics
         for reason in metric.reasons

@@ -37,8 +37,7 @@ class FunctionalSupportProjectionV1:
         coefficients = readonly_array(self.coefficients, dtype=float)
         if coefficients.ndim != 3 or coefficients.size < 1:
             raise ValueError(
-                "projection coefficients must have shape "
-                "(frame, node, coordinate)"
+                "projection coefficients must have shape (frame, node, coordinate)"
             )
         if not np.all(np.isfinite(coefficients)):
             raise ValueError("projection coefficients must be finite")
