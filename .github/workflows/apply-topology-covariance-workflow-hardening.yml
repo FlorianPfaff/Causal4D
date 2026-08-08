@@ -119,4 +119,5 @@ jobs:
           name: topology-covariance-final-source
           path: ${{ runner.temp }}/topology-covariance-final
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 1
