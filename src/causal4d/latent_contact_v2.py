@@ -156,8 +156,9 @@ class LinearContactObservationGroup:
     The sparse operator is represented by parallel term vectors.  For term ``k``,
     ``coefficients[k]`` multiplies the rollout scalar selected by frame, node, and
     coordinate indices and contributes it to ``row_indices[k]``.  Endpoint frame
-    zero may appear only in a zero-sum contrast, which admits endpoint-to-first-
-    response increments without treating the endpoint as a fresh observation.
+    zero may appear only in a translation-neutral, zero-sum contrast for every
+    coordinate, which admits endpoint-to-first-response increments without
+    treating the endpoint as a fresh absolute observation.
     """
 
     group_id: str
@@ -223,15 +224,18 @@ class LinearContactObservationGroup:
         )
         for row in np.unique(rows[frames == 0]):
             row_terms = rows == row
-            if not np.isclose(
-                float(np.sum(coefficients[row_terms])),
-                0.0,
-                atol=1e-12,
-                rtol=1e-12,
-            ):
-                raise ValueError(
-                    "endpoint frame zero may appear only in a zero-sum contrast"
-                )
+            for coordinate in np.unique(coordinates[row_terms]):
+                coordinate_terms = row_terms & (coordinates == coordinate)
+                if not np.isclose(
+                    float(np.sum(coefficients[coordinate_terms])),
+                    0.0,
+                    atol=1e-12,
+                    rtol=1e-12,
+                ):
+                    raise ValueError(
+                        "endpoint frame zero may appear only in a "
+                        "translation-neutral zero-sum contrast per coordinate"
+                    )
             if not np.any(frames[row_terms] > 0):
                 raise ValueError("endpoint contrasts require a positive response frame")
         prior = _finite_float(
