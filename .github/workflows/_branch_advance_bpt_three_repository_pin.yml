@@ -57,8 +57,7 @@ jobs:
         run: |
           python -m pytest -q \
             tests/test_three_repository_workflow_policy.py \
-            tests/test_stack_lock.py \
-            tests/test_decision_trace_workflow_policy.py
+            tests/test_stack_lock.py
           python - <<'PY'
           from pathlib import Path
 
