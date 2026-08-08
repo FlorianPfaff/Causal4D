@@ -1,3 +1,4 @@
+# Retrigger after current-main CI restoration.
 name: Branch advance BPT three-repository pin
 
 on:
