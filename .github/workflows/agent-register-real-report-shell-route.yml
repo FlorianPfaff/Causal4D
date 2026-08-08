@@ -154,6 +154,10 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install -e ".[dev]"
+          python -m ruff format \
+            src/causal4d/cli/command_registry.py \
+            src/causal4d/registered_real_report_shell.py \
+            tests/test_registered_real_report_shell.py
           python -m ruff check \
             src/causal4d/cli/command_registry.py \
             src/causal4d/registered_real_report_shell.py \
