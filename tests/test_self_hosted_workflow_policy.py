@@ -110,7 +110,10 @@ def _main_only_errors(workflow_text: str, block: str) -> list[str]:
         target = match.group("target")
         if target.startswith("./"):
             continue
-        if "@" not in target or PINNED_ACTION.fullmatch(target.rsplit("@", 1)[1]) is None:
+        if (
+            "@" not in target
+            or PINNED_ACTION.fullmatch(target.rsplit("@", 1)[1]) is None
+        ):
             errors.append(f"action is not pinned by full commit SHA: {target}")
 
     if "${{ secrets." in block:
