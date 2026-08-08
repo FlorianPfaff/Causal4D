@@ -4,6 +4,7 @@ graft .github
 graft ci
 graft configs
 graft docs
+graft examples
 graft milestones
 graft requirements
 graft runs
