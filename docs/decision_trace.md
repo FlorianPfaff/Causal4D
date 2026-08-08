@@ -90,24 +90,40 @@ artifact from its inputs.
 
 ## Decisions and exact fallback
 
-Each stage may reference content-addressed decisions. Recommended required
-decision names for the prospective V2 path are:
+Each stage may reference content-addressed decisions. The generic decision-trace
+builder accepts an experiment-specific required inventory. The versioned
+prospective V2 deployment profile is:
+
+```text
+causal4d.prospective-v2-deployment-profile/v1
+```
+
+It requires the following complete inventory:
 
 ```text
 prob4d_provider_acceptance
+joint_covariance_admission
 bayesian_phystwin_acceptance
+functional_support
 intervention_identifiability
 action_support
 contact_v2_support
+conditional_uncertainty_calibration
 query_calibration
 counterfactual_regret
 ```
 
-The required inventory is frozen in `DecisionTraceSelection`. Candidate
-deployment is valid if and only if every named required decision is present and
-accepted.
+The profile also fixes the stage and producer for every decision. Use
+`build_prospective_v2_decision_trace_v1` for that path; it inserts the profile ID,
+uses the generic exact-object builder, and then validates the stricter inventory.
+See `docs/prospective_v2_promotion.md` for the profile and promotion protocol.
 
-At runtime, use `build_unified_decision_trace`. It checks Python object identity:
+For other experiments, the required inventory is frozen directly in
+`DecisionTraceSelection`. Candidate deployment is valid if and only if every
+named required decision is present and accepted.
+
+At runtime, the generic `build_unified_decision_trace` checks Python object
+identity:
 
 ```python
 result = build_unified_decision_trace(
@@ -259,9 +275,14 @@ The trace references existing decision artifacts rather than redefining their
 scientific semantics. For example:
 
 - Prob4D provider/lineage acceptance remains governed by the Prob4D contract;
+- joint-covariance admission remains governed by the admitted covariance
+  contract;
 - BayesianPhysTwin provider acceptance remains governed by the BPT contract;
+- functional support remains governed by the rollout-space and projected
+  functional-support certificates;
 - action support remains governed by `ActionSupportDecision`;
 - contact-patch finite support remains governed by `ContactV2SupportDecision`;
+- conditional uncertainty remains governed by its source-calibration artifact;
 - baseline-relative benefit remains governed by
   `CounterfactualRegretDecision`.
 
