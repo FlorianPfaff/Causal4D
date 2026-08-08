@@ -10,7 +10,7 @@ on:
       - "scripts/ci/apply_remaining_self_hosted_dispatch_hardening.py"
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: read
 
 concurrency:
@@ -34,7 +34,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
           clean: true
 
       - name: Verify and apply reviewed transformations
@@ -93,11 +93,43 @@ jobs:
           fi
           test "$(git diff --name-only aba7e0ff1e5705fb7d5979cd5186404fcfb1526f -- | wc -l)" -eq 6
 
-      - name: Publish validated ordinary source
+      - name: Stage validated ordinary source artifact
+        shell: bash
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git diff --cached --check
-          git commit -m 'Harden remaining self-hosted dispatches'
-          git push origin HEAD:chore/harden-remaining-self-hosted-dispatches
+          set -euo pipefail
+          artifact="${RUNNER_TEMP}/remaining-self-hosted-final"
+          mkdir -p \
+            "${artifact}/.github/workflows" \
+            "${artifact}/tests"
+          cp .github/workflows/deform360-filament-support.yml \
+            "${artifact}/.github/workflows/deform360-filament-support.yml"
+          cp .github/workflows/contact-posterior-concentration.yml \
+            "${artifact}/.github/workflows/contact-posterior-concentration.yml"
+          cp .github/workflows/controlled-demo-video.yml \
+            "${artifact}/.github/workflows/controlled-demo-video.yml"
+          cp tests/test_deform360_filament_support_workflow_policy.py \
+            "${artifact}/tests/test_deform360_filament_support_workflow_policy.py"
+          cp tests/test_contact_concentration_workflow_policy.py \
+            "${artifact}/tests/test_contact_concentration_workflow_policy.py"
+          cp tests/test_controlled_demo_video_workflow_policy.py \
+            "${artifact}/tests/test_controlled_demo_video_workflow_policy.py"
+          (
+            cd "${artifact}"
+            sha256sum \
+              .github/workflows/deform360-filament-support.yml \
+              .github/workflows/contact-posterior-concentration.yml \
+              .github/workflows/controlled-demo-video.yml \
+              tests/test_deform360_filament_support_workflow_policy.py \
+              tests/test_contact_concentration_workflow_policy.py \
+              tests/test_controlled_demo_video_workflow_policy.py \
+              > SHA256SUMS
+          )
+          printf 'source_head=%s\n' "${GITHUB_SHA}" > "${artifact}/SOURCE"
+
+      - name: Upload validated ordinary source artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
+        with:
+          name: remaining-self-hosted-final-source
+          path: ${{ runner.temp }}/remaining-self-hosted-final
+          if-no-files-found: error
+          retention-days: 1
