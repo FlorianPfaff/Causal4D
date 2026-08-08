@@ -19,6 +19,5 @@ def test_no_one_shot_workflow_can_reach_a_mergeable_head() -> None:
         for path in WORKFLOW_DIRECTORY.glob(pattern)
     )
     assert one_shot == [], (
-        "one-shot workflows must delete themselves before review and merge: "
-        f"{one_shot}"
+        f"one-shot workflows must delete themselves before review and merge: {one_shot}"
     )
