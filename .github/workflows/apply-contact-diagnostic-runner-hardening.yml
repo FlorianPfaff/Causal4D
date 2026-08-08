@@ -1,3 +1,4 @@
+# Retrigger after current-main CI restoration.
 name: Apply contact-diagnostic runner hardening
 
 on:
