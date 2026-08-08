@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-import json
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +31,30 @@ from causal4d.preacquisition_readiness_contracts import (
     load_registered_preacquisition_chain,
 )
 from causal4d.real_evidence_contract_v2 import build_real_evidence_status
+
+_CAPSULE_FIELDS = {
+    "schema_name",
+    "schema_version",
+    "artifact_kind",
+    "generated_by",
+    "generated_at_utc",
+    "protocol_id",
+    "protocol_design_sha256",
+    "preacquisition_amendment_sha256",
+    "method_freeze_sha256",
+    "method_freeze_validation_sha256",
+    "acquisition_candidate_id",
+    "acquisition_candidate_sha256",
+    "observation_producer",
+    "prob4d",
+    "python",
+    "runtime_environment",
+    "installed_distributions",
+    "artifacts",
+    "confirmatory_collection_started",
+    "target_outcomes_used",
+    "capsule_id",
+}
 
 
 def _descriptor_map(
@@ -86,6 +109,53 @@ def _validate_content_id(
         f"{name} identity does not match its contents",
     )
     return identity
+
+
+def _validate_capsule_header(
+    capsule: Mapping[str, Any],
+    *,
+    protocol: Mapping[str, Any],
+    v4: Mapping[str, Any],
+    completed_at: Any,
+) -> str:
+    _require(
+        set(capsule) == _CAPSULE_FIELDS,
+        "acquisition environment capsule has unexpected fields",
+    )
+    _require(capsule["schema_name"] == CAPSULE_SCHEMA_NAME, "wrong capsule schema")
+    _require(
+        capsule["schema_version"] == CAPSULE_SCHEMA_VERSION,
+        "unsupported capsule schema version",
+    )
+    _require(
+        capsule["artifact_kind"] == CAPSULE_ARTIFACT_KIND,
+        "wrong capsule artifact kind",
+    )
+    _require(capsule["generated_by"] == CAPSULE_GENERATOR, "wrong capsule generator")
+    capsule_id = _validate_content_id(
+        capsule,
+        field="capsule_id",
+        name="acquisition environment capsule",
+    )
+    _require(capsule["generated_at_utc"] == completed_at, "capsule time differs from gate")
+    _require(capsule["protocol_id"] == protocol["protocol_id"], "capsule protocol changed")
+    _require(
+        capsule["protocol_design_sha256"] == protocol["design_sha256"],
+        "capsule protocol digest changed",
+    )
+    _require(
+        capsule["preacquisition_amendment_sha256"] == v4["amendment_sha256"],
+        "capsule amendment changed",
+    )
+    _require(
+        capsule["confirmatory_collection_started"] is False,
+        "capsule claims confirmatory collection started",
+    )
+    _require(
+        capsule["target_outcomes_used"] is False,
+        "target outcomes entered the capsule",
+    )
+    return capsule_id
 
 
 def validate_staged_software_environment_capsule(
@@ -156,57 +226,11 @@ def validate_staged_software_environment_capsule(
         CAPSULE_MANIFEST_PATH,
         name="acquisition environment capsule",
     )
-    _require(
-        set(capsule)
-        == {
-            "schema_name",
-            "schema_version",
-            "artifact_kind",
-            "generated_by",
-            "generated_at_utc",
-            "protocol_id",
-            "protocol_design_sha256",
-            "preacquisition_amendment_sha256",
-            "method_freeze_sha256",
-            "method_freeze_validation_sha256",
-            "acquisition_candidate_id",
-            "acquisition_candidate_sha256",
-            "observation_producer",
-            "prob4d",
-            "python",
-            "runtime_environment",
-            "installed_distributions",
-            "artifacts",
-            "confirmatory_collection_started",
-            "target_outcomes_used",
-            "capsule_id",
-        },
-        "acquisition environment capsule has unexpected fields",
-    )
-    _require(capsule["schema_name"] == CAPSULE_SCHEMA_NAME, "wrong capsule schema")
-    _require(
-        capsule["schema_version"] == CAPSULE_SCHEMA_VERSION,
-        "unsupported capsule schema version",
-    )
-    _require(
-        capsule["artifact_kind"] == CAPSULE_ARTIFACT_KIND,
-        "wrong capsule artifact kind",
-    )
-    _require(capsule["generated_by"] == CAPSULE_GENERATOR, "wrong capsule generator")
-    capsule_id = _validate_content_id(
+    capsule_id = _validate_capsule_header(
         capsule,
-        field="capsule_id",
-        name="acquisition environment capsule",
-    )
-    _require(capsule["generated_at_utc"] == completed_at, "capsule time differs from gate")
-    _require(capsule["protocol_id"] == protocol["protocol_id"], "capsule protocol changed")
-    _require(
-        capsule["protocol_design_sha256"] == protocol["design_sha256"],
-        "capsule protocol digest changed",
-    )
-    _require(
-        capsule["preacquisition_amendment_sha256"] == v4["amendment_sha256"],
-        "capsule amendment changed",
+        protocol=protocol,
+        v4=v4,
+        completed_at=completed_at,
     )
     _require(
         capsule["method_freeze_sha256"]
@@ -221,18 +245,13 @@ def validate_staged_software_environment_capsule(
         "capsule binds a different freeze attestation",
     )
     _require(
-        capsule["confirmatory_collection_started"] is False,
-        "capsule claims confirmatory collection started",
-    )
-    _require(
-        capsule["target_outcomes_used"] is False,
-        "target outcomes entered the capsule",
-    )
-    _require(
         capsule["observation_producer"] == checks.get("observation_producer"),
         "capsule observation producer differs from the gate",
     )
-    _require(capsule["prob4d"] == checks.get("prob4d"), "capsule Prob4D declaration differs")
+    _require(
+        capsule["prob4d"] == checks.get("prob4d"),
+        "capsule Prob4D declaration differs",
+    )
     _require(capsule["python"] == checks.get("python"), "capsule Python runtime differs")
     _require(
         capsule["runtime_environment"] == checks.get("runtime_environment"),
@@ -288,8 +307,13 @@ def validate_staged_software_environment_capsule(
         runtime.get("runtime_environment") == expected_runtime,
         "runtime report differs from the capsule",
     )
+    installed_distributions = capsule.get("installed_distributions")
     _require(
-        runtime.get("installed_distributions") == capsule["installed_distributions"],
+        isinstance(installed_distributions, Mapping),
+        "installed distribution records are missing",
+    )
+    _require(
+        runtime.get("installed_distributions") == installed_distributions,
         "installed distribution origins differ from the capsule",
     )
 
@@ -330,7 +354,7 @@ def validate_staged_software_environment_capsule(
     for name in ("causal4d", "bayesian_phystwin"):
         package = checks.get(name)
         distribution = distributions.get(name)
-        installed = capsule["installed_distributions"].get(name)
+        installed = installed_distributions.get(name)
         _require(isinstance(package, Mapping), f"{name} gate package is missing")
         _require(isinstance(distribution, Mapping), f"{name} provenance is missing")
         _require(isinstance(installed, Mapping), f"{name} installed record is missing")
