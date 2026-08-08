@@ -251,10 +251,11 @@ def evaluate_health_snapshot_file(
 
     source = read_regular_file(path, name="health snapshot")
     snapshot = load_strict_json_object(source.payload, name="health snapshot")
+    evaluation_time = _utc_now() if evaluated_at_utc is None else evaluated_at_utc
     result = evaluate_health_snapshot(
         snapshot,
         thresholds=thresholds,
-        evaluated_at_utc=evaluated_at_utc or _utc_now(),
+        evaluated_at_utc=evaluation_time,
     )
     result["snapshot_sha256"] = source.sha256
     result["snapshot_byte_count"] = source.byte_count
