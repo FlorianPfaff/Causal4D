@@ -139,7 +139,9 @@ def _safe_dataset_path(dataset_root: Path, relative: Path) -> Path:
             _require(not cursor.is_symlink(), "capsule parent contains a symlink")
         else:
             cursor.mkdir()
-    _require(cursor.resolve(strict=True).is_relative_to(root), "capsule path escapes root")
+    _require(
+        cursor.resolve(strict=True).is_relative_to(root), "capsule path escapes root"
+    )
     target = cursor / relative.name
     if target.exists() or target.is_symlink():
         _require(not target.is_symlink(), "capsule destination is a symlink")
@@ -229,7 +231,9 @@ def _installed_version(name: str, *, required: bool) -> str | None:
         return metadata.version(name)
     except metadata.PackageNotFoundError as error:
         if required:
-            raise ValueError(f"required distribution is not installed: {name}") from error
+            raise ValueError(
+                f"required distribution is not installed: {name}"
+            ) from error
         return None
 
 
@@ -282,7 +286,9 @@ def _cuda_runtime_version() -> str | None:
     try:
         import torch
     except (ImportError, OSError) as error:
-        raise ValueError("CUDA backend requires an importable PyTorch runtime") from error
+        raise ValueError(
+            "CUDA backend requires an importable PyTorch runtime"
+        ) from error
     value = getattr(torch.version, "cuda", None)
     return str(value).strip() if value is not None and str(value).strip() else None
 
@@ -351,7 +357,9 @@ def _capture_runtime_environment(
     if execution_backend == "cuda":
         cuda_runtime_version = _cuda_runtime_version()
         cuda_driver_version = _cuda_driver_version()
-        _require(cuda_runtime_version is not None, "CUDA runtime version is unavailable")
+        _require(
+            cuda_runtime_version is not None, "CUDA runtime version is unavailable"
+        )
         _require(cuda_driver_version is not None, "CUDA driver version is unavailable")
     runtime = {
         "execution_backend": execution_backend,
@@ -577,13 +585,11 @@ def stage_software_environment_capsule(
         causal4d_version=causal4d_identity.version,
         bayesian_phystwin_version=bpt_identity.version,
     )
-    python_environment, runtime_environment, installed = (
-        _capture_runtime_environment(
-            execution_backend=execution_backend,
-            container_image_digest=container_image_digest,
-            causal4d_root=repository,
-            bayesian_phystwin_root=bpt_repository,
-        )
+    python_environment, runtime_environment, installed = _capture_runtime_environment(
+        execution_backend=execution_backend,
+        container_image_digest=container_image_digest,
+        causal4d_root=repository,
+        bayesian_phystwin_root=bpt_repository,
     )
     _require(
         installed["causal4d"]["version"] == causal4d_identity.version,
