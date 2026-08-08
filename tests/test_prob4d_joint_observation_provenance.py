@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from types import MappingProxyType
+from collections.abc import Mapping
 
 import numpy as np
 import pytest
@@ -46,8 +46,8 @@ def test_provider_validation_is_recursively_immutable(monkeypatch) -> None:
         entity_to_node={4: 0},
     )
 
-    assert isinstance(diagnostics.provider_validation, MappingProxyType)
-    assert isinstance(diagnostics.provider_validation["nested"], MappingProxyType)
+    assert isinstance(diagnostics.provider_validation, Mapping)
+    assert isinstance(diagnostics.provider_validation["nested"], Mapping)
     with pytest.raises(TypeError):
         diagnostics.provider_validation["validated"] = False
     with pytest.raises(TypeError):

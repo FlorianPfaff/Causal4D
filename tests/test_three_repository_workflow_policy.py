@@ -129,10 +129,13 @@ def test_decision_trace_runs_against_the_installed_stack() -> None:
     assert "Verify imports originate only from installed wheels" in text
     assert "from causal4d import decision_trace" in text
     assert "source-tree import detected" in text
-    assert 'env -u PYTHONPATH \\' in text
+    assert "env -u PYTHONPATH \\" in text
     assert "--import-mode=importlib" in text
     assert "causal4d/tests/test_decision_trace.py" in text
     assert '--junitxml="$RUNNER_TEMP/three-repository-contract-tests.xml"' in text
-    assert "three-repository-contract-tests.xml" in text.split(
-        "- name: Upload golden-path diagnostics and locked wheels", maxsplit=1
-    )[1]
+    assert (
+        "three-repository-contract-tests.xml"
+        in text.split(
+            "- name: Upload golden-path diagnostics and locked wheels", maxsplit=1
+        )[1]
+    )

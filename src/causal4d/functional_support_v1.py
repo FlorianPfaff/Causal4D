@@ -498,9 +498,7 @@ def _weighted_rms_distance_expectation(
             )
             if not np.all(np.isfinite(squared_distance)):
                 raise ValueError("energy-distance pairwise distances must be finite")
-            distance = np.sqrt(
-                np.maximum(squared_distance, 0.0) / coordinate_count
-            )
+            distance = np.sqrt(np.maximum(squared_distance, 0.0) / coordinate_count)
             total += float(
                 np.einsum(
                     "i,j,ij->",

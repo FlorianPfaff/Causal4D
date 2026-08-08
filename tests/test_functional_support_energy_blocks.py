@@ -13,9 +13,10 @@ def _direct_energy_distance(
     reduced_weights: np.ndarray,
 ) -> float:
     def pairwise(first: np.ndarray, second: np.ndarray) -> np.ndarray:
-        difference = first.reshape(first.shape[0], -1)[:, None, :] - second.reshape(
-            second.shape[0], -1
-        )[None, :, :]
+        difference = (
+            first.reshape(first.shape[0], -1)[:, None, :]
+            - second.reshape(second.shape[0], -1)[None, :, :]
+        )
         return np.sqrt(np.mean(np.square(difference), axis=-1))
 
     cross = pairwise(full, reduced)
@@ -56,7 +57,12 @@ def test_blockwise_energy_distance_matches_direct_definition() -> None:
         reduced_weights,
     )
 
-    assert observed == pytest.approx(expected, rel=1e-12, abs=1e-12)
+    gram_roundoff_rtol = float(np.sqrt(np.finfo(float).eps))
+    assert observed == pytest.approx(
+        expected,
+        rel=gram_roundoff_rtol,
+        abs=1e-12,
+    )
 
 
 def test_blockwise_energy_distance_is_zero_for_identical_support() -> None:
