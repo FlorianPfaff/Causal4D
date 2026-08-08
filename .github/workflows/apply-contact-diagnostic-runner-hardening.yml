@@ -42,7 +42,7 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s  %s\n' \
-            'df4ad23abe101849fbbc80627cde54d9f59072cb1168d997d443bee128af667a' \
+            '4f0a82330e8c900fa0129c02b0617bef8517b51a42ca20f8293485b18ae1c3c0' \
             'scripts/ci/apply_contact_diagnostic_runner_hardening.py' \
             | sha256sum --check --strict -
           python scripts/ci/apply_contact_diagnostic_runner_hardening.py
