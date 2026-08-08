@@ -1,15 +1,6 @@
 name: Contact topology covariance diagnostic
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - ".github/workflows/contact-topology-covariance.yml"
-      - "docs/contact_topology_covariance.md"
-      - "scripts/ci/run_contact_topology_covariance_diagnostic.py"
-      - "src/causal4d/contact_topology_covariance_diagnostic.py"
-      - "tests/test_contact_topology_covariance_diagnostic.py"
-      - "tests/test_contact_topology_covariance_workflow_policy.py"
   workflow_dispatch:
     inputs:
       development_seeds:
@@ -54,8 +45,8 @@ jobs:
   evaluate:
     name: Fresh target-topology covariance evaluation (${{ matrix.lane }})
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main'
     strategy:
       fail-fast: false
       matrix:
@@ -69,12 +60,20 @@ jobs:
     env:
       EXECUTION_LANE: ${{ matrix.lane }}
     steps:
-      - name: Check out Causal4D
+      - name: Check out exact reviewed Causal4D revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
           clean: true
+
+      - name: Verify reviewed main revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test -z "$(git status --porcelain=v1)"
 
       - name: Set up pinned Python with hosted pip cache
         if: matrix.lane == 'hosted'
@@ -101,7 +100,7 @@ jobs:
             "pyrecest==2.4.1" \
             "pytest==9.1.1" \
             "ruff==0.16.1"
-          python -m pip install -e ".[dev]"
+          python -m pip install ".[dev]"
           python -m pip check
           mkdir -p outputs/contact-topology-covariance
           python -m pip freeze --all \
@@ -130,7 +129,7 @@ jobs:
           31d9dbcfc794843a5ff45267d47c5cb21f8804437338dcf4f38ba27de4117ccf  src/causal4d/contact_topology_covariance_diagnostic.py
           f640f9f366a770408d1d58e650fbf649acd435263125e04de1da509e056d8540  scripts/ci/run_contact_topology_covariance_diagnostic.py
           c9a11dc160193b0ad397639e2d84fdbf0f09d789f97dfdcacec4270c77b6b5bd  tests/test_contact_topology_covariance_diagnostic.py
-          66cc1443b8f99563f99744c46584df13b1b52b5e0828c3b99cab5c96028f2e66  tests/test_contact_topology_covariance_workflow_policy.py
+          04481f7fd2b2965d3439dad9f1b9ca3068f6b5dea1bc62674383571c73667ae1  tests/test_contact_topology_covariance_workflow_policy.py
           ac491668ab4e43fd3e3f0aa0a580cafab52829604ed47cc25c7cd73ff9a0a979  docs/contact_topology_covariance.md
           EOF
           python -m ruff check \
