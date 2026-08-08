@@ -47,7 +47,12 @@ clock. Evidence from another protocol, case, or observed action is rejected
 before any likelihood is evaluated.
 
 Use `save_independent_sensor_evidence` and
-`load_independent_sensor_evidence` for checksummed round trips.
+`load_independent_sensor_evidence` for checksummed round trips. Publication is
+atomic, validates the exact temporary bytes before they become visible, and is
+exactly once by default. Replacing an existing evidence file requires the explicit
+`overwrite=True` opt-in. Loading snapshots one ordinary non-symlink file, rejects
+duplicate or unexpected NPZ members, and parses the embedded descriptor with the
+strict finite-JSON contract.
 
 ## Robust independent-sensor factors
 
