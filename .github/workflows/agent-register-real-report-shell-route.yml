@@ -1,0 +1,177 @@
+name: Apply report-shell command-registry integration
+
+on:
+  push:
+    branches:
+      - agent/register-real-report-shell-route
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-register-real-report-shell-route
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.ref == 'refs/heads/agent/register-real-report-shell-route'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact branch revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+          clean: true
+
+      - name: Verify exact revision and clean checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF}" = "refs/heads/agent/register-real-report-shell-route"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test -z "$(git status --porcelain=v1)"
+
+      - name: Integrate the report shell into the single executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+
+          def replace_once(text: str, old: str, new: str, *, name: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{name}: expected one match, found {count}")
+              return text.replace(old, new, 1)
+
+
+          registry_path = Path("src/causal4d/cli/command_registry.py")
+          registry = registry_path.read_text(encoding="utf-8")
+          anchor = '''    CommandSpec(
+                  route=("evidence", "interpret-real-result"),
+                  target="causal4d.cli.real_result_interpretation:main",
+                  summary="Apply the preregistered real-result interpretation tree.",
+                  lifecycle="stable",
+                  claim_bearing=True,
+              ),
+          '''
+          addition = '''    CommandSpec(
+                  route=("evidence", "real-report-shell"),
+                  target="causal4d.registered_real_report_shell:main",
+                  summary=(
+                      "Render or validate the target-free registered real-analysis "
+                      "report shell."
+                  ),
+                  lifecycle="stable",
+              ),
+          '''
+          registry = replace_once(
+              registry,
+              anchor,
+              addition + anchor,
+              name="command registry anchor",
+          )
+          registry_path.write_text(registry, encoding="utf-8")
+
+          shell_path = Path("src/causal4d/registered_real_report_shell.py")
+          shell = shell_path.read_text(encoding="utf-8")
+          replacements = {
+              "python -m causal4d.registered_real_report_shell render": (
+                  "causal4d evidence real-report-shell render"
+              ),
+              "python -m causal4d.registered_real_report_shell validate": (
+                  "causal4d evidence real-report-shell validate"
+              ),
+              "python -m causal4d.registered_real_report_shell\"": (
+                  "causal4d evidence real-report-shell\""
+              ),
+          }
+          for old, new in replacements.items():
+              shell = replace_once(shell, old, new, name=f"module prog {old}")
+          shell_path.write_text(shell, encoding="utf-8")
+
+          docs_path = Path("docs/causal4d_registered_real_report_shell.md")
+          docs = docs_path.read_text(encoding="utf-8")
+          render_old = "python -m causal4d.registered_real_report_shell render"
+          validate_old = "python -m causal4d.registered_real_report_shell validate"
+          if docs.count(render_old) != 1:
+              raise SystemExit("documentation render invocation changed")
+          if docs.count(validate_old) != 2:
+              raise SystemExit("documentation validate invocations changed")
+          docs = docs.replace(
+              render_old,
+              "causal4d evidence real-report-shell render",
+          )
+          docs = docs.replace(
+              validate_old,
+              "causal4d evidence real-report-shell validate",
+          )
+          docs_path.write_text(docs, encoding="utf-8")
+
+          tests_path = Path("tests/test_registered_real_report_shell.py")
+          tests = tests_path.read_text(encoding="utf-8")
+          tests = replace_once(
+              tests,
+              "import pytest\n\n",
+              "import pytest\n\nfrom causal4d.cli.command_registry import find_command\n",
+              name="test import",
+          )
+          test_anchor = '''def test_cli_renders_validates_and_refuses_partial_overwrite(
+              tmp_path: Path,
+          ) -> None:
+          '''
+          test_addition = '''def test_single_executable_route_is_registered_and_non_claim_bearing() -> None:
+              command = find_command("evidence real-report-shell")
+
+              assert command.target == "causal4d.registered_real_report_shell:main"
+              assert command.lifecycle == "stable"
+              assert command.claim_bearing is False
+              assert command.historical_name is None
+
+
+          '''
+          tests = replace_once(
+              tests,
+              test_anchor,
+              test_addition + test_anchor,
+              name="test insertion anchor",
+          )
+          tests_path.write_text(tests, encoding="utf-8")
+          PY
+
+      - name: Run focused quality and regression checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e ".[dev]"
+          python -m ruff check \
+            src/causal4d/cli/command_registry.py \
+            src/causal4d/registered_real_report_shell.py \
+            tests/test_registered_real_report_shell.py
+          python -m ruff format --check \
+            src/causal4d/cli/command_registry.py \
+            src/causal4d/registered_real_report_shell.py \
+            tests/test_registered_real_report_shell.py
+          python -m pytest -q \
+            tests/test_registered_real_report_shell.py \
+            tests/test_cli_command_registry.py
+
+      - name: Publish ordinary source changes and remove this one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/agent-register-real-report-shell-route.yml
+          test -z "$(git diff --name-only --diff-filter=U)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            docs/causal4d_registered_real_report_shell.md \
+            src/causal4d/cli/command_registry.py \
+            src/causal4d/registered_real_report_shell.py \
+            tests/test_registered_real_report_shell.py
+          git commit -m "Register the target-free report-shell route"
+          git push origin HEAD:agent/register-real-report-shell-route
