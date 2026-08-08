@@ -321,9 +321,7 @@ def test_strict_sensor_update_accepts_exact_embedded_ledger_chain() -> None:
     )
 
     assert second.sensor_update_applied
-    assert {
-        entry.consumption_id for entry in second.evidence_ledger.entries
-    } == {
+    assert {entry.consumption_id for entry in second.evidence_ledger.entries} == {
         first_consumption.consumption_id,
         second_consumption.consumption_id,
     }
