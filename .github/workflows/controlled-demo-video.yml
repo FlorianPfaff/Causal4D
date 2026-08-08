@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       runner:
-        description: Runner type
+        description: Runner type; self-hosted is admitted only from main
         required: true
         default: github-hosted
         type: choice
@@ -32,18 +32,38 @@ concurrency:
 jobs:
   render:
     name: Render controlled MP4, GIF, and poster
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      (
+        inputs.runner != 'self-hosted' ||
+        github.ref == 'refs/heads/main'
+      )
     runs-on: >-
       ${{
         inputs.runner == 'self-hosted' &&
         fromJSON('["self-hosted","Linux","X64","collaborator-demo"]') ||
         'ubuntu-latest'
       }}
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
-      - name: Check out Causal4D
+      - name: Check out exact Causal4D revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
           persist-credentials: false
+          clean: true
+
+      - name: Verify exact revision and self-hosted authorization
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test -z "$(git status --porcelain=v1)"
+          if [[ "${{ inputs.runner }}" == "self-hosted" ]]; then
+            test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"
+            test "${GITHUB_REF}" = "refs/heads/main"
+          fi
 
       - name: Set up Python 3.12 with pip cache
         if: inputs.runner != 'self-hosted'
@@ -60,19 +80,61 @@ jobs:
           python-version: "3.12"
 
       - name: Install controlled-demo renderer
+        shell: bash
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e . matplotlib pillow imageio-ffmpeg
-          python -m pip check
+          set -euo pipefail
+          python -m venv .controlled-demo-venv
+          mkdir -p controlled-collaborator-demo/wheels
+          .controlled-demo-venv/bin/python -m pip install \
+            --upgrade pip "build>=1.2"
+          .controlled-demo-venv/bin/python -m build --wheel \
+            --outdir controlled-collaborator-demo/wheels .
+          wheel="$(
+            find controlled-collaborator-demo/wheels -maxdepth 1 \
+              -name 'causal4d-*.whl' -print -quit
+          )"
+          test -n "${wheel}"
+          sha256sum "${wheel}" \
+            | tee controlled-collaborator-demo/wheel-sha256.txt
+          .controlled-demo-venv/bin/python -m pip install \
+            "${wheel}" matplotlib pillow imageio-ffmpeg
+          .controlled-demo-venv/bin/python -m pip check
+          .controlled-demo-venv/bin/python - <<'PY'
+          from pathlib import Path
+
+          import causal4d
+
+          source_root = (Path.cwd() / "src").resolve()
+          origin = Path(causal4d.__file__).resolve()
+          if origin.is_relative_to(source_root):
+              raise SystemExit("Causal4D resolved from the source checkout")
+          print(origin)
+          PY
 
       - name: Render collaborator bundle
         run: |
-          python -m causal4d.cli.dynamic_contact_demo \
+          .controlled-demo-venv/bin/python \
+            -m causal4d.cli.dynamic_contact_demo \
             --output-dir controlled-collaborator-demo \
             --seed "${{ inputs.seed }}" \
             --prefix-frame-count "${{ inputs.prefix_frame_count }}" \
             --fps 4 \
             --require-gates
+
+      - name: Record runtime provenance
+        shell: bash
+        run: |
+          {
+            echo "repository=${GITHUB_REPOSITORY}"
+            echo "commit=${GITHUB_SHA}"
+            echo "workflow_run_id=${GITHUB_RUN_ID}"
+            echo "workflow_run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "runner_name=${RUNNER_NAME}"
+            echo "runner_os=${RUNNER_OS}"
+            echo "runner_arch=${RUNNER_ARCH}"
+          } > controlled-collaborator-demo/runtime.txt
+          .controlled-demo-venv/bin/python -m pip freeze --all \
+            > controlled-collaborator-demo/pip-freeze.txt
 
       - name: Verify rendered artifacts
         shell: bash
@@ -82,7 +144,10 @@ jobs:
           test -s controlled-collaborator-demo/causal4d_dynamic_contact_poster.png
           test -s controlled-collaborator-demo/summary.json
           test -s controlled-collaborator-demo/summary.md
-          python -m json.tool controlled-collaborator-demo/summary.json > /dev/null
+          test -s controlled-collaborator-demo/runtime.txt
+          test -s controlled-collaborator-demo/wheel-sha256.txt
+          .controlled-demo-venv/bin/python -m json.tool \
+            controlled-collaborator-demo/summary.json > /dev/null
           (
             cd controlled-collaborator-demo
             sha256sum \
@@ -91,6 +156,9 @@ jobs:
               causal4d_dynamic_contact_poster.png \
               summary.json \
               summary.md \
+              runtime.txt \
+              pip-freeze.txt \
+              wheel-sha256.txt \
               | sort > SHA256SUMS
           )
 
@@ -98,10 +166,14 @@ jobs:
         run: cat controlled-collaborator-demo/summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload collaborator bundle
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: causal4d-controlled-collaborator-demo-${{ github.run_id }}
           path: controlled-collaborator-demo
           if-no-files-found: error
           retention-days: 30
           compression-level: 6
+
+      - name: Remove isolated environment
+        if: always()
+        run: rm -rf .controlled-demo-venv
