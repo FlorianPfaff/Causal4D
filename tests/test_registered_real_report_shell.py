@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from causal4d.cli.command_registry import find_command
 from causal4d.real_experiment_freeze import MILESTONE_ID, SCHEMA_VERSION
 from causal4d.real_protocol import load_protocol
 from causal4d.registered_real_analysis import (
@@ -193,6 +194,15 @@ def test_shell_is_bound_to_the_exact_registered_analysis() -> None:
             analysis_manifest_sha256=hashlib.sha256(payload).hexdigest(),
             analysis_manifest_byte_count=len(payload),
         )
+
+
+def test_single_executable_route_is_registered_and_non_claim_bearing() -> None:
+    command = find_command("evidence real-report-shell")
+
+    assert command.target == "causal4d.registered_real_report_shell:main"
+    assert command.lifecycle == "stable"
+    assert command.claim_bearing is False
+    assert command.historical_name is None
 
 
 def test_cli_renders_validates_and_refuses_partial_overwrite(

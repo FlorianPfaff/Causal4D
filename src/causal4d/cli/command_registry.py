@@ -763,6 +763,14 @@ COMMANDS = (
         lifecycle="stable",
     ),
     CommandSpec(
+        route=("evidence", "real-report-shell"),
+        target="causal4d.registered_real_report_shell:main",
+        summary=(
+            "Render or validate the target-free registered real-analysis report shell."
+        ),
+        lifecycle="stable",
+    ),
+    CommandSpec(
         route=("evidence", "interpret-real-result"),
         target="causal4d.cli.real_result_interpretation:main",
         summary="Apply the preregistered real-result interpretation tree.",

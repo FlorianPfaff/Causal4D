@@ -927,9 +927,7 @@ def _preflight_output_paths(
 
 
 def _render_command(arguments: Sequence[str]) -> int:
-    parser = argparse.ArgumentParser(
-        prog="python -m causal4d.registered_real_report_shell render"
-    )
+    parser = argparse.ArgumentParser(prog="causal4d evidence real-report-shell render")
     parser.add_argument("analysis_manifest")
     parser.add_argument("--output-json", required=True)
     parser.add_argument("--output-markdown", required=True)
@@ -978,7 +976,7 @@ def _render_command(arguments: Sequence[str]) -> int:
 
 def _validate_command(arguments: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(
-        prog="python -m causal4d.registered_real_report_shell validate"
+        prog="causal4d evidence real-report-shell validate"
     )
     parser.add_argument("report_shell")
     parser.add_argument("--analysis-manifest")
@@ -1019,9 +1017,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Render or validate the target-free report shell."""
 
     arguments = list(argv) if argv is not None else None
-    parser = argparse.ArgumentParser(
-        prog="python -m causal4d.registered_real_report_shell"
-    )
+    parser = argparse.ArgumentParser(prog="causal4d evidence real-report-shell")
     parser.add_argument("operation", choices=("render", "validate"))
     parsed, remaining = parser.parse_known_args(arguments)
     if parsed.operation == "render":
